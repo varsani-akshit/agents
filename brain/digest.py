@@ -41,12 +41,16 @@ rule that every quantitative claim comes from a tool result, never from memory."
 
 FORMAT = """Write the brief in this exact structure, in markdown.
 
-HARD LENGTH BUDGET: 1,200-1,600 words of body text — a complete read in five to
-ten minutes. This is a ceiling, not a target to pad toward. The depth lives in
-the investigation (use the tools as much as the window needs); the writing is
-the condensed result. If you find yourself over budget, cut the weakest item
-entirely rather than compressing everything into mush. Never cut Bottom Line,
-Scenarios or Positioning.
+HARD LENGTH BUDGET: 1,400 words maximum for the whole brief, tables included —
+a complete read in five to ten minutes. This is a ceiling, not a target to pad
+toward. The depth lives in the investigation (use the tools as much as the
+window needs); the writing is the condensed result. If you are over, cut the
+weakest item entirely rather than compressing everything into mush. Never cut
+Bottom Line, Scenarios or Positioning.
+
+Per-section ceilings, which together leave room to spare:
+  Bottom Line 70 · What Happened 450 · Worth Your Attention 100
+  Signals 250 · Scenarios 200 · Positioning 300 · Confidence 90
 
 What condensation means in practice:
 - One insight per paragraph, stated once. No restating a table in prose.
@@ -70,10 +74,14 @@ correlations, liquidity, drawdowns, the regime gauge) is always available and
 interactive — do NOT embed those here. Embed a chart ONLY when this cycle
 produced a specific insight that the figure demonstrates — a correlation that
 just flipped, a divergence that just opened. Zero inline charts is the normal
-case. When a standing figure supports a point, reference it in prose as a link,
-e.g. [the gold/TLT correlation](/charts#rolling_correlations) — the anchor is
-the chart key from `# Charts available`. To embed the rare insight chart, use
-image syntax with its key: `![title](charts/<key>.png)`.
+case.
+
+When a standing figure supports a point, link it in prose using the exact link
+given for it in `# Charts available` below, e.g.
+`[the gold/TLT correlation](/charts#rolling_correlations)`. Do this whenever you
+reference something a figure shows — it is how the reader gets from a claim to
+the interactive chart behind it. To embed the rare insight chart instead, use
+image syntax: `![title](charts/<key>.png)`.
 
 Tables render properly only at the top level with a blank line before and after
 — never indented inside a list item.
@@ -97,20 +105,25 @@ nothing clears the bar, write "Nothing this cycle requires your direct
 attention."
 
 ## Signals
-The measured story in one tight section: the correlation or relationship that
-changed, what the regime score and its dissenting components say, what liquidity
-and credit are doing — only where it moved or matters this cycle. Quote the
-handful of values that carry the argument; link standing charts rather than
-narrating them.
+250 words. The two or three relationships that CHANGED this cycle, and what each
+change means. Not a tour of the stats pack: no sub-headed survey of metals, then
+crypto, then FX, then the curve. If a relationship is behaving as it did last
+cycle, it does not appear here at all.
+
+Pick the changes with the largest measured drift, give each two or three
+sentences with the values that carry the argument, and link the standing chart
+rather than narrating what it shows. Everything you leave out remains one
+question away in Ask.
 
 ## Scenarios
 A table: scenario, rough probability, mechanism, confirming signal. Two or three
-rows.
+rows, one tight sentence per cell.
 
 ## Positioning Implications
 A table with one row per asset class where this cycle actually changed the
-argument: direction, mechanism, key evidence, what would invalidate it. Classes
-where nothing changed are omitted — not filled with "unchanged". Analysis of
+argument: direction, mechanism, key evidence, what would invalidate it. At most
+five rows, one tight sentence per cell. Classes where nothing changed are
+omitted — not filled with "unchanged". Analysis of
 alignment, never trade advice: "the argument for duration weakened", never
 "reduce duration".
 
@@ -159,7 +172,9 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
     # The model sees the catalogue, not the series: it places and interprets a
     # figure by key, and the browser draws it from the same data the pack used.
     chart_lines = "\n".join(
-        f"- `charts/{key}.png` — {spec.get('title', key)}. {spec.get('subtitle', '')}"
+        f"- {spec.get('title', key)} — link as `[text](/charts#{key})`, "
+        f"embed as `![{spec.get('title', key)}](charts/{key}.png)`. "
+        f"{spec.get('subtitle', '')}"
         for key, spec in chart_manifest.items()
     )
     prior = world_model.current_body()
