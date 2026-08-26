@@ -35,8 +35,16 @@ def client() -> anthropic.Anthropic:
 
 # ─────────────────────────────── cost accounting ────────────────────────────
 def spend_today() -> float:
+    """Rolling 24-hour spend, not calendar-day.
+
+    A calendar-day cap on a continuously-running system behaves badly: spend
+    early in the day blocks the rest of it, and the limiter resets on an
+    arbitrary boundary rather than relative to actual usage. A rolling window is
+    what "don't burn more than X per day" actually means.
+    """
     row = db.one(
-        "SELECT COALESCE(SUM(usd),0) AS s FROM api_calls WHERE created_at::date = CURRENT_DATE"
+        "SELECT COALESCE(SUM(usd),0) AS s FROM api_calls "
+        "WHERE created_at > now() - interval '24 hours'"
     )
     return float(row["s"]) if row else 0.0
 
