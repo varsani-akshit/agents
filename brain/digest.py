@@ -194,7 +194,8 @@ def _split_world_model(text: str) -> tuple[str, str | None, str | None]:
     return body.strip(), wm, regime
 
 
-def run(hours: int = 8, extract_edges: bool = True) -> dict:
+def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
+        effort: str | None = None) -> dict:
     """Execute one deep-analysis cycle end to end."""
     world_model.ensure_seeded()
     user, pack = _build_prompt(hours)
@@ -214,7 +215,7 @@ def run(hours: int = 8, extract_edges: bool = True) -> dict:
     result = agent.run_agent(
         system=system,
         user_message=user,
-        model=config.DIGEST_MODEL,
+        model=model or config.DIGEST_MODEL,
         purpose="digest",
         max_turns=6,
         max_tokens=10000,
@@ -223,7 +224,7 @@ def run(hours: int = 8, extract_edges: bool = True) -> dict:
         # cost lever on a 4x/day cadence. Measured per digest on this workload:
         #   high ~$0.40  medium ~$0.33  low ~see MORNING_REPORT
         # Raise this in config if you want deeper cycles and accept the spend.
-        effort=os.getenv("MIA_DIGEST_EFFORT", "low"),
+        effort=effort or os.getenv("MIA_DIGEST_EFFORT", "low"),
     )
 
     text = result["text"]
@@ -244,6 +245,8 @@ def run(hours: int = 8, extract_edges: bool = True) -> dict:
             "usd": result["usd"],
             "stopped": result.get("stopped"),
             "regime": regime,
+            "model": model or config.DIGEST_MODEL,
+            "effort": effort or os.getenv("MIA_DIGEST_EFFORT", "low"),
         },
     )
 

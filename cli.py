@@ -90,7 +90,7 @@ def cmd_digest(args) -> int:
     client.AUTONOMOUS = False   # manually invoked, not a scheduled cycle
 
     with db.job("digest") as detail:
-        result = digest.run(hours=args.hours)
+        result = digest.run(hours=args.hours, model=args.model, effort=args.effort)
         detail.update({k: v for k, v in result.items() if k not in ("body",)})
         if not result.get("ok"):
             out.error(f"digest failed: {result.get('error')}")
@@ -112,7 +112,8 @@ def cmd_ask(args) -> int:
     if not question:
         out.error("no question given")
         return 1
-    result = ask_mod.ask(question, use_web_search=not args.no_web)
+    result = ask_mod.ask(question, use_web_search=not args.no_web,
+                         model=args.model, max_turns=args.turns)
     if not result["answer"]:
         out.error(f"no answer produced ({result.get('stopped')})")
         return 1
@@ -257,12 +258,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     d = sub.add_parser("digest", help="run a deep analysis cycle")
-    d.add_argument("--hours", type=int, default=6)
+    d.add_argument("--hours", type=int, default=8)
+    d.add_argument("--model", help="override the digest model")
+    d.add_argument("--effort", help="low | medium | high | xhigh | max")
     d.set_defaults(func=cmd_digest)
 
     a = sub.add_parser("ask", help="ask a question with full memory + web")
     a.add_argument("question", nargs="+")
     a.add_argument("--no-web", action="store_true", help="stored memory only")
+    a.add_argument("--model", help="override: claude-opus-5 | claude-sonnet-5 | claude-haiku-4-5")
+    a.add_argument("--turns", type=int, default=8, help="max agent turns")
     a.set_defaults(func=cmd_ask)
 
     s = sub.add_parser("status", help="system health, spend, job history")
