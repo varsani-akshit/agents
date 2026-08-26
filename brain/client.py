@@ -81,6 +81,11 @@ def record(model: str, purpose: str, usage: Any, web_searches: int = 0) -> float
     return usd
 
 
+# Set False by interactive entrypoints so a user's own question can draw on the
+# reserve that scheduled jobs are not allowed to touch.
+AUTONOMOUS = True
+
+
 def check_budget(estimated: float = 0.02) -> None:
     today, total = spend_today(), spend_total()
     if today + estimated > config.DAILY_USD_CAP:
@@ -90,6 +95,12 @@ def check_budget(estimated: float = 0.02) -> None:
     if total + estimated > config.TOTAL_USD_CAP:
         raise BudgetExceeded(
             f"total cap reached: ${total:.4f} spent, cap ${config.TOTAL_USD_CAP:.2f}"
+        )
+    if AUTONOMOUS and total + estimated > config.AUTONOMOUS_USD_CAP:
+        raise BudgetExceeded(
+            f"autonomous cap reached: ${total:.4f} spent, scheduled-job cap "
+            f"${config.AUTONOMOUS_USD_CAP:.2f} — the remainder of the "
+            f"${config.TOTAL_USD_CAP:.2f} total is reserved for interactive use"
         )
 
 
@@ -102,6 +113,10 @@ def budget_status() -> dict:
         "spent_total_usd": round(total, 4),
         "total_cap_usd": config.TOTAL_USD_CAP,
         "total_remaining_usd": round(max(0.0, config.TOTAL_USD_CAP - total), 4),
+        "autonomous_cap_usd": config.AUTONOMOUS_USD_CAP,
+        "interactive_reserve_usd": round(
+            max(0.0, config.TOTAL_USD_CAP - max(total, config.AUTONOMOUS_USD_CAP)), 4
+        ),
     }
 
 

@@ -31,6 +31,12 @@ ASK_MODEL = os.getenv("ASK_MODEL", DIGEST_MODEL)
 DAILY_USD_CAP = _f("MIA_DAILY_USD_CAP", 0.60)
 TOTAL_USD_CAP = _f("MIA_TOTAL_USD_CAP", 3.00)
 
+# Scheduled jobs stop at this, leaving the remainder of TOTAL_USD_CAP available
+# for interactive `ask`. Without it a busy night of autonomous cycles can consume
+# the whole balance and leave the user unable to ask their own questions —
+# the one use that actually needs the budget to be there.
+AUTONOMOUS_USD_CAP = _f("MIA_AUTONOMOUS_USD_CAP", TOTAL_USD_CAP * 0.75)
+
 # Output routing. Slack stays off until a platform is chosen.
 NOTIFY_SLACK = os.getenv("MIA_NOTIFY_SLACK", "false").lower() in {"1", "true", "yes"}
 SLACK_WEBHOOK_CRITICAL = os.getenv("SLACK_WEBHOOK_CRITICAL", "")

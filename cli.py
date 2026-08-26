@@ -84,8 +84,10 @@ def cmd_tick(args) -> int:
 
 
 def cmd_digest(args) -> int:
-    from brain import digest
+    from brain import client, digest
     from notify import out
+
+    client.AUTONOMOUS = False   # manually invoked, not a scheduled cycle
 
     with db.job("digest") as detail:
         result = digest.run(hours=args.hours)
@@ -99,7 +101,12 @@ def cmd_digest(args) -> int:
 
 def cmd_ask(args) -> int:
     from brain import ask as ask_mod
+    from brain import client
     from notify import out
+
+    # A question typed by the user is interactive: allow it to draw on the
+    # reserve that scheduled jobs cannot touch.
+    client.AUTONOMOUS = False
 
     question = " ".join(args.question).strip()
     if not question:
@@ -141,6 +148,8 @@ def cmd_status(args) -> int:
         f"\n[bold]spend[/bold]  today ${b['spent_today_usd']:.4f}/"
         f"${b['daily_cap_usd']:.2f}   total ${b['spent_total_usd']:.4f}/"
         f"${b['total_cap_usd']:.2f}"
+        f"\n[dim]scheduled jobs stop at ${b['autonomous_cap_usd']:.2f}; "
+        f"${b['interactive_reserve_usd']:.4f} reserved for your own queries[/dim]"
     )
 
     jobs = db.query(
