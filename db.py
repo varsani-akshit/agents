@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from collections.abc import Mapping
 from typing import Any, Iterable, Iterator
 
 import psycopg
@@ -28,20 +29,29 @@ def conn() -> Iterator[psycopg.Connection]:
         yield c
 
 
-def query(sql: str, params: Iterable[Any] = ()) -> list[dict]:
+def _bind(params: Any) -> Any:
+    """Pass mappings through; make everything else a tuple.
+
+    psycopg picks its placeholder style from the parameter type, so wrapping a
+    dict in tuple() turns %(name)s into "named placeholders require a mapping".
+    """
+    return params if isinstance(params, Mapping) else tuple(params)
+
+
+def query(sql: str, params: Iterable[Any] | Mapping[str, Any] = ()) -> list[dict]:
     with conn() as c, c.cursor(row_factory=dict_row) as cur:
-        cur.execute(sql, tuple(params))
+        cur.execute(sql, _bind(params))
         return cur.fetchall() if cur.description else []
 
 
-def one(sql: str, params: Iterable[Any] = ()) -> dict | None:
+def one(sql: str, params: Iterable[Any] | Mapping[str, Any] = ()) -> dict | None:
     rows = query(sql, params)
     return rows[0] if rows else None
 
 
-def execute(sql: str, params: Iterable[Any] = ()) -> int:
+def execute(sql: str, params: Iterable[Any] | Mapping[str, Any] = ()) -> int:
     with conn() as c, c.cursor() as cur:
-        cur.execute(sql, tuple(params))
+        cur.execute(sql, _bind(params))
         return cur.rowcount
 
 

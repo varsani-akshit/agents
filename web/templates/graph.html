@@ -1,19 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Graph — Alfred{% endblock %}
+{% block title %}Knowledge graph — Alfred{% endblock %}
 {% block content %}
 <header class="ph">
   <div class="eyebrow">Knowledge base</div>
-  <h1>Relationship graph</h1>
+  <h1>Knowledge graph</h1>
   <p class="sub">
-    {{ counts.entities }} entities and {{ counts.edges }} relationships, extracted
-    from the corpus and confirmed across sightings. Drag to explore; click a node
-    to see its connections. The graph grows as documents arrive — including
-    anything you add.
+    Every stored document, linked to the documents it resembles and the concepts
+    it mentions. {{ '{:,}'.format(counts.documents) }} documents and
+    {{ '{:,}'.format(counts.links) }} semantic links. Drag to explore, scroll to
+    zoom, click any node to read it.
   </p>
 </header>
-<figure class="chart" id="graphfig">
-  <div class="chart-canvas" id="graphcanvas" style="height:640px"></div>
-</figure>
-<div id="graphdetail" class="graphdetail" style="display:none"></div>
+
+<div class="ctl gctl">
+  <div class="ctlrow">
+    <span class="ctllabel">Window</span>
+    {% for d in [1, 3, 7, 14, 30] %}
+    <button class="opt{{ ' on' if d == 7 }}" data-k="days" data-v="{{ d }}">{{ d }}d</button>
+    {% endfor %}
+    <span class="ctllabel" style="margin-left:14px">Include</span>
+    {% for u in ['Critical', 'High', 'Medium', 'Low'] %}
+    <button class="opt{{ ' on' if u == 'Medium' }}" data-k="urgency" data-v="{{ u }}">{{ u }}+</button>
+    {% endfor %}
+  </div>
+  <div class="ctlrow">
+    <input type="text" id="gsearch" placeholder="Filter by title or summary…" autocomplete="off">
+    <span class="hint" id="gstats"></span>
+  </div>
+</div>
+
+<div class="graphwrap">
+  <div id="graphcanvas"></div>
+  <aside class="gpanel" id="gpanel">
+    <p class="hint">Click a node to inspect it.</p>
+  </aside>
+</div>
+<div class="glegend">
+  <span><i style="background:#EA580C"></i>Document</span>
+  <span><i style="background:#111111"></i>Entity</span>
+  <span><i style="background:#0F766E"></i>Theme</span>
+  <span class="hint">Line weight is similarity. Orange links are semantic; grey are mentions.</span>
+</div>
 <script src="/static/graph.js" defer></script>
 {% endblock %}

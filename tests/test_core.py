@@ -448,3 +448,20 @@ def test_daily_frame_has_no_weekend_rows():
 
         _pytest.skip("no price data in test database")
     assert (wide.index.dayofweek < 5).all()
+
+
+def test_session_is_rolling_and_long_lived():
+    """A fixed max_age expires 60 days after sign-in no matter how often you
+    visit. The gate touches the session on each request so the cookie is
+    re-issued, making the window roll forward with use."""
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        _sign_in(client)
+        resp = client.get("/status")
+        assert resp.status_code == 200
+        cookie = resp.headers.get("set-cookie", "")
+        assert "mia_session" in cookie, "session cookie not refreshed on a normal request"
+        assert "Max-Age=5184000" in cookie, f"expected a 60-day cookie, got: {cookie}"

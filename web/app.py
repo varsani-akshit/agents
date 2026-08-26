@@ -221,6 +221,13 @@ def page(request: Request, name: str, ctx: dict) -> HTMLResponse:
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     if auth.is_public(request.url.path) or auth.current_user(request):
+        # Starlette only re-issues the cookie when the session dict changes, so
+        # a fixed max_age would expire 60 days after sign-in however often you
+        # visit. Touching it on each request makes the window rolling: you stay
+        # signed in indefinitely while you keep using it, and only a real 60-day
+        # absence (or clearing cookies) logs you out.
+        if not auth.is_public(request.url.path):
+            request.session["seen"] = int(datetime.now(timezone.utc).timestamp())
         return await call_next(request)
     nxt = request.url.path
     if request.url.query:
@@ -237,7 +244,8 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=auth.session_secret(),
     session_cookie="mia_session",
-    max_age=60 * 60 * 24 * 30,   # a month; this is a personal dashboard
+    # 60 days, refreshed on every request below, so regular use never expires.
+    max_age=60 * 60 * 24 * 60,
     same_site="lax",
     https_only=False,            # the host terminates TLS; set true behind one you control
 )
@@ -519,25 +527,42 @@ async def api_chart(key: str, days: str = ""):
 
 
 @app.get("/api/graph")
-async def api_graph():
-    """Entities and edges for the knowledge-graph view."""
-    nodes = db.query(
-        """SELECT canonical, kind, mention_count FROM entities
-           ORDER BY mention_count DESC LIMIT 300"""
+async def api_graph(days: int = 7, limit: int = 220,
+                    urgency: str = "Medium", q: str = ""):
+    """The knowledge graph: documents, the concepts they mention, and the links."""
+    from memory import graph as kg
+
+    return await asyncio.to_thread(
+        kg.build, min(days, 120), min(limit, 600), urgency, q.strip())
+
+
+@app.get("/api/graph/document/{doc_id}")
+async def api_graph_document(doc_id: int):
+    """One document with its nearest neighbours, for the detail panel."""
+    from memory import graph as kg
+
+    doc = db.one(
+        """SELECT id, title, url, source, source_tier, urgency, summary,
+                  left(body, 1200) AS excerpt, entities, themes, fetched_at
+           FROM documents WHERE id = %s""",
+        (doc_id,),
     )
-    edges = db.query(
-        """SELECT source_entity, target_entity, relation, direction,
-                  strength, confirm_count, rationale
-           FROM edges ORDER BY strength DESC LIMIT 800"""
-    )
-    return {"nodes": nodes, "edges": edges}
+    if not doc:
+        return JSONResponse({"error": "not found"}, 404)
+    doc["fetched_at"] = doc["fetched_at"].isoformat()
+    neighbours = await asyncio.to_thread(kg.neighbours, doc_id)
+    for n in neighbours:
+        n["fetched_at"] = n["fetched_at"].isoformat()
+        n["similarity"] = round(float(n["similarity"]), 3)
+    return {"document": doc, "neighbours": neighbours}
 
 
 @app.get("/graph", response_class=HTMLResponse)
 async def graph_page(request: Request):
     counts = db.one(
-        "SELECT (SELECT count(*) FROM entities) AS entities, "
-        "(SELECT count(*) FROM edges) AS edges"
+        """SELECT (SELECT count(*) FROM documents) AS documents,
+                  (SELECT count(*) FROM doc_links) AS links,
+                  (SELECT count(*) FROM entities) AS entities"""
     )
     return page(request, "graph.html", {"counts": counts, "active": "graph"})
 

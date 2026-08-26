@@ -21,9 +21,13 @@
         {% if not e.notified_at %}<span>suppressed</span>{% endif %}
       </div>
       {% if e.text %}<div class="alert-body">{{ e.text }}</div>{% endif %}
-      {% if e.detail %}<div class="hint" style="margin-top:8px">
-        {% for k, v in e.detail.items() %}{% if v is string or v is number %}{{ k }}={{ v }}&ensp;{% endif %}{% endfor %}
-      </div>{% endif %}
+      {% if e.detail %}
+      <div class="kvchips">
+        {% for k, v in e.detail.items() %}{% if v is string or v is number %}
+        <span class="kvchip"><b>{{ k }}</b>{{ v }}</span>
+        {% endif %}{% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% else %}<p class="empty">No trigger events recorded.</p>{% endfor %}
   </div>

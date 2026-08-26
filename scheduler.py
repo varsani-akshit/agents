@@ -152,6 +152,10 @@ def job_maintenance() -> dict:
         "DELETE FROM stats_packs WHERE created_at < now() - interval '30 days'"
     )
     detail.update(prune_documents())
+    # Refresh semantic links after pruning, so the graph reflects what remains.
+    from memory import graph as kg
+
+    detail["doc_links"] = kg.rebuild_links(days=7)
     # Chart packs are ~100KB each and three briefs a day is ~9MB a month. Old
     # briefs keep their text and their argument; only the figures expire.
     detail["chart_packs_pruned"] = db.execute(

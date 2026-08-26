@@ -188,3 +188,19 @@ CREATE TABLE IF NOT EXISTS users (
 -- re-extracted every cycle, inflating confirm counts while fresh documents
 -- never get read.
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS extracted_at TIMESTAMPTZ;
+
+-- Semantic links between documents: the edges of the knowledge graph. Computed
+-- from the embeddings already stored on each document, so this adds no model
+-- cost — it is an index over work already done. src_id < dst_id keeps each
+-- undirected pair once.
+CREATE TABLE IF NOT EXISTS doc_links (
+  src_id     BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  dst_id     BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  similarity REAL   NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (src_id, dst_id),
+  CHECK (src_id < dst_id)
+);
+CREATE INDEX IF NOT EXISTS doc_links_src_idx ON doc_links (src_id);
+CREATE INDEX IF NOT EXISTS doc_links_dst_idx ON doc_links (dst_id);
+CREATE INDEX IF NOT EXISTS doc_links_sim_idx ON doc_links (similarity DESC);

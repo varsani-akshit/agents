@@ -1,5 +1,7 @@
 /* Alfred — quiet editorial on graph paper. Light ground, orange accent,
  * every edge sharp: zero radius, hairline construction lines, mono metadata.
+ * No page-level texture: the ruled lines live on containers, where they read as
+ * drawing conventions rather than as wallpaper behind the reading.
  *
  * Follows the akshit.fyi handoff: hairlines not borders, no weight above 500,
  * accent as a verb, mono for metadata only, no shadows, no dark mode.
@@ -49,53 +51,91 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Paper texture. Registers as ground, not as pattern. */
-body::before {
-  content: ''; position: fixed; inset: 0;
-  background-image:
-    linear-gradient(to right, #DADEE4 0.5px, transparent 0.5px),
-    linear-gradient(to bottom, #DADEE4 0.5px, transparent 0.5px);
-  background-size: 28px 28px;
-  opacity: .45; pointer-events: none; z-index: 0;
-}
-body > * { position: relative; z-index: 1; }
 
 a { color: inherit; text-decoration: none; }
 h1, h2, h3, p { text-wrap: pretty; }
 
 /* ─────────────────────────────── nav ─────────────────────────────── */
 .nav {
-  position: sticky; top: 0; z-index: 50;
+  position: sticky; top: 0; z-index: 60;
   background: var(--bg);
   border-bottom: .5px solid var(--border);
 }
 .nav-in {
   max-width: var(--shell); margin: 0 auto; padding: 0 var(--pad);
-  height: 56px; display: flex; align-items: center; gap: 26px;
+  height: 54px; display: flex; align-items: center; gap: 28px;
 }
 .wordmark {
-  font: 500 15px/1 var(--sans); letter-spacing: -.01em; color: var(--t1);
-  display: flex; align-items: baseline; gap: 9px; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 9px; flex-shrink: 0;
+  font: 500 14px/1 var(--sans); letter-spacing: .16em; color: var(--t1);
 }
-.wordmark span {
-  font: 400 10px/1 var(--mono); letter-spacing: .08em;
-  text-transform: uppercase; color: var(--t3);
+.wordmark .mark { color: var(--accent); }
+
+/* min-width:0 lets this flex item shrink instead of shoving the account menu
+   off the end — the old nav overlapped its own right-hand items at 1080px. */
+.nav-links {
+  display: flex; gap: 22px; min-width: 0; overflow: hidden;
 }
-.nav-links { display: flex; gap: 20px; overflow-x: auto; scrollbar-width: none; }
-.nav-links::-webkit-scrollbar { display: none; }
 .nav-links a {
-  font-size: 15px; color: var(--t2); white-space: nowrap;
+  font-size: 14.5px; color: var(--t2); white-space: nowrap;
+  padding: 4px 0; border-bottom: 1.5px solid transparent;
   transition: color 150ms ease;
 }
 .nav-links a:hover { color: var(--t1); }
-.nav-links a.on { color: var(--t1); font-weight: 500; }
-.nav-meta {
-  margin-left: auto; display: flex; gap: 16px; align-items: center;
-  font: 400 12px/1 var(--mono); color: var(--t3); flex-shrink: 0;
+.nav-links a.on { color: var(--t1); border-bottom-color: var(--accent); }
+
+.nav-right {
+  margin-left: auto; display: flex; align-items: center; gap: 18px;
+  flex-shrink: 0;
 }
-.dot { width: 6px; height: 6px; border-radius: 0; display: inline-block; margin-right: 6px; }
+.tick { font: 400 11.5px/1 var(--mono); color: var(--t3); white-space: nowrap; }
+.dot { width: 6px; height: 6px; display: inline-block; margin-right: 6px; }
 .dot.ok { background: var(--up); }
 .dot.bad { background: var(--down); }
+
+/* Account menu — <details> so it works without JS; nav.js only adds
+   close-on-outside-click and Escape. */
+.menu { position: relative; }
+.menu > summary {
+  list-style: none; cursor: pointer;
+  font: 400 13px/1 var(--mono); color: var(--t2);
+  padding: 8px 0; display: flex; align-items: center; gap: 6px;
+  min-height: 38px;
+}
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary::after {
+  content: ''; width: 5px; height: 5px; border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor; transform: rotate(45deg) translateY(-2px);
+}
+.menu[open] > summary { color: var(--t1); }
+.menu-panel {
+  position: absolute; right: 0; top: 100%; z-index: 70;
+  min-width: 168px; background: var(--surface);
+  border: .5px solid var(--border); padding: 4px 0;
+}
+.menu-panel a {
+  display: block; padding: 9px 16px; font-size: 13.5px; color: var(--t2);
+  white-space: nowrap;
+}
+.menu-panel a:hover { background: var(--subtle); color: var(--t1); }
+.menu-panel a.on { color: var(--t1); }
+.menu-panel a.sep { border-top: .5px solid var(--border); margin-top: 4px; padding-top: 11px; }
+
+/* Hamburger — hidden until the links no longer fit. */
+.burger {
+  display: none; background: none; border: 0; padding: 10px 8px;
+  margin-left: auto; cursor: pointer; min-height: 44px; min-width: 44px;
+  flex-direction: column; justify-content: center; gap: 5px;
+}
+.burger span { display: block; width: 20px; height: 1.5px; background: var(--t1); }
+.navpanel { display: none; border-top: .5px solid var(--border); background: var(--bg); }
+.navpanel.open { display: block; }
+.navpanel a {
+  display: block; padding: 14px var(--pad); font-size: 16px; color: var(--t2);
+  border-bottom: .5px solid var(--border); min-height: 48px;
+}
+.navpanel a.on { color: var(--t1); box-shadow: inset 2px 0 0 var(--accent); }
+.navpanel a.sep { color: var(--t3); font: 400 13px/1.4 var(--mono); }
 
 /* ─────────────────────────────── shell ───────────────────────────── */
 .shell { max-width: var(--shell); margin: 0 auto; padding: 44px var(--pad) 96px; }
@@ -203,6 +243,7 @@ h1, h2, h3, p { text-wrap: pretty; }
 
 /* ─────────────────────────────── charts ──────────────────────────── */
 .chart {
+  scroll-margin-top: 72px;
   margin: 34px 0; padding: 0;
   border: .5px solid var(--border); border-radius: 0;
   background: var(--surface);
@@ -224,7 +265,8 @@ h1, h2, h3, p { text-wrap: pretty; }
 }
 
 /* ─────────────────────────────── sidebar ─────────────────────────── */
-.side { position: sticky; top: 80px; font-size: 14px; }
+.side { position: sticky; top: 74px; font-size: 14px;
+        max-height: calc(100vh - 96px); overflow-y: auto; }
 .side section { margin-bottom: 32px; }
 .side h3 {
   font: 400 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
@@ -359,13 +401,16 @@ button:disabled { opacity: .45; cursor: progress; }
   .mbody table, table.data { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .mbody table { min-width: 0; }
 }
+@media (max-width: 860px) {
+  .nav-links { display: none; }
+  .burger { display: flex; }
+  .nav-right { margin-left: 0; gap: 12px; }
+  .tick { display: none; }
+}
 @media (max-width: 600px) {
   :root { --pad: 16px; }
   .shell { padding: 28px var(--pad) 72px; }
-  .nav-in { gap: 16px; height: 52px; }
-  .nav-links { gap: 15px; }
-  .nav-links a { font-size: 14px; }
-  .nav-meta { display: none; }
+  .nav-in { gap: 12px; height: 52px; }
   .ph h1 { font-size: 24px; }
   .ph .sub { font-size: 15px; }
   .mbody { font-size: 16px; line-height: 1.8; }
@@ -442,3 +487,72 @@ button:disabled { opacity: .45; cursor: progress; }
   border: .5px solid var(--border); background: var(--surface);
   padding: 14px 18px; font-size: 13px; color: var(--t2);
 }
+
+/* ───────────────────────── knowledge graph ───────────────────────── */
+.gctl { margin-bottom: 18px; }
+.gctl #gsearch {
+  width: 280px; border: 0; border-bottom: .5px solid var(--border);
+  padding: 8px 0; font: 400 13px/1.4 var(--mono); background: transparent;
+}
+.gctl #gsearch:focus { border-bottom-color: var(--accent); outline: none; }
+
+.graphwrap {
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px;
+  border: .5px solid var(--border); background: var(--surface);
+}
+#graphcanvas { height: 620px; min-width: 0; }
+.gpanel {
+  border-left: .5px solid var(--border); padding: 18px 20px;
+  overflow-y: auto; max-height: 620px; font-size: 13.5px; color: var(--t2);
+}
+.gpanel h4 { font: 500 15px/1.4 var(--sans); color: var(--t1); margin: 0 0 10px; }
+.gpanel h5 {
+  font: 400 10px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--t3); margin: 22px 0 10px; padding-top: 14px;
+  border-top: .5px solid var(--border);
+}
+.gpanel p { margin: 0 0 12px; line-height: 1.6; }
+.gpanel a { color: var(--accent); }
+.gp-meta {
+  font: 400 10.5px/1 var(--mono); letter-spacing: .06em;
+  text-transform: uppercase; color: var(--t3); margin-bottom: 10px;
+}
+.gp-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.gp-rel {
+  display: block; padding: 9px 0; border-bottom: .5px solid var(--border);
+  color: var(--t2); line-height: 1.45; font-size: 12.5px;
+}
+.gp-rel:last-child { border-bottom: none; }
+.gp-rel:hover { color: var(--accent); }
+.gp-rel .sim {
+  display: inline-block; min-width: 34px; color: var(--t3);
+  font: 400 11px/1 var(--mono);
+}
+.glegend {
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  margin-top: 12px; font: 400 11.5px/1.6 var(--mono); color: var(--t3);
+}
+.glegend i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; }
+
+@media (max-width: 860px) {
+  .graphwrap { grid-template-columns: 1fr; }
+  #graphcanvas { height: 400px; }
+  .gpanel {
+    border-left: 0; border-top: .5px solid var(--border);
+    max-height: none;
+  }
+  .gctl #gsearch { width: 100%; }
+}
+
+
+/* Trigger detail: a wrapping row of key/value chips.
+   Rendered as one run of "k=v" text it never broke, and a single alert pushed
+   the alerts page to 4,169px on a 390px phone. */
+.kvchips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.kvchip {
+  font: 400 10.5px/1.5 var(--mono); color: var(--t2);
+  background: var(--subtle); border: .5px solid var(--border);
+  padding: 2px 7px; max-width: 100%; overflow-wrap: anywhere;
+}
+.kvchip b { font-weight: 400; color: var(--t3); margin-right: 5px; }
+.alert-body { overflow-wrap: anywhere; }

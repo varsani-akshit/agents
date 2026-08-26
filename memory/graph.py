@@ -1,0 +1,199 @@
+"""The knowledge graph: every stored document, linked to everything it relates to.
+
+Three kinds of edge, none of which costs a model call:
+
+  document ── document   semantic similarity, from the embeddings already stored
+  document ── entity     the entities and themes the classifier tagged
+  entity   ── entity     the typed relations the extractor asserted
+
+The document-to-document edges are the point. Entity nodes alone give a dozen
+topic bubbles; linking the documents themselves is what makes this a knowledge
+base you can wander through — the same shape Obsidian draws over a vault of
+notes, except the links are computed from meaning rather than typed by hand.
+
+Similarity is cosine distance over the pgvector column, so building the edge set
+is one indexed query rather than 1,762 comparisons in Python.
+"""
+from __future__ import annotations
+
+import logging
+
+import db
+
+log = logging.getLogger("alfred.graph")
+
+# Calibrated against the corpus rather than by eye. At 0.62 nearly 40% of
+# documents had no edge at all, including a Bank of England rate decision whose
+# nearest neighbour — that month's Monetary Policy Report — sat at 0.619 and
+# missed by a thousandth. Below about 0.5 macro documents relate only in the
+# sense that both concern markets, and the layout becomes a hairball.
+MIN_SIMILARITY = 0.55
+NEIGHBOURS_PER_DOC = 5
+
+
+def rebuild_links(days: int = 30, per_doc: int = NEIGHBOURS_PER_DOC,
+                  min_similarity: float = MIN_SIMILARITY) -> dict:
+    """Recompute semantic edges for recently-fetched documents.
+
+    Embeddings from different models are not comparable, so neighbours are only
+    ever drawn from documents sharing the source document's `embed_model` — the
+    same rule the search path applies.
+    """
+    rows = db.query(
+        """
+        WITH recent AS (
+          SELECT id, embedding, embed_model FROM documents
+          WHERE embedding IS NOT NULL
+            AND fetched_at > now() - make_interval(days => %(days)s)
+        ),
+        pairs AS (
+          -- Similarity is symmetric, so A picking B and B picking A yield the
+          -- same normalised pair. Postgres refuses to ON CONFLICT DO UPDATE the
+          -- same row twice within one command, so collapse duplicates first.
+          SELECT DISTINCT ON (LEAST(r.id, n.id), GREATEST(r.id, n.id))
+                 LEAST(r.id, n.id) AS src, GREATEST(r.id, n.id) AS dst, n.sim
+          FROM recent r
+          CROSS JOIN LATERAL (
+            SELECT d.id, 1 - (r.embedding <=> d.embedding) AS sim
+            FROM documents d
+            WHERE d.id <> r.id
+              AND d.embedding IS NOT NULL
+              AND d.embed_model = r.embed_model
+            ORDER BY r.embedding <=> d.embedding
+            LIMIT %(per_doc)s
+          ) n
+          WHERE n.sim >= %(min_sim)s
+          ORDER BY LEAST(r.id, n.id), GREATEST(r.id, n.id), n.sim DESC
+        )
+        INSERT INTO doc_links (src_id, dst_id, similarity)
+        SELECT src, dst, sim FROM pairs
+        ON CONFLICT (src_id, dst_id) DO UPDATE SET similarity = EXCLUDED.similarity
+        RETURNING src_id
+        """,
+        {"days": days, "per_doc": per_doc, "min_sim": min_similarity},
+    )
+    total = db.one("SELECT count(*) AS c FROM doc_links")["c"]
+    log.info("doc links: %d written, %d total", len(rows), total)
+    return {"written": len(rows), "total": total}
+
+
+def build(days: int = 7, limit: int = 220, min_urgency: str = "Medium",
+          query: str = "") -> dict:
+    """Nodes and edges for the graph view.
+
+    Scoped rather than exhaustive: 1,700 documents at once is a grey cloud, not
+    a map. The window, the urgency floor and an optional text filter decide which
+    slice is drawn, and every node carries enough to render its detail panel
+    without a second request.
+    """
+    order = {"Critical": 3, "High": 2, "Medium": 1, "Low": 0}
+    floor = order.get(min_urgency, 1)
+    allowed = [u for u, rank in order.items() if rank >= floor]
+
+    params: dict = {"days": days, "limit": limit, "allowed": allowed}
+    where_extra = ""
+    if query:
+        where_extra = " AND (d.title ILIKE %(q)s OR d.summary ILIKE %(q)s)"
+        params["q"] = f"%{query}%"
+
+    docs = db.query(
+        f"""SELECT d.id, d.title, d.url, d.source, d.source_tier, d.urgency,
+                   d.urgency_score, d.summary, d.entities, d.themes, d.fetched_at
+            FROM documents d
+            WHERE d.fetched_at > now() - make_interval(days => %(days)s)
+              AND coalesce(d.urgency, 'Low') = ANY(%(allowed)s)
+              {where_extra}
+            ORDER BY d.urgency_score DESC NULLS LAST, d.fetched_at DESC
+            LIMIT %(limit)s""",
+        params,
+    )
+    if not docs:
+        return {"nodes": [], "edges": [], "stats": {"documents": 0}}
+
+    ids = [d["id"] for d in docs]
+    id_set = set(ids)
+
+    nodes = [
+        {
+            "id": f"d{d['id']}",
+            "kind": "document",
+            "label": d["title"][:90],
+            "url": d["url"],
+            "source": d["source"],
+            "tier": d["source_tier"],
+            "urgency": d["urgency"] or "Low",
+            "summary": (d["summary"] or "")[:400],
+            "when": d["fetched_at"].isoformat(),
+            "weight": 1 + (d["urgency_score"] or 0) / 40,
+        }
+        for d in docs
+    ]
+
+    edges = [
+        {"source": f"d{r['src_id']}", "target": f"d{r['dst_id']}",
+         "kind": "similar", "weight": round(float(r["similarity"]), 3)}
+        for r in db.query(
+            """SELECT src_id, dst_id, similarity FROM doc_links
+               WHERE src_id = ANY(%s) AND dst_id = ANY(%s)""",
+            (ids, ids),
+        )
+    ]
+
+    # Entity and theme nodes, attached to the documents that mention them. Only
+    # those appearing more than once earn a node — a tag used by a single
+    # document adds a leaf and no structure.
+    tallies: dict[tuple[str, str], list[int]] = {}
+    for d in docs:
+        for kind, field in (("entity", "entities"), ("theme", "themes")):
+            for raw in (d.get(field) or []):
+                name = str(raw).strip()
+                if name:
+                    tallies.setdefault((kind, name), []).append(d["id"])
+
+    for (kind, name), doc_ids in tallies.items():
+        if len(doc_ids) < 2:
+            continue
+        nodes.append({
+            "id": f"{kind[0]}:{name}", "kind": kind, "label": name,
+            "weight": 1 + len(doc_ids) / 3, "mentions": len(doc_ids),
+        })
+        for doc_id in doc_ids:
+            edges.append({"source": f"{kind[0]}:{name}", "target": f"d{doc_id}",
+                          "kind": "mentions", "weight": 0.35})
+
+    present = {n["id"] for n in nodes}
+    for e in db.query(
+        """SELECT source_entity, target_entity, relation, direction, strength
+           FROM edges ORDER BY strength DESC LIMIT 400"""
+    ):
+        src, tgt = f"e:{e['source_entity']}", f"e:{e['target_entity']}"
+        if src in present and tgt in present:
+            edges.append({
+                "source": src, "target": tgt, "kind": "relation",
+                "weight": round(float(e["strength"]), 2),
+                "label": f"{e['relation']} ({e['direction']})",
+            })
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "stats": {
+            "documents": len(docs),
+            "concepts": len(nodes) - len(docs),
+            "links": len(edges),
+            "window_days": days,
+        },
+    }
+
+
+def neighbours(doc_id: int, limit: int = 8) -> list[dict]:
+    """The documents most related to one document, for its detail panel."""
+    return db.query(
+        """SELECT d.id, d.title, d.url, d.source, d.fetched_at, l.similarity
+           FROM doc_links l
+           JOIN documents d
+             ON d.id = CASE WHEN l.src_id = %(id)s THEN l.dst_id ELSE l.src_id END
+           WHERE %(id)s IN (l.src_id, l.dst_id)
+           ORDER BY l.similarity DESC LIMIT %(limit)s""",
+        {"id": doc_id, "limit": limit},
+    )

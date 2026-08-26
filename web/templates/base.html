@@ -13,26 +13,46 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111111'/><polygon points='1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16' fill='%23EA580C'/></svg>">
 </head>
 <body>
+{% set MARK %}<svg class="mark" viewBox="0 0 32 28" width="24" height="21" role="img" aria-label="Alfred"><polygon points="1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16" fill="currentColor"/></svg>{% endset %}
+{% set PRIMARY = [('/', 'latest', 'Brief'), ('/charts', 'charts', 'Charts'), ('/graph', 'graph', 'Graph'), ('/ask', 'ask', 'Ask'), ('/add', 'add', 'Add')] %}
+{% set SECONDARY = [('/archive', 'archive', 'Archive'), ('/alerts', 'alerts', 'Alerts'), ('/world', 'world', 'World model'), ('/status', 'status', 'Status')] %}
 {% block chrome %}
 <nav class="nav">
   <div class="nav-in">
-    <a href="/" class="wordmark"><svg class="mark" viewBox="0 0 32 28" width="26" height="23" role="img" aria-label="Alfred"><polygon points="1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16" fill="currentColor"/></svg>ALFRED <span>macro intelligence</span></a>
+    <a href="/" class="wordmark">{{ MARK }}ALFRED</a>
+
+    <button class="burger" id="burger" aria-label="Menu" aria-expanded="false" aria-controls="navpanel">
+      <span></span><span></span><span></span>
+    </button>
+
     <div class="nav-links">
-      <a href="/" class="{{ 'on' if active=='latest' }}">Brief</a>
-      <a href="/charts" class="{{ 'on' if active=='charts' }}">Charts</a>
-      <a href="/graph" class="{{ 'on' if active=='graph' }}">Graph</a>
-      <a href="/ask" class="{{ 'on' if active=='ask' }}">Ask</a>
-      <a href="/add" class="{{ 'on' if active=='add' }}">Add</a>
-      <a href="/archive" class="{{ 'on' if active=='archive' }}">Archive</a>
-      <a href="/alerts" class="{{ 'on' if active=='alerts' }}">Alerts</a>
-      <a href="/world" class="{{ 'on' if active=='world' }}">World model</a>
-      <a href="/status" class="{{ 'on' if active=='status' }}">Status</a>
+      {% for href, key, label in PRIMARY %}
+      <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
+      {% endfor %}
     </div>
-    <div class="nav-meta">
+
+    <div class="nav-right">
       {% set t = summary.last_tick %}
-      <span><span class="dot {{ 'ok' if t and t.ok else 'bad' }}"></span>{% if t %}{{ t.started_at|ago }}{% else %}no ticks{% endif %}</span>
-      <a href="/logout" title="Sign out">{{ user.username if user else '' }} ↪</a>
+      <span class="tick" title="Last ingestion cycle">
+        <span class="dot {{ 'ok' if t and t.ok else 'bad' }}"></span>{% if t %}{{ t.started_at|ago }}{% else %}none{% endif %}
+      </span>
+      <details class="menu" id="acct">
+        <summary>{{ user.username if user else 'account' }}</summary>
+        <div class="menu-panel">
+          {% for href, key, label in SECONDARY %}
+          <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
+          {% endfor %}
+          <a href="/logout" class="sep">Sign out</a>
+        </div>
+      </details>
     </div>
+  </div>
+
+  <div class="navpanel" id="navpanel">
+    {% for href, key, label in PRIMARY + SECONDARY %}
+    <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
+    {% endfor %}
+    <a href="/logout" class="sep">Sign out{% if user %} · {{ user.username }}{% endif %}</a>
   </div>
 </nav>
 {% endblock %}
@@ -40,5 +60,6 @@
 <script>window.MIA_CHARTS = {{ charts_json|safe }};</script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="/static/charts.js"></script>
+<script src="/static/nav.js" defer></script>
 </body>
 </html>
