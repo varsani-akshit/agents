@@ -1,4 +1,4 @@
-# MIA — Macro Intelligence Agent
+# Alfred — Macro Intelligence Agent
 
 Continuous research on the gold / silver / fiat / sovereign-debt / crypto complex.
 Ingests prices, official releases, and news; computes statistics deterministically;

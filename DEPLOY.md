@@ -1,11 +1,11 @@
-# Deploying MIA
+# Deploying Alfred
 
-MIA is two processes against one Postgres database:
+Alfred is two processes against one Postgres database:
 
 | Process | Command | What it does |
 |---|---|---|
 | **web** | `uvicorn web.app:app --host 0.0.0.0 --port $PORT` | The dashboard you read |
-| **scheduler** | `python cli.py serve` | Ingests every 15 min, writes a brief at 00:05 / 08:05 / 16:05 UTC |
+| **scheduler** | `python cli.py serve` | Ingests every 30 min (prices every 15), writes a brief at 09:05 / 21:05 UTC |
 
 The web process is stateless. The scheduler must be a **single** long-running
 instance — two copies would double-ingest and write duplicate briefs.
@@ -90,8 +90,8 @@ stays running between requests. There you would drop `cli.py serve` and drive th
 work from platform cron instead:
 
 ```
-*/15 * * * *   python cli.py tick
-5 0,8,16 * * * python cli.py digest --hours 8
+*/30 * * * *   python cli.py tick
+5 9,21 * * * * python cli.py digest --hours 12
 ```
 
 **Free tiers that sleep will break ingestion.** If the process is suspended when
