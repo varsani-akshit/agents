@@ -84,6 +84,7 @@ Question: {question}"""
             max_turns=max_turns,
             max_tokens=12000,
             effort="medium",
+            use_web_search=use_web_search,
         )
     else:
         result = agent.run_agent(

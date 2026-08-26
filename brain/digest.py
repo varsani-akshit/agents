@@ -171,9 +171,17 @@ def _build_prompt(hours: int) -> tuple[str, dict]:
 ---
 Investigate before concluding. Use search_memory to check whether a development
 is genuinely new or a continuation of something already tracked, and use
-query_prices or get_stats_pack for any number you are unsure of. Use web_search
-only where the stored corpus is genuinely insufficient — for example to confirm a
-breaking development or fetch a detail the feeds missed.
+query_prices or get_stats_pack for any number you are unsure of.
+
+Use web_search at least once every cycle, and specifically when:
+- the stats pack shows a move the stored documents do not explain
+- a tier-2 source makes a factual claim worth verifying against a primary one
+- a scheduled event (data print, speech, auction, decision) fell inside this
+  window and you need its actual outcome rather than the preview coverage
+- the feeds' newest item on a live topic is more than a few hours old
+
+The RSS corpus lags and is incomplete by construction; treating it as the whole
+world is how this system would miss the thing that mattered. Cite what you find.
 
 Then write the digest in the required format."""
     return user, pack
@@ -230,6 +238,7 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             max_turns=6,
             max_tokens=10000,
             effort=chosen_effort,
+            use_web_search=True,
         )
     else:
         result = agent.run_agent(
@@ -263,6 +272,7 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             "usd": result["usd"],
             "stopped": result.get("stopped"),
             "regime": regime,
+            "citations": result.get("citations", []),
             "model": model or config.DIGEST_MODEL,
             "provider": provider,
             "effort": chosen_effort,
