@@ -23,7 +23,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY", "")
 
-DIGEST_MODEL = os.getenv("DIGEST_MODEL", "claude-sonnet-5")
+DIGEST_MODEL = os.getenv("MIA_DIGEST_MODEL", os.getenv("DIGEST_MODEL", "claude-sonnet-5"))
 CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "claude-haiku-4-5")
 ASK_MODEL = os.getenv("ASK_MODEL", DIGEST_MODEL)
 

@@ -212,20 +212,38 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
         {"type": "text", "text": FORMAT},
     ]
 
-    result = agent.run_agent(
-        system=system,
-        user_message=user,
-        model=model or config.DIGEST_MODEL,
-        purpose="digest",
-        max_turns=6,
-        max_tokens=10000,
-        use_web_search=True,
-        # Adaptive thinking bills as output tokens, so effort is the dominant
-        # cost lever on a 4x/day cadence. Measured per digest on this workload:
-        #   high ~$0.40  medium ~$0.33  low ~see MORNING_REPORT
-        # Raise this in config if you want deeper cycles and accept the spend.
-        effort=effort or os.getenv("MIA_DIGEST_EFFORT", "low"),
-    )
+    provider = "openai" if (model or "").startswith(("gpt-", "o3", "o4")) else "anthropic"
+    chosen_effort = effort or os.getenv("MIA_DIGEST_EFFORT", "low")
+
+    if provider == "openai":
+        from brain import agent_openai
+
+        # The OpenAI loop takes a single system string, not Anthropic's block list.
+        flat_system = "\n\n---\n\n".join(
+            b["text"] if isinstance(b, dict) else str(b) for b in system
+        )
+        result = agent_openai.run_agent(
+            system=flat_system,
+            user_message=user,
+            model=model,
+            purpose="digest",
+            max_turns=6,
+            max_tokens=10000,
+            effort=chosen_effort,
+        )
+    else:
+        result = agent.run_agent(
+            system=system,
+            user_message=user,
+            model=model or config.DIGEST_MODEL,
+            purpose="digest",
+            max_turns=6,
+            max_tokens=10000,
+            use_web_search=True,
+            # Adaptive thinking bills as output tokens, so effort is the dominant
+            # cost lever. Measured per digest: high ~$0.40, medium ~$0.33, low ~$0.26.
+            effort=chosen_effort,
+        )
 
     text = result["text"]
     if not text:
@@ -246,7 +264,9 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             "stopped": result.get("stopped"),
             "regime": regime,
             "model": model or config.DIGEST_MODEL,
-            "effort": effort or os.getenv("MIA_DIGEST_EFFORT", "low"),
+            "provider": provider,
+            "effort": chosen_effort,
+            "provider": provider,
         },
     )
 
