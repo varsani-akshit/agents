@@ -1,26 +1,27 @@
 {% extends "base.html" %}
 {% block title %}World model — MIA{% endblock %}
 {% block content %}
-<div class="layout">
+<div class="cols">
   <div>
-    <div class="pagehead">
-      <h1>World model{% if current %} <span style="color:var(--faint)">v{{ current.version }}</span>{% endif %}</h1>
-      <p class="lede">
-        Rewritten by every digest cycle. Each cycle reconciles new evidence
-        against its predecessor rather than analysing in isolation.
+    <header class="ph">
+      <div class="eyebrow">Standing view{% if current %} · version {{ current.version }}{% endif %}</div>
+      <h1>World model</h1>
+      <p class="sub">
+        Rewritten by every cycle. Each one reconciles new evidence against its
+        predecessor rather than analysing in isolation.
       </p>
-    </div>
-    {% if current %}<article>{{ current_html|safe }}</article>
+    </header>
+    {% if current %}<article class="mbody">{{ current_html|safe }}</article>
     {% else %}<p class="empty">Not yet written.</p>{% endif %}
   </div>
-  <aside>
+  <aside class="side">
     <section>
       <h3>Versions</h3>
       <div class="side-list">
         {% for v in versions %}
         <a style="cursor:default">
           <span class="when">v{{ v.version }} · {{ v.created_at|utc('%d %b') }}</span>
-          <span class="what">{{ (v.regime or '')[:44] }}</span>
+          <span class="what">{{ (v.regime or '')[:56] }}</span>
         </a>
         {% endfor %}
       </div>

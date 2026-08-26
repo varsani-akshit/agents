@@ -233,6 +233,33 @@ def cmd_worldmodel(args) -> int:
     return 0
 
 
+def cmd_user(args) -> int:
+    """Create or reset a dashboard login, or list the existing ones."""
+    import getpass
+
+    from notify import out
+    from web import auth
+
+    if args.list:
+        for u in auth.list_users():
+            last = u["last_login"].strftime("%Y-%m-%d %H:%M") if u["last_login"] else "never"
+            out.info(f"  {u['username']:<20} created {u['created_at']:%Y-%m-%d}  last login {last}")
+        return 0
+    if not args.username:
+        out.error("give a username, or --list")
+        return 2
+    # Prompt rather than accept a password argument: anything on the command
+    # line lands in shell history and in the process table.
+    password = args.password or getpass.getpass("password: ")
+    try:
+        auth.create_user(args.username, password)
+    except ValueError as exc:
+        out.error(str(exc))
+        return 2
+    out.info(f"user '{args.username.lower()}' ready")
+    return 0
+
+
 def cmd_serve(args) -> int:
     import scheduler
 
@@ -289,6 +316,12 @@ def build_parser() -> argparse.ArgumentParser:
     w = sub.add_parser("worldmodel", help="show the current world model")
     w.add_argument("--history", action="store_true")
     w.set_defaults(func=cmd_worldmodel)
+
+    u = sub.add_parser("user", help="create or reset a dashboard login")
+    u.add_argument("username", nargs="?")
+    u.add_argument("--password", help="skip the prompt (avoid: lands in shell history)")
+    u.add_argument("--list", action="store_true", help="list existing users")
+    u.set_defaults(func=cmd_user)
 
     sub.add_parser("serve", help="run the scheduler in the foreground").set_defaults(
         func=cmd_serve

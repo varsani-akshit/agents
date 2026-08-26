@@ -162,3 +162,24 @@ CREATE INDEX IF NOT EXISTS api_calls_created_idx ON api_calls (created_at DESC);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS embed_model TEXT;
 ALTER TABLE analyses  ADD COLUMN IF NOT EXISTS embed_model TEXT;
 CREATE INDEX IF NOT EXISTS documents_embed_model_idx ON documents (embed_model);
+
+-- Chart data, stored per digest so the page can redraw an old brief exactly as
+-- it was written. Kept out of analyses.meta because a pack is ~100KB of series
+-- and meta is read on every list query.
+CREATE TABLE IF NOT EXISTS chart_packs (
+  id          BIGSERIAL PRIMARY KEY,
+  analysis_id BIGINT UNIQUE REFERENCES analyses(id) ON DELETE CASCADE,
+  payload     JSONB NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS chart_packs_created_idx ON chart_packs (created_at DESC);
+
+-- Dashboard login. Scrypt with a per-user salt; no third-party dependency.
+CREATE TABLE IF NOT EXISTS users (
+  id            BIGSERIAL PRIMARY KEY,
+  username      TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  salt          TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login    TIMESTAMPTZ
+);

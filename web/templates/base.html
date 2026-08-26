@@ -2,31 +2,41 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#FAFAFA">
 <title>{% block title %}MIA{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📊</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23111'/><text x='16' y='22' font-size='15' font-family='sans-serif' fill='%23EA580C' text-anchor='middle'>M</text></svg>">
 </head>
 <body>
-<header>
-  <div class="bar">
-    <span class="brand">MIA<small>macro intelligence</small></span>
-    <nav>
-      <a href="/" class="{{ 'on' if active=='latest' }}">Latest</a>
+{% block chrome %}
+<nav class="nav">
+  <div class="nav-in">
+    <a href="/" class="wordmark">MIA <span>macro intelligence</span></a>
+    <div class="nav-links">
+      <a href="/" class="{{ 'on' if active=='latest' }}">Brief</a>
+      <a href="/charts" class="{{ 'on' if active=='charts' }}">Charts</a>
       <a href="/archive" class="{{ 'on' if active=='archive' }}">Archive</a>
       <a href="/ask" class="{{ 'on' if active=='ask' }}">Ask</a>
       <a href="/alerts" class="{{ 'on' if active=='alerts' }}">Alerts</a>
       <a href="/world" class="{{ 'on' if active=='world' }}">World model</a>
       <a href="/status" class="{{ 'on' if active=='status' }}">Status</a>
-    </nav>
-    <span class="pill">
+    </div>
+    <div class="nav-meta">
       {% set t = summary.last_tick %}
-      <span><span class="dot {{ 'ok' if t and t.ok else 'bad' }}"></span>{% if t %}tick {{ t.started_at|ago }}{% else %}no ticks{% endif %}</span>
-      <span>${{ '%.2f'|format(summary.budget.spent_total_usd) }} anthropic</span>
-    </span>
+      <span><span class="dot {{ 'ok' if t and t.ok else 'bad' }}"></span>{% if t %}{{ t.started_at|ago }}{% else %}no ticks{% endif %}</span>
+      <a href="/logout" title="Sign out">{{ user.username if user else '' }} ↪</a>
+    </div>
   </div>
-</header>
-<main>{% block content %}{% endblock %}</main>
+</nav>
+{% endblock %}
+<main class="shell">{% block content %}{% endblock %}</main>
+<script>window.MIA_CHARTS = {{ charts_json|safe }};</script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script src="/static/charts.js"></script>
 </body>
 </html>

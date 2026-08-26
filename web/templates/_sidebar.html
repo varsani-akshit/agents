@@ -1,12 +1,12 @@
-<aside>
+<aside class="side">
   {% if recent %}
   <section>
-    <h3>Recent</h3>
+    <h3>Recent briefs</h3>
     <div class="side-list">
       {% for d in recent %}
       <a href="/digest/{{ d.id }}">
-        <span class="when">{{ d.created_at|utc('%d %b · %H:%M') }} UTC</span>
-        <span class="what">{{ (d.regime or 'digest')[:48] }}</span>
+        <span class="when">{{ d.created_at|utc('%d %b · %H:%M') }}</span>
+        <span class="what">{{ (d.regime or 'brief')[:60] }}</span>
       </a>
       {% endfor %}
     </div>
@@ -17,16 +17,16 @@
     <dl>
       <div class="kv"><dt>documents</dt><dd>{{ summary.counts.docs }}</dd></div>
       <div class="kv"><dt>last 24h</dt><dd>{{ summary.counts.docs_24h }}</dd></div>
-      <div class="kv"><dt>digests</dt><dd>{{ summary.counts.digests }}</dd></div>
+      <div class="kv"><dt>briefs</dt><dd>{{ summary.counts.digests }}</dd></div>
       <div class="kv"><dt>triggers 24h</dt><dd>{{ summary.counts.triggers_24h }}</dd></div>
-      <div class="kv"><dt>graph</dt><dd>{{ summary.counts.entities }} / {{ summary.counts.edges }}</dd></div>
+      <div class="kv"><dt>graph</dt><dd>{{ summary.counts.entities }}/{{ summary.counts.edges }}</dd></div>
     </dl>
   </section>
   <section>
     <h3>Spend</h3>
     <dl>
       {% for p in summary.providers %}
-      <div class="kv"><dt>{{ p.provider }}</dt><dd>${{ '%.3f'|format(p.usd) }}</dd></div>
+      <div class="kv"><dt>{{ p.provider }}</dt><dd>${{ '%.2f'|format(p.usd) }}</dd></div>
       {% endfor %}
     </dl>
   </section>

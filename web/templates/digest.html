@@ -1,26 +1,30 @@
 {% extends "base.html" %}
 {% block title %}{{ digest.title if digest else 'MIA' }}{% endblock %}
 {% block content %}
-<div class="layout">
+<div class="cols">
   <div>
     {% if digest %}
     {% set m = digest.meta or {} %}
-    <div class="pagehead">
-      <h1>{{ digest.title }}</h1>
-      <div class="meta">
-        <span>{{ digest.created_at|utc }} UTC</span>
+    <header class="ph">
+      <div class="eyebrow">Macro brief · {{ digest.created_at|utc('%d %B %Y') }}</div>
+      <h1>{{ m.regime or digest.title }}</h1>
+      {% if m.regime %}<p class="sub">{{ digest.title }}</p>{% endif %}
+      <div class="facts">
+        <span>{{ digest.created_at|utc('%H:%M') }} UTC</span>
         <span>{{ digest.created_at|ago }}</span>
-        {% if m.regime %}<span class="regime">{{ m.regime }}</span>{% endif %}
         {% if m.model %}<span>{{ m.model }}</span>{% endif %}
         {% if m.usd %}<span>${{ m.usd }}</span>{% endif %}
-        {% if m.citations %}<span>{{ m.citations|length }} sources</span>{% endif %}
+        {% if m.citations %}<span class="hi">{{ m.citations|length }} sources cited</span>{% endif %}
       </div>
-    </div>
-    <article>{{ body_html|safe }}</article>
+      {% if charts_stale %}
+      <p class="hint" style="margin-top:14px">
+        Figures below are drawn from current data — this brief predates stored chart data.
+      </p>
+      {% endif %}
+    </header>
+    <article class="mbody">{{ body_html|safe }}</article>
     {% else %}
-    <p class="empty">
-      No digest yet. The scheduler produces one at 00:05, 08:05 and 16:05 UTC.
-    </p>
+    <p class="empty">No brief yet. The scheduler produces one at 00:05, 08:05 and 16:05 UTC.</p>
     {% endif %}
   </div>
   {% include "_sidebar.html" %}

@@ -336,8 +336,80 @@ def test_every_page_renders(path):
     from web.app import app
 
     with TestClient(app) as client:
+        _sign_in(client)
         resp = client.get(path)
     assert resp.status_code == 200, f"{path} -> {resp.status_code}"
+
+
+TEST_USER, TEST_PASS = "pytest-user", "pytest-password-1234"
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _remove_test_user():
+    """Delete the fixture login when the module finishes.
+
+    These tests run against the real database, so without this a user with a
+    password published in the repository is left able to sign in to the live
+    dashboard.
+    """
+    yield
+    import db
+
+    db.execute("DELETE FROM users WHERE username = %s", (TEST_USER,))
+
+
+def _sign_in(client):
+    from web import auth
+
+    auth.create_user(TEST_USER, TEST_PASS)
+    r = client.post("/login", data={"username": TEST_USER, "password": TEST_PASS},
+                    follow_redirects=False)
+    assert r.status_code == 303, f"login failed: {r.status_code}"
+
+
+def test_pages_require_login():
+    """Every page behind the gate; the login page itself in front of it."""
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        for path in ("/", "/archive", "/status", "/api/latest"):
+            r = client.get(path, follow_redirects=False)
+            assert r.status_code == 303, f"{path} was reachable without a session"
+            assert r.headers["location"].startswith("/login")
+        assert client.get("/login").status_code == 200
+        assert client.get("/healthz").status_code == 200
+
+
+def test_login_rejects_a_wrong_password():
+    from fastapi.testclient import TestClient
+
+    from web import auth
+    from web.app import app
+
+    auth.create_user(TEST_USER, TEST_PASS)
+    with TestClient(app) as client:
+        r = client.post("/login", data={"username": TEST_USER, "password": "not-it"},
+                        follow_redirects=False)
+        assert r.status_code == 401
+        assert client.get("/", follow_redirects=False).status_code == 303
+
+
+def test_login_does_not_redirect_off_site():
+    """An open redirect would make the login page a usable phishing hop."""
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        auth_mod = __import__("web.auth", fromlist=["auth"])
+        auth_mod.create_user(TEST_USER, TEST_PASS)
+        r = client.post("/login",
+                        data={"username": TEST_USER, "password": TEST_PASS,
+                              "next": "https://evil.example.com/x"},
+                        follow_redirects=False)
+        assert r.headers["location"] == "/"
 
 
 def test_nested_list_indent_is_normalised():

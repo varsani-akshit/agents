@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Charts — MIA{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">Figures</div>
+  <h1>Charts</h1>
+  <p class="sub">
+    Every figure from the latest cycle, computed in Python and drawn live. Hover
+    any series to read its value; on a phone, tap and drag.
+  </p>
+</header>
+{% for s in specs %}
+<figure class="chart" data-chart="{{ s.key }}">
+  <figcaption class="chart-head">
+    <div class="t">{{ s.title }}</div>
+    {% if s.subtitle %}<div class="s">{{ s.subtitle }}</div>{% endif %}
+  </figcaption>
+  <div class="chart-canvas"></div>
+</figure>
+{% else %}
+<p class="empty">No charts yet — run a digest cycle to build them.</p>
+{% endfor %}
+{% endblock %}

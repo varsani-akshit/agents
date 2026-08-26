@@ -1,70 +1,69 @@
 {% extends "base.html" %}
 {% block title %}Status — MIA{% endblock %}
 {% block content %}
-<div class="layout">
-  <div>
-    <div class="pagehead"><h1>Status</h1></div>
+<header class="ph">
+  <div class="eyebrow">Operations</div>
+  <h1>Status</h1>
+  <p class="sub">What is running, what it costs, and where the data comes from.</p>
+</header>
 
-    <div class="grid2" style="margin-bottom:44px">
-      <section>
-        <h2>Model routing</h2>
-        <table class="plain">
-          <tr><th>Task</th><th>Model</th></tr>
-          {% for r in routing %}
-          <tr><td>{{ r.task }}</td><td class="dim">{{ r.spec }}</td></tr>
-          {% endfor %}
-        </table>
-      </section>
+<div class="grid2" style="margin-bottom:8px">
+  <section class="block">
+    <h2>Model routing</h2>
+    <table class="data">
+      <tr><th>Task</th><th>Model</th></tr>
+      {% for r in routing %}
+      <tr><td>{{ r.task }}</td><td class="dim">{{ r.spec }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
 
-      <section>
-        <h2>Spend by task</h2>
-        <table class="plain">
-          <tr><th>Model</th><th>Purpose</th><th class="num">Calls</th><th class="num">USD</th></tr>
-          {% for s in spend %}
-          <tr><td>{{ s.model }}</td><td class="dim">{{ s.purpose }}</td>
-              <td class="num">{{ s.calls }}</td><td class="num">${{ '%.4f'|format(s.usd) }}</td></tr>
-          {% endfor %}
-        </table>
-      </section>
-    </div>
-
-    <div class="grid2" style="margin-bottom:44px">
-      <section>
-        <h2>Recent jobs</h2>
-        <table class="plain">
-          <tr><th>Job</th><th>Started</th><th>OK</th></tr>
-          {% for j in jobs %}
-          <tr><td>{{ j.job }}</td><td class="dim">{{ j.started_at|utc('%d %b %H:%M') }}</td>
-              <td class="{{ 'ok' if j.ok else 'bad' }}">{{ 'yes' if j.ok else ('no' if j.ok is false else '…') }}</td></tr>
-          {% endfor %}
-        </table>
-      </section>
-
-      <section>
-        <h2>Source health, 7 days</h2>
-        <table class="plain">
-          <tr><th>Source</th><th class="num">Tier</th><th class="num">Docs</th><th>Last</th></tr>
-          {% for s in sources %}
-          <tr><td>{{ s.source }}</td><td class="num">{{ s.source_tier }}</td>
-              <td class="num">{{ s.docs }}</td><td class="dim">{{ s.last_seen|ago }}</td></tr>
-          {% endfor %}
-        </table>
-      </section>
-    </div>
-
-    <section>
-      <h2>Relationship graph — {{ graph.entities }} entities, {{ graph.edges }} edges</h2>
-      <table class="plain">
-        <tr><th>From</th><th>Relation</th><th>To</th><th class="num">Strength</th><th class="num">Seen</th></tr>
-        {% for e in graph.strongest_edges %}
-        <tr><td>{{ e.source_entity }}</td>
-            <td class="dim">{{ e.relation }} ({{ e.direction }})</td>
-            <td>{{ e.target_entity }}</td>
-            <td class="num">{{ e.strength }}</td><td class="num">{{ e.confirm_count }}</td></tr>
-        {% endfor %}
-      </table>
-    </section>
-  </div>
-  {% set recent = none %}{% include "_sidebar.html" %}
+  <section class="block">
+    <h2>Spend by task</h2>
+    <div class="tablewrap"><table class="data">
+      <tr><th>Model</th><th>Purpose</th><th class="num">Calls</th><th class="num">USD</th></tr>
+      {% for s in spend %}
+      <tr><td>{{ s.model }}</td><td class="dim">{{ s.purpose }}</td>
+          <td class="num">{{ s.calls }}</td><td class="num">${{ '%.4f'|format(s.usd) }}</td></tr>
+      {% endfor %}
+    </table></div>
+  </section>
 </div>
+
+<div class="grid2" style="margin-bottom:8px">
+  <section class="block">
+    <h2>Recent jobs</h2>
+    <table class="data">
+      <tr><th>Job</th><th>Started</th><th>OK</th></tr>
+      {% for j in jobs %}
+      <tr><td>{{ j.job }}</td><td class="dim">{{ j.started_at|utc('%d %b %H:%M') }}</td>
+          <td class="{{ 'ok' if j.ok else 'bad' }}">{{ 'yes' if j.ok else ('no' if j.ok is false else '—') }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Source health, 7 days</h2>
+    <div class="tablewrap"><table class="data">
+      <tr><th>Source</th><th class="num">Tier</th><th class="num">Docs</th><th>Last</th></tr>
+      {% for s in sources %}
+      <tr><td>{{ s.source }}</td><td class="num">{{ s.source_tier }}</td>
+          <td class="num">{{ s.docs }}</td><td class="dim">{{ s.last_seen|ago }}</td></tr>
+      {% endfor %}
+    </table></div>
+  </section>
+</div>
+
+<section class="block">
+  <h2>Relationship graph — {{ graph.entities }} entities, {{ graph.edges }} edges</h2>
+  <div class="tablewrap"><table class="data">
+    <tr><th>From</th><th>Relation</th><th>To</th><th class="num">Strength</th><th class="num">Seen</th></tr>
+    {% for e in graph.strongest_edges %}
+    <tr><td>{{ e.source_entity }}</td>
+        <td class="dim">{{ e.relation }} ({{ e.direction }})</td>
+        <td>{{ e.target_entity }}</td>
+        <td class="num">{{ e.strength }}</td><td class="num">{{ e.confirm_count }}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
 {% endblock %}

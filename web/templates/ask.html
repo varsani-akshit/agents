@@ -1,20 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Ask — MIA{% endblock %}
 {% block content %}
-<div class="layout">
+<div class="cols">
   <div>
-    <div class="pagehead">
+    <header class="ph">
+      <div class="eyebrow">Two-way</div>
       <h1>Ask</h1>
-      <p class="lede">
+      <p class="sub">
         Answers draw on the stored corpus, the computed statistics, the
         relationship graph, and a live web search.
       </p>
-    </div>
+    </header>
 
-    <form class="ask" method="post" action="/ask" onsubmit="go(this)">
-      <textarea name="question" rows="2" required autofocus
+    <form class="ask-form" method="post" action="/ask" onsubmit="return go()">
+      <textarea name="question" rows="2" required
         placeholder="Why is silver lagging gold, and does our stored analysis agree?">{{ question or '' }}</textarea>
-      <div class="askrow">
+      <div class="formrow">
         <select name="model">
           <option value="">Claude Sonnet 5 — default</option>
           <option value="claude-opus-5">Claude Opus 5 — deepest, slower</option>
@@ -22,26 +23,25 @@
           <option value="gpt-5.4">GPT-5.4</option>
         </select>
         <button type="submit" id="go">Ask</button>
-        <span class="spinner" id="sp"><span class="spin"></span>
-          searching memory, statistics and the web — usually 30–90s</span>
+        <span class="spinner" id="sp"><span class="spin"></span> working — usually 30–90s</span>
       </div>
     </form>
 
     {% if answer %}
-    <div class="pagehead">
+    <header class="ph">
+      <div class="eyebrow">{{ answer.created_at|utc }} UTC</div>
       <h1>{{ question }}</h1>
-      <div class="meta">
-        <span>{{ answer.created_at|utc }} UTC</span>
+      <div class="facts">
         {% set m = answer.meta or {} %}
         {% if m.usd %}<span>${{ m.usd }}</span>{% endif %}
         {% if m.tool_calls %}<span>{{ m.tool_calls|length }} tool calls</span>{% endif %}
       </div>
-    </div>
-    <article>{{ answer_html|safe }}</article>
+    </header>
+    <article class="mbody">{{ answer_html|safe }}</article>
     {% endif %}
   </div>
 
-  <aside>
+  <aside class="side">
     <section>
       <h3>Previous</h3>
       <div class="side-list">
@@ -56,7 +56,7 @@
   </aside>
 </div>
 <script>
-function go(f){ document.getElementById('go').disabled = true;
-                document.getElementById('sp').classList.add('on'); return true; }
+function go(){ document.getElementById('go').disabled = true;
+               document.getElementById('sp').classList.add('on'); return true; }
 </script>
 {% endblock %}

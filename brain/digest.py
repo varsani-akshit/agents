@@ -16,7 +16,7 @@ import config
 import db
 from brain import agent, client, extract
 from memory import store, world_model
-from signals import charts, stats
+from signals import chartdata, stats
 
 log = logging.getLogger("mia.digest")
 
@@ -252,12 +252,15 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
     # Charts are rendered deterministically from the same series the pack uses;
     # the model places and interprets them but never invents one.
     try:
-        chart_manifest = charts.render_pack()
+        chart_manifest = chartdata.build_pack()
     except Exception as exc:  # noqa: BLE001
         log.warning("chart rendering failed: %s", exc)
         chart_manifest = {}
+    # The model sees the catalogue, not the series: it places and interprets a
+    # figure by key, and the browser draws it from the same data the pack used.
     chart_lines = "\n".join(
-        f"- `{path}` — {key.replace('_', ' ')}" for key, path in chart_manifest.items()
+        f"- `charts/{key}.png` — {spec.get('title', key)}. {spec.get('subtitle', '')}"
+        for key, spec in chart_manifest.items()
     )
     prior = world_model.current_body()
     docs = store.recent_documents(hours=hours, limit=120)
@@ -453,13 +456,22 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             "stopped": result.get("stopped"),
             "regime": regime,
             "citations": result.get("citations", []),
-            "charts": chart_manifest,
+            # Keys only. The series themselves go to chart_packs — meta is read
+            # by every list query, and a pack is ~100KB.
+            "charts": sorted(chart_manifest.keys()),
             "model": model or config.DIGEST_MODEL,
-            "provider": provider,
             "effort": chosen_effort,
             "provider": provider,
         },
     )
+
+    if chart_manifest:
+        # Stored per brief so an archived page redraws exactly the figures it was
+        # written against, rather than today's data under yesterday's argument.
+        try:
+            chartdata.save_pack(analysis_id, chart_manifest)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("chart pack not stored: %s", exc)
 
     wm_version = None
     if wm_block:

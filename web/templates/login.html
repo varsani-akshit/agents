@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Sign in — MIA{% endblock %}
+{% block chrome %}{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <form class="login-card" method="post" action="/login">
+    <h1>MIA</h1>
+    <p class="sub">Macro intelligence. Sign in to continue.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <label for="u">Username</label>
+    <input id="u" name="username" type="text" autocomplete="username"
+           autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+{% endblock %}

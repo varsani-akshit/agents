@@ -1,25 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Alerts — MIA{% endblock %}
 {% block content %}
-<div class="layout">
+<div class="cols">
   <div>
-    <div class="pagehead">
+    <header class="ph">
+      <div class="eyebrow">Trigger events</div>
       <h1>Alerts</h1>
-      <p class="lede">
+      <p class="sub">
         Fired by code against explicit thresholds, before any model runs.
         Backtested to about 0.27 Critical events per day.
       </p>
-    </div>
+    </header>
     {% for e in events %}
     <div class="alert {{ e.severity }}">
-      <div class="head">
+      <div class="alert-head">
         <span class="sev">{{ e.severity }}</span>
         <span class="sym">{{ e.symbol or e.rule }}</span>
         <span>{{ e.rule }}</span>
         <span>{{ e.created_at|ago }}</span>
         {% if not e.notified_at %}<span>suppressed</span>{% endif %}
       </div>
-      {% if e.text %}<div class="body">{{ e.text }}</div>{% endif %}
+      {% if e.text %}<div class="alert-body">{{ e.text }}</div>{% endif %}
       {% if e.detail %}<div class="hint" style="margin-top:8px">
         {% for k, v in e.detail.items() %}{% if v is string or v is number %}{{ k }}={{ v }}&ensp;{% endif %}{% endfor %}
       </div>{% endif %}

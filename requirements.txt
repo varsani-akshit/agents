@@ -1,0 +1,36 @@
+# Direct dependencies only; transitive packages resolve from these.
+# Pinned to the versions this was built and tested against.
+
+# Web
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+jinja2==3.1.6
+python-multipart==0.0.32      # form posts on /login and /ask
+itsdangerous==2.2.0           # signs the session cookie
+markdown==3.10.3
+
+# Storage
+psycopg[binary,pool]==3.3.4
+pgvector==0.5.0
+
+# Models
+anthropic==1.0.0
+httpx==0.28.1                 # the OpenAI and Gemini paths call REST directly
+
+# Data
+pandas==3.0.5
+numpy==2.5.2
+yfinance==1.6.0
+feedparser==6.0.14
+beautifulsoup4==4.15.0
+lxml==6.1.2
+
+# Runtime
+apscheduler==3.11.3
+python-dotenv==1.2.3
+pyyaml==6.0.3
+tenacity==9.1.4
+rich==15.0.0
+
+# Tests
+pytest==9.1.1
