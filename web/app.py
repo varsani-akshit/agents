@@ -13,7 +13,10 @@ from __future__ import annotations
 import asyncio
 import html
 import json
+import logging
+import os
 import re
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,7 +33,33 @@ from signals import chartdata
 from web import auth
 
 BASE = Path(__file__).resolve().parent
-app = FastAPI(title="MIA", docs_url=None, redoc_url=None)
+log = logging.getLogger("mia.web")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Optionally run the scheduler in-process, so one service does both jobs.
+
+    Off by default: on a host that runs two services, or locally where launchd
+    owns the scheduler, starting a second copy here would double every tick and
+    write duplicate briefs.
+    """
+    sched = None
+    if os.getenv("MIA_EMBEDDED_SCHEDULER", "").lower() in ("1", "true", "yes"):
+        from scheduler import build_background_scheduler
+
+        sched = build_background_scheduler()
+        sched.start()
+        log.info("embedded scheduler started: %s",
+                 ", ".join(j.id for j in sched.get_jobs()))
+    try:
+        yield
+    finally:
+        if sched:
+            sched.shutdown(wait=False)
+
+
+app = FastAPI(title="MIA", docs_url=None, redoc_url=None, lifespan=lifespan)
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 

@@ -10,6 +10,11 @@ MIA is two processes against one Postgres database:
 The web process is stateless. The scheduler must be a **single** long-running
 instance — two copies would double-ingest and write duplicate briefs.
 
+**One-service option.** Set `MIA_EMBEDDED_SCHEDULER=1` and the web process runs
+the schedule in a background thread, so you pay for one service instead of two.
+Only do this at exactly one instance: if the host ever scales to two, both would
+tick and both would write a brief, and the duplicates would look like real data.
+
 ---
 
 ## 1. Database
@@ -66,6 +71,7 @@ The backfill pulls roughly 150k price rows and takes about two minutes.
 | `MIA_DAILY_USD_CAP` | `0.60` | Rolling 24-hour Anthropic spend ceiling |
 | `MIA_TOTAL_USD_CAP` | `3.00` | Lifetime Anthropic ceiling. **Raise both, or scheduled cycles will stop.** |
 | `MIA_AUTONOMOUS_USD_CAP` | 75% of total | Scheduled jobs stop here, reserving the rest for your interactive questions |
+| `MIA_EMBEDDED_SCHEDULER` | unset | `1` runs the schedule inside the web process. Single instance only. |
 
 The caps count **Anthropic spend only** — they exist to protect one prepaid
 balance, and counting routed Gemini or OpenAI spend against them would defeat the
