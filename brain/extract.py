@@ -55,10 +55,16 @@ ALIASES = {
     "us cpi": "Inflation",
 }
 
+# Relation verbs are deliberately sign-neutral. Sign lives in `direction` alone.
+# Earlier the set included "supports"/"pressures"/"suppresses", which encode sign
+# in the verb as well — that double-encoding produced meaningless combinations
+# like supports(negative), and let the extractor emit
+# `US Dollar --supports(positive)--> Gold`, contradicting the measured -0.54
+# dollar/gold correlation because "dollar *weakness* supports gold" lost its
+# negation when collapsed to the entity "US Dollar".
 RELATIONS = [
-    "suppresses", "supports", "pressures", "funds", "buys", "sells",
-    "regulates", "issues", "correlates_with", "diverges_from", "hedges",
-    "competes_with", "depends_on", "signals",
+    "affects", "funds", "buys", "sells", "regulates", "issues",
+    "correlates_with", "hedges", "competes_with", "depends_on", "signals",
 ]
 
 SYSTEM = """You extract a relationship graph from macro-financial news for a
@@ -72,11 +78,19 @@ Rules:
 - Use canonical entity names: "Federal Reserve", "US Treasury", "Gold",
   "Silver", "Bitcoin", "US Dollar", "US Treasury Bonds", "European Central Bank",
   "Inflation", "China", "Real Yields". Never abbreviations.
-- relation must come from this set: suppresses, supports, pressures, funds,
-  buys, sells, regulates, issues, correlates_with, diverges_from, hedges,
-  competes_with, depends_on, signals
-- direction: "positive" (source increases/helps target), "negative" (source
-  decreases/harms target), or "ambiguous"
+- relation must come from this set: affects, funds, buys, sells, regulates,
+  issues, correlates_with, hedges, competes_with, depends_on, signals
+  These verbs are sign-neutral on purpose. Use `affects` for any causal
+  influence and let `direction` carry the sign.
+- direction encodes the sign of the effect when the SOURCE RISES:
+    "positive"  = source rises -> target rises
+    "negative"  = source rises -> target falls
+    "ambiguous" = the document does not establish a direction
+  Worked example: an article saying "dollar weakness lifted gold" describes
+  US Dollar rising -> Gold falling, so the edge is
+  {source: "US Dollar", target: "Gold", relation: "affects", direction: "negative"}.
+  Do not drop the negation when you collapse a phrase like "dollar weakness"
+  into the entity "US Dollar" — invert the direction instead.
 - strength: 0.0-1.0, how strongly the document supports this edge
 - rationale: one short clause, max 15 words, grounded in the document
 

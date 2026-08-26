@@ -163,7 +163,7 @@ def test_edge_rejects_self_reference():
     from brain import extract
 
     assert extract.upsert_edge(
-        {"source": "Gold", "target": "gold", "relation": "supports",
+        {"source": "Gold", "target": "gold", "relation": "affects",
          "direction": "positive", "strength": 0.5, "rationale": "x"}
     ) is False
 
@@ -241,3 +241,18 @@ def test_anomalies_render_rates_in_basis_points():
     notes = stats.anomalies(pd.DataFrame(), perf)
     joined = " ".join(notes)
     assert "-22.5bp" in joined and "+3.10%" in joined
+
+
+def test_relation_vocabulary_is_sign_neutral():
+    """Sign must live only in `direction`.
+
+    Verbs that encode sign themselves (supports/pressures/suppresses) allowed
+    contradictory edges like supports(negative), and let "dollar weakness lifts
+    gold" become `US Dollar --supports(positive)--> Gold`, the inverse of the
+    measured relationship.
+    """
+    from brain import extract
+
+    for signed in ("supports", "pressures", "suppresses", "diverges_from"):
+        assert signed not in extract.RELATIONS, f"{signed} re-encodes sign in the verb"
+    assert "affects" in extract.RELATIONS
