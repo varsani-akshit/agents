@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}World model — MIA{% endblock %}
+{% block content %}
+<div class="layout">
+  <div>
+    <div class="panel">
+      <h3>Current world model{% if current %} — v{{ current.version }}{% endif %}</h3>
+      <div class="hint" style="margin-bottom:14px">
+        Rewritten by every digest cycle. Each cycle must reconcile new evidence
+        against its predecessor rather than analysing in isolation.
+      </div>
+      {% if current %}<article>{{ current_html|safe }}</article>
+      {% else %}<div class="empty">Not yet written.</div>{% endif %}
+    </div>
+  </div>
+  <aside>
+    <div class="panel">
+      <h3>Version history</h3>
+      <div class="rows">
+        {% for v in versions %}
+        <div class="row">
+          <span class="when">v{{ v.version }}</span>
+          <span class="what">{{ (v.regime or '')[:34] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}

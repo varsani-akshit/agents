@@ -158,3 +158,37 @@ steer it.
 Covers dedup, statistics (including that correlations use returns not levels),
 trigger thresholds, entity canonicalisation, unit handling for yields, and
 cost accounting.
+
+## Dashboard
+
+Runs as a launchd service (`com.mia.web`) on port 8100, bound to `0.0.0.0` so
+it is reachable from your phone on the same network.
+
+| | |
+|---|---|
+| On this Mac | http://localhost:8100 |
+| On your LAN | `http://<mac-ip>:8100` — find it with `ipconfig getifaddr en0` |
+
+| Page | Purpose |
+|---|---|
+| Latest | Most recent digest, charts and tables rendered inline |
+| Archive | Every past digest and question |
+| Ask | Ask a question, pick the model, read the answer |
+| Alerts | Fired trigger events with the written alert |
+| World model | Current regime view plus version history |
+| Status | Model routing, spend by task, job history, feed health, graph |
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.mia.web.plist   # stop
+launchctl load   ~/Library/LaunchAgents/com.mia.web.plist   # start
+./mia web --reload                                          # dev mode
+```
+
+`GET /api/latest` returns the newest digest as JSON — that is what a Telegram or
+Slack notifier would call to build its "new digest" ping.
+
+### Reaching it from outside the house
+
+The service binds to the LAN only. For access from anywhere, put it behind
+Tailscale (simplest, private, no ports opened) or a Cloudflare Tunnel. Do not
+port-forward it — there is no authentication on the dashboard yet.

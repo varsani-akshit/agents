@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Archive — MIA{% endblock %}
+{% block content %}
+<div class="layout">
+  <div>
+    <div class="panel">
+      <h3>Digests</h3>
+      <div class="rows">
+        {% for d in digests %}
+        <a class="row" href="/digest/{{ d.id }}">
+          <span class="when">{{ d.created_at|utc('%d %b %H:%M') }}</span>
+          <span class="what">{{ d.regime or d.title }}</span>
+          <span class="cost">{{ d.model or '' }} {% if d.usd %}· ${{ d.usd }}{% endif %}</span>
+        </a>
+        {% else %}<div class="empty">No digests yet.</div>{% endfor %}
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Questions asked</h3>
+      <div class="rows">
+        {% for a in answers %}
+        <a class="row" href="/answer/{{ a.id }}">
+          <span class="when">{{ a.created_at|utc('%d %b %H:%M') }}</span>
+          <span class="what">{{ a.title|replace('Q: ','') }}</span>
+          <span class="cost">{% if a.usd %}${{ a.usd }}{% endif %}</span>
+        </a>
+        {% else %}<div class="empty">Nothing asked yet.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+  {% set recent = none %}{% include "_sidebar.html" %}
+</div>
+{% endblock %}

@@ -302,3 +302,18 @@ def test_intraday_moves_use_basis_points_for_rates():
 
     assert row["chg_bp"] == pytest.approx(-1.7, abs=0.1)
     assert "chg_pct" not in row
+
+
+def test_utc_filter_converts_from_session_timezone():
+    """Regression: Postgres returns timestamptz in the session zone.
+
+    Calling strftime directly and appending "UTC" printed Melbourne time under a
+    UTC label — a 10-hour error on every timestamp in the dashboard.
+    """
+    from datetime import datetime, timedelta, timezone as tz
+    from web.app import _utc
+
+    melbourne = tz(timedelta(hours=10))
+    dt = datetime(2026, 8, 26, 15, 57, tzinfo=melbourne)
+    assert _utc(dt) == "26 Aug 2026, 05:57"
+    assert _utc(dt, "%H:%M") == "05:57"

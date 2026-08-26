@@ -1,0 +1,33 @@
+<aside>
+  <div class="panel">
+    <h3>System</h3>
+    <table class="plain">
+      <tr><td class="dim">documents</td><td class="num">{{ summary.counts.docs }}</td></tr>
+      <tr><td class="dim">last 24h</td><td class="num">{{ summary.counts.docs_24h }}</td></tr>
+      <tr><td class="dim">digests</td><td class="num">{{ summary.counts.digests }}</td></tr>
+      <tr><td class="dim">triggers 24h</td><td class="num">{{ summary.counts.triggers_24h }}</td></tr>
+      <tr><td class="dim">graph</td><td class="num">{{ summary.counts.entities }}/{{ summary.counts.edges }}</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>Spend</h3>
+    <table class="plain">
+      {% for p in summary.providers %}
+      <tr><td class="dim">{{ p.provider }}</td><td class="num">${{ '%.3f'|format(p.usd) }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% if recent %}
+  <div class="panel">
+    <h3>Recent digests</h3>
+    <div class="rows">
+      {% for d in recent %}
+      <a class="row" href="/digest/{{ d.id }}">
+        <span class="when">{{ d.created_at|utc('%d %b %H:%M') }}</span>
+        <span class="what">{{ (d.regime or 'digest')[:38] }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</aside>

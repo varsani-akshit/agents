@@ -50,9 +50,15 @@ paragraph must carry something the reader could not get from a price screen.
 Cut throat-clearing and restatement, never analysis. A quiet window produces a
 shorter brief because less happened — not a padded one.
 
-Use markdown tables wherever data is comparative: cross-asset moves, correlation
-values, scenario matrices, before/after readings. Tables are easier to scan than
-prose lists and are expected in every cycle.
+Use markdown tables wherever data is comparative. Expect several per brief —
+at minimum a cross-asset move table, a correlation table, and a scenario matrix
+with columns for probability, mechanism and the confirming signal. Add more
+wherever you would otherwise write a list of numbers in prose.
+
+Two mechanical rules, because they silently break rendering:
+- Put every table at the top level, never indented inside a bullet or numbered
+  list item. An indented table renders as plain text.
+- Leave one blank line immediately before the header row and after the last row.
 
 Charts have already been rendered from the same data you are reading and are
 listed under `# Charts available` below. Reference them inline with standard
