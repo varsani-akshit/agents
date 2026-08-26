@@ -96,3 +96,12 @@ fred_series:
   CPIAUCSL: CPI all urban consumers
   UNRATE: Unemployment rate
   FEDFUNDS: Effective federal funds rate
+  # Added after the adversarial review flagged that we could not separate
+  # "buybacks suppressing yields against a rising term premium" from
+  # "buybacks doing nothing" — that distinction is the whole repression thesis.
+  THREEFYTP10: ACM 10-year term premium
+  THREEFYTP5: ACM 5-year term premium
+  DGS20: US 20-year Treasury constant maturity
+  DFII5: 5-year TIPS real yield
+  T5YIE: 5-year breakeven inflation
+  SOFR: Secured overnight financing rate

@@ -308,6 +308,10 @@ def macro_snapshot() -> dict:
     ids = [
         "WALCL", "M2SL", "GFDEBTN", "RRPONTSYD", "T10YIE",
         "DFII10", "DTWEXBGS", "WTREGEN", "CPIAUCSL", "UNRATE", "FEDFUNDS",
+        # Term premium decomposition: without it you cannot tell "buybacks are
+        # suppressing yields against a rising term premium" from "buybacks are
+        # doing nothing" — and that distinction is the repression thesis.
+        "THREEFYTP10", "THREEFYTP5", "DFII5", "T5YIE", "SOFR", "DGS20",
     ]
     out = {}
     for sid in ids:
