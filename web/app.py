@@ -1,4 +1,4 @@
-"""MIA dashboard — the reading surface for digests, alerts, and Q&A.
+"""Alfred dashboard — the reading surface for briefs, alerts, and Q&A.
 
 Chat apps mangle tables and force charts into separate messages, so the
 comprehensive brief needs a page. This serves rendered digests with their charts
@@ -59,7 +59,7 @@ async def lifespan(_: FastAPI):
             sched.shutdown(wait=False)
 
 
-app = FastAPI(title="MIA", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="Alfred", docs_url=None, redoc_url=None, lifespan=lifespan)
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
@@ -374,14 +374,42 @@ async def ask_submit(question: str = Form(...), model: str = Form("")):
     return JSONResponse({"error": result.get("stopped") or "no answer produced"}, 500)
 
 
+# The charts page groups its figures under tabs; a 15-figure scroll is not a
+# structure. Order within each tab is reading order.
+CHART_TABS: list[tuple[str, list[str]]] = [
+    ("Overview", ["regime_gauge", "returns_heatmap", "cross_asset_performance"]),
+    ("Markets", ["normalised_performance", "global_equities", "drawdowns"]),
+    ("Rates & credit", ["yield_curve", "net_liquidity", "real_yield_gold",
+                        "credit_spreads", "macro_panel"]),
+    ("FX", ["fx_performance"]),
+    ("Correlations", ["rolling_correlations", "correlation_heatmap", "ratios"]),
+]
+
+
 @app.get("/charts", response_class=HTMLResponse)
 async def charts_page(request: Request):
-    """Every figure on one page, independent of any brief."""
+    """Every standing figure, tabbed, searchable, and live to the controls."""
     pack = chartdata.latest_pack()
+    placed: set[str] = set()
+    tabs = []
+    for label, keys in CHART_TABS:
+        specs = [{"key": k, "title": pack[k].get("title", k),
+                  "subtitle": pack[k].get("subtitle", ""),
+                  "rebuildable": k in chartdata._REBUILDABLE}
+                 for k in keys if k in pack]
+        placed.update(k for k in keys if k in pack)
+        if specs:
+            tabs.append({"label": label, "specs": specs})
+    leftover = [{"key": k, "title": v.get("title", k), "subtitle": v.get("subtitle", ""),
+                 "rebuildable": False}
+                for k, v in pack.items() if k not in placed]
+    if leftover:
+        tabs.append({"label": "Other", "specs": leftover})
     return page(request, "charts.html", {
-        "specs": [{"key": s.get("key"), "title": s.get("title", ""),
-                   "subtitle": s.get("subtitle", "")}
-                  for s in chartdata.in_display_order(pack)],
+        "tabs": tabs,
+        "priceable": chartdata.PRICEABLE,
+        "currencies": list(chartdata.CURRENCIES),
+        "periods": list(chartdata.PERIODS),
         "charts_json": json.dumps(pack, default=str),
         "active": "charts",
     })
@@ -458,6 +486,85 @@ async def api_latest():
         "usd": meta.get("usd"),
         "body": d["body"],
     }
+
+
+# ─────────────────────────── live chart + graph APIs ────────────────────────
+@app.get("/api/chart/price")
+async def api_price_chart(symbol: str, days: str = "1y", ccy: str = "USD"):
+    """A single instrument, window and display currency, computed on request.
+
+    The Charts tab is a live surface — unlike a brief's stored pack, these
+    figures answer to the reader's controls, so they come fresh from Postgres
+    every call.
+    """
+    n = chartdata.PERIODS.get(days)
+    if not n:
+        return JSONResponse({"error": f"period must be one of {list(chartdata.PERIODS)}"}, 400)
+    spec = await asyncio.to_thread(chartdata.price_history, symbol.upper(), n, ccy.upper())
+    if not spec:
+        return JSONResponse({"error": "no data for that combination"}, 404)
+    return spec
+
+
+@app.get("/api/chart/{key}")
+async def api_chart(key: str, days: str = ""):
+    """A standing figure, optionally over a chosen window."""
+    n = chartdata.PERIODS.get(days)
+    if n and key in chartdata._REBUILDABLE:
+        spec = await asyncio.to_thread(chartdata.rebuild, key, n)
+        if spec:
+            return spec
+    spec = chartdata.latest_pack().get(key)
+    return spec or JSONResponse({"error": "unknown chart"}, 404)
+
+
+@app.get("/api/graph")
+async def api_graph():
+    """Entities and edges for the knowledge-graph view."""
+    nodes = db.query(
+        """SELECT canonical, kind, mention_count FROM entities
+           ORDER BY mention_count DESC LIMIT 300"""
+    )
+    edges = db.query(
+        """SELECT source_entity, target_entity, relation, direction,
+                  strength, confirm_count, rationale
+           FROM edges ORDER BY strength DESC LIMIT 800"""
+    )
+    return {"nodes": nodes, "edges": edges}
+
+
+@app.get("/graph", response_class=HTMLResponse)
+async def graph_page(request: Request):
+    counts = db.one(
+        "SELECT (SELECT count(*) FROM entities) AS entities, "
+        "(SELECT count(*) FROM edges) AS edges"
+    )
+    return page(request, "graph.html", {"counts": counts, "active": "graph"})
+
+
+# ───────────────────────────── knowledge library ────────────────────────────
+@app.get("/add", response_class=HTMLResponse)
+async def add_form(request: Request):
+    from web import library
+
+    return page(request, "add.html", {
+        "result": None, "recent_docs": library.recent(), "active": "add",
+    })
+
+
+@app.post("/add", response_class=HTMLResponse)
+async def add_submit(
+    request: Request,
+    content: str = Form(...),
+    title: str = Form(""),
+    note: str = Form(""),
+):
+    from web import library
+
+    result = await asyncio.to_thread(library.add, content, title.strip(), note.strip())
+    return page(request, "add.html", {
+        "result": result, "recent_docs": library.recent(), "active": "add",
+    })
 
 
 @app.get("/healthz")

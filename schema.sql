@@ -183,3 +183,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_login    TIMESTAMPTZ
 );
+
+-- Extraction bookkeeping: without it the same top-urgency documents are
+-- re-extracted every cycle, inflating confirm counts while fresh documents
+-- never get read.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS extracted_at TIMESTAMPTZ;

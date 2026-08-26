@@ -94,8 +94,10 @@ Rules:
 - strength: 0.0-1.0, how strongly the document supports this edge
 - rationale: one short clause, max 15 words, grounded in the document
 
-Return at most 3 edges per document, and none at all if the document asserts no
-real relationship. Most routine news yields zero edges. Return only JSON."""
+Return at most 3 edges per document, and none if the document asserts no real
+relationship. These documents are pre-filtered to macro-relevant news, so a
+typical batch yields an edge from every second or third document — but never
+invent one to meet that rate. Return only JSON."""
 
 SCHEMA = {
     "type": "object",
@@ -184,19 +186,7 @@ def upsert_edge(e: dict) -> bool:
     return True
 
 
-def run(hours: int = 6, limit: int = 30) -> int:
-    """Extract edges from recent, non-Low documents. Returns edges written."""
-    docs = db.query(
-        """SELECT id, title, summary, left(body, 700) AS body, source
-           FROM documents
-           WHERE fetched_at > now() - make_interval(hours => %s)
-             AND urgency IN ('Critical','High','Medium')
-           ORDER BY urgency_score DESC, source_tier LIMIT %s""",
-        (hours, limit),
-    )
-    if not docs:
-        return 0
-
+def _extract_batch(docs: list[dict]) -> list[dict]:
     payload = [
         {
             "doc_id": d["id"],
@@ -206,23 +196,56 @@ def run(hours: int = 6, limit: int = 30) -> int:
         }
         for d in docs
     ]
-    try:
-        edges = llm.complete_json(
-            config.EXTRACT_SPEC,
-            system=SYSTEM,
-            user=json.dumps(payload, ensure_ascii=False),
-            schema=SCHEMA,
-            purpose="extract_edges",
-            max_tokens=3000,
-        ).get("edges", [])
-    except client.BudgetExceeded as exc:
-        log.warning("edge extraction skipped: %s", exc)
-        return 0
-    except Exception as exc:  # noqa: BLE001
-        log.error("edge extraction failed: %s", exc)
+    return llm.complete_json(
+        config.EXTRACT_SPEC,
+        system=SYSTEM,
+        user=json.dumps(payload, ensure_ascii=False),
+        schema=SCHEMA,
+        purpose="extract_edges",
+        max_tokens=2000,
+    ).get("edges", [])
+
+
+def run(hours: int = 6, limit: int = 60) -> int:
+    """Extract edges from recent, non-Low documents. Returns edges written.
+
+    Batched at a dozen documents per call. The earlier single call over sixty
+    documents starved the graph two ways at once: a 3,000-token ceiling capped
+    how many edges could physically be emitted, and a model handed a huge batch
+    under "most documents yield nothing" obliged — sixty documents in, three or
+    four edges out. Small batches keep each document actually read.
+    """
+    docs = db.query(
+        """SELECT id, title, summary, left(body, 700) AS body, source
+           FROM documents
+           WHERE fetched_at > now() - make_interval(hours => %s)
+             AND urgency IN ('Critical','High','Medium')
+             AND extracted_at IS NULL
+           ORDER BY urgency_score DESC, source_tier LIMIT %s""",
+        (hours, limit),
+    )
+    if not docs:
         return 0
 
-    return sum(1 for e in edges if upsert_edge(e))
+    from concurrent.futures import ThreadPoolExecutor
+
+    batches = [docs[i:i + 12] for i in range(0, len(docs), 12)]
+    written = 0
+    try:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            for batch, edges in zip(batches, pool.map(_extract_batch, batches)):
+                written += sum(1 for e in edges if upsert_edge(e))
+                # Mark per completed batch, not up front: a batch that dies
+                # keeps its documents eligible for the next cycle.
+                db.execute(
+                    "UPDATE documents SET extracted_at = now() WHERE id = ANY(%s)",
+                    ([d["id"] for d in batch],),
+                )
+    except client.BudgetExceeded as exc:
+        log.warning("edge extraction stopped: %s", exc)
+    except Exception as exc:  # noqa: BLE001
+        log.error("edge extraction failed: %s", exc)
+    return written
 
 
 def hygiene() -> dict:

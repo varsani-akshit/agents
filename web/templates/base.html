@@ -5,23 +5,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#FAFAFA">
-<title>{% block title %}MIA{% endblock %}</title>
+<title>{% block title %}Alfred{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23111'/><text x='16' y='22' font-size='15' font-family='sans-serif' fill='%23EA580C' text-anchor='middle'>M</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111111'/><polygon points='1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16' fill='%23EA580C'/></svg>">
 </head>
 <body>
 {% block chrome %}
 <nav class="nav">
   <div class="nav-in">
-    <a href="/" class="wordmark">MIA <span>macro intelligence</span></a>
+    <a href="/" class="wordmark"><svg class="mark" viewBox="0 0 32 28" width="26" height="23" role="img" aria-label="Alfred"><polygon points="1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16" fill="currentColor"/></svg>ALFRED <span>macro intelligence</span></a>
     <div class="nav-links">
       <a href="/" class="{{ 'on' if active=='latest' }}">Brief</a>
       <a href="/charts" class="{{ 'on' if active=='charts' }}">Charts</a>
-      <a href="/archive" class="{{ 'on' if active=='archive' }}">Archive</a>
+      <a href="/graph" class="{{ 'on' if active=='graph' }}">Graph</a>
       <a href="/ask" class="{{ 'on' if active=='ask' }}">Ask</a>
+      <a href="/add" class="{{ 'on' if active=='add' }}">Add</a>
+      <a href="/archive" class="{{ 'on' if active=='archive' }}">Archive</a>
       <a href="/alerts" class="{{ 'on' if active=='alerts' }}">Alerts</a>
       <a href="/world" class="{{ 'on' if active=='world' }}">World model</a>
       <a href="/status" class="{{ 'on' if active=='status' }}">Status</a>

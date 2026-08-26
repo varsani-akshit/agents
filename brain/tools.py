@@ -71,7 +71,7 @@ DEFINITIONS = [
     {
         "name": "search_memory",
         "description": (
-            "Semantic search over stored news documents and MIA's own past "
+            "Semantic search over stored news documents and Alfred's own past "
             "analyses. Use to recall what was reported or concluded previously — "
             "this is the system's long-term memory. Results are ranked by "
             "similarity, recency, and source credibility (tier 1 = official)."
@@ -132,7 +132,7 @@ DEFINITIONS = [
     {
         "name": "get_world_model",
         "description": (
-            "The current living world model — MIA's standing view of the macro "
+            "The current living world model — Alfred's standing view of the macro "
             "regime, written by the previous deep-analysis cycle. Read this to "
             "know what was believed before, so new evidence can be reconciled "
             "against it rather than analysed in isolation."

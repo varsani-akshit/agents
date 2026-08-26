@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Add — Alfred{% endblock %}
+{% block content %}
+<div class="cols">
+  <div>
+    <header class="ph">
+      <div class="eyebrow">Knowledge base</div>
+      <h1>Add to Alfred's knowledge</h1>
+      <p class="sub">
+        Paste a URL or the text of anything worth keeping — an FT piece, a
+        research note, a thread. It is stored as a top-tier source, becomes
+        searchable immediately, and feeds the next brief and the graph.
+      </p>
+    </header>
+
+    {% if result %}
+      {% if result.ok %}
+      <div class="notice ok-note">
+        Added <strong>{{ result.title }}</strong> ({{ result.chars }} characters)
+        — embedded{{ ', classified' if result.classified }} and ready for the next brief.
+      </div>
+      {% else %}
+      <div class="err">{{ result.error }}</div>
+      {% endif %}
+    {% endif %}
+
+    <form class="ask-form" method="post" action="/add" onsubmit="return go()">
+      <textarea name="content" rows="6" required
+        placeholder="https://ft.com/…  — or paste the full text here"></textarea>
+      <input type="text" name="title" placeholder="Title (optional — detected from URLs)">
+      <input type="text" name="note"
+        placeholder="Why this matters (optional — the analyst reads this note first)">
+      <div class="formrow">
+        <button type="submit" id="go">Add to knowledge base</button>
+        <span class="spinner" id="sp"><span class="spin"></span> fetching and indexing…</span>
+      </div>
+    </form>
+  </div>
+
+  <aside class="side">
+    <section>
+      <h3>Added by you</h3>
+      <div class="side-list">
+        {% for d in recent_docs %}
+        <a {% if d.url %}href="{{ d.url }}" target="_blank" rel="noopener"{% endif %}>
+          <span class="when">{{ d.fetched_at|utc('%d %b') }}{% if d.urgency %} · {{ d.urgency }}{% endif %}</span>
+          <span class="what">{{ d.title }}</span>
+        </a>
+        {% else %}<p class="hint">Nothing yet.</p>{% endfor %}
+      </div>
+    </section>
+  </aside>
+</div>
+<script>
+function go(){ document.getElementById('go').disabled = true;
+               document.getElementById('sp').classList.add('on'); return true; }
+</script>
+{% endblock %}

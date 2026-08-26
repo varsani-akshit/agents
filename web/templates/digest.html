@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ digest.title if digest else 'MIA' }}{% endblock %}
+{% block title %}{{ digest.title if digest else 'Alfred' }}{% endblock %}
 {% block content %}
 <div class="cols">
   <div>
@@ -24,7 +24,7 @@
     </header>
     <article class="mbody">{{ body_html|safe }}</article>
     {% else %}
-    <p class="empty">No brief yet. The scheduler produces one at 00:05, 08:05 and 16:05 UTC.</p>
+    <p class="empty">No brief yet. Alfred writes one at 09:05 and 21:05 UTC — evening and morning in Melbourne.</p>
     {% endif %}
   </div>
   {% include "_sidebar.html" %}

@@ -362,7 +362,18 @@
       timer = setTimeout(resize, 140);
     });
     node.dataset.drawn = "1";
+    node._chart = chart;
   }
+
+  /* Exposed for the charts page: redraws a mount with a freshly fetched spec
+     (period/currency controls) without re-running the lazy-load machinery. */
+  window.AlfredCharts = {
+    draw: function (node, spec) {
+      if (node._chart) { node._chart.dispose(); node._chart = null; }
+      delete node.dataset.drawn;
+      draw(node, spec);
+    }
+  };
 
   function init() {
     var packs = window.MIA_CHARTS || {};

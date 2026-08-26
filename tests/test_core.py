@@ -320,7 +320,8 @@ def test_utc_filter_converts_from_session_timezone():
 
 
 @pytest.mark.parametrize(
-    "path", ["/", "/archive", "/ask", "/alerts", "/world", "/status", "/healthz", "/api/latest"]
+    "path", ["/", "/archive", "/ask", "/alerts", "/world", "/status", "/healthz",
+             "/api/latest", "/charts", "/graph", "/add", "/api/graph"]
 )
 def test_every_page_renders(path):
     """Smoke test across every route.
@@ -432,3 +433,18 @@ def test_list_normalisation_leaves_code_blocks_alone():
 
     src = "```\n   - not a list\n```\n"
     assert normalise_list_indent(src) == src
+
+
+def test_daily_frame_has_no_weekend_rows():
+    """Regression: crypto's 7-day calendar leaked weekend rows into the shared
+    daily frame, silently compressing every row-counted horizon by 5/7 — the
+    "1y" column measured 8.3 months — and adding fake zero-return weekend rows
+    to every non-crypto correlation."""
+    from signals import stats
+
+    wide = stats.load_daily(lookback_days=200)
+    if wide.empty:
+        import pytest as _pytest
+
+        _pytest.skip("no price data in test database")
+    assert (wide.index.dayofweek < 5).all()

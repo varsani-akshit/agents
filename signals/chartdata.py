@@ -465,3 +465,88 @@ def in_display_order(pack: dict) -> list[dict]:
     ordered = [pack[k] for k in BUILDERS if k in pack]
     extra = [v for k, v in pack.items() if k not in BUILDERS]
     return ordered + extra
+
+
+# ───────────────────────────── live, parameterised charts ────────────────────
+# Everything above is baked per brief so an archived page redraws its own era.
+# The Charts tab is different: it is a live surface, so its figures are computed
+# on request with the reader's chosen window and display currency.
+
+# How to express one USD in each supported currency, from series we track.
+# "divide" pairs quote USD per unit (AUDUSD), "multiply" quote units per USD.
+CURRENCIES: dict[str, tuple[str, str] | None] = {
+    "USD": None,
+    "AUD": ("AUDUSD", "divide"),
+    "INR": ("USDINR", "multiply"),
+    "KES": ("USDKES", "multiply"),
+}
+
+# Instruments where a currency toggle means something: USD-denominated prices.
+# Yields, the dollar index, vol indices and FX pairs are excluded — "VIX in
+# rupees" is not a quantity.
+PRICEABLE = [
+    "GOLD", "SILVER", "PLATINUM", "COPPER", "BTC", "ETH", "SOL", "SPX",
+    "NASDAQ", "OIL", "NATGAS", "WHEAT", "GOLDMINERS", "URANIUM", "TLT", "REIT",
+]
+
+PERIODS = {"1m": 21, "3m": 63, "6m": 126, "1y": 252, "3y": 756, "5y": 1260, "max": 20000}
+
+
+def to_currency(series: pd.Series, wide: pd.DataFrame, ccy: str) -> pd.Series | None:
+    """Re-denominate a USD price series. Returns None if the FX leg is missing."""
+    spec = CURRENCIES.get(ccy)
+    if spec is None:
+        return series if ccy == "USD" else None
+    pair, op = spec
+    if pair not in wide.columns:
+        return None
+    fx = wide[pair].reindex(series.index).ffill()
+    out = series / fx if op == "divide" else series * fx
+    return out.dropna()
+
+
+def price_history(symbol: str, days: int = 252, ccy: str = "USD") -> dict | None:
+    """One instrument's daily closes over a chosen window, in a chosen currency."""
+    if symbol not in PRICEABLE or ccy not in CURRENCIES:
+        return None
+    wide = stats.load_daily(lookback_days=min(days * 2 + 40, 8000))
+    if symbol not in wide.columns:
+        return None
+    s = wide[symbol].dropna().iloc[-days:]
+    if len(s) < 5:
+        return None
+    converted = to_currency(s, wide, ccy)
+    if converted is None or len(converted) < 5:
+        return None
+    converted = _thin(converted)
+    chg = (converted.iloc[-1] / converted.iloc[0] - 1) * 100
+    name = db.one("SELECT name FROM instruments WHERE symbol=%s", (symbol,))
+    return {
+        "key": f"price:{symbol}", "type": "line",
+        "title": (name or {}).get("name", symbol),
+        "subtitle": f"{ccy} · last {converted.iloc[-1]:,.2f} · {chg:+.1f}% over the window",
+        "x": _dates(converted.index), "yLabel": ccy,
+        "series": [{"name": symbol, "data": _clean(converted),
+                    "color": SYMBOL_COLOR.get(symbol, ORANGE)}],
+    }
+
+
+# Standing figures that honour a window override. Only time-series charts —
+# a period toggle on a snapshot (heatmap, curve, bars) has no meaning.
+_REBUILDABLE = {
+    "normalised_performance": lambda wide, days: normalised_performance(wide, days),
+    "global_equities": lambda wide, days: global_equities(wide, days),
+    "rolling_correlations": lambda wide, days: rolling_correlations(wide, days),
+    "ratios": lambda wide, days: ratios(wide, days),
+}
+
+
+def rebuild(key: str, days: int) -> dict | None:
+    """Recompute one standing chart over a chosen window, fresh from the DB."""
+    fn = _REBUILDABLE.get(key)
+    if not fn:
+        return None
+    wide = stats.load_daily(lookback_days=min(days * 2 + 40, 8000))
+    if wide.empty:
+        return None
+    return fn(wide, days)

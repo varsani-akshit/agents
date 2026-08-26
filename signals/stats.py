@@ -74,6 +74,13 @@ def load_daily(symbols: list[str] | None = None, lookback_days: int = 800) -> pd
     wide = df.pivot_table(index="d", columns="symbol", values="price", aggfunc="last")
     wide.index = pd.to_datetime(wide.index)
     wide = wide.sort_index().ffill()
+    # Business-day grid. Crypto trades weekends, so the union index carries
+    # Saturday and Sunday rows that every other market forward-fills across.
+    # Left in, "252 rows" is 8.3 months rather than a year — every row-counted
+    # horizon quietly shrinks by 5/7 — and each equity pair's correlation is
+    # damped by two fake zero-return rows a week. Crypto's weekend move folds
+    # into Monday, which is the standard convention for cross-asset work.
+    wide = wide[wide.index.dayofweek < 5]
     if symbols:
         wide = wide[[s for s in symbols if s in wide.columns]]
     return wide

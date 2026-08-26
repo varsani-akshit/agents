@@ -1,23 +1,66 @@
 {% extends "base.html" %}
-{% block title %}Charts — MIA{% endblock %}
+{% block title %}Charts — Alfred{% endblock %}
 {% block content %}
 <header class="ph">
-  <div class="eyebrow">Figures</div>
+  <div class="eyebrow">Figures · live</div>
   <h1>Charts</h1>
   <p class="sub">
-    Every figure from the latest cycle, computed in Python and drawn live. Hover
-    any series to read its value; on a phone, tap and drag.
+    Computed fresh from the database. Hover for values; change window and
+    currency where offered.
   </p>
 </header>
-{% for s in specs %}
-<figure class="chart" data-chart="{{ s.key }}">
-  <figcaption class="chart-head">
-    <div class="t">{{ s.title }}</div>
-    {% if s.subtitle %}<div class="s">{{ s.subtitle }}</div>{% endif %}
-  </figcaption>
-  <div class="chart-canvas"></div>
-</figure>
-{% else %}
-<p class="empty">No charts yet — run a digest cycle to build them.</p>
+
+<div class="chartbar">
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-tab="price">Prices</button>
+    {% for t in tabs %}<button class="tab" data-tab="t{{ loop.index }}">{{ t.label }}</button>{% endfor %}
+  </div>
+  <input type="text" id="chartsearch" placeholder="Search figures…" autocomplete="off">
+</div>
+
+{# ── interactive price explorer ─────────────────────────────────────── #}
+<section class="tabpane on" data-pane="price">
+  <div class="ctl" id="pricectl">
+    <div class="ctlrow">
+      <span class="ctllabel">Asset</span>
+      {% for s in priceable %}<button class="opt{{ ' on' if s == 'GOLD' }}" data-k="symbol" data-v="{{ s }}">{{ s }}</button>{% endfor %}
+    </div>
+    <div class="ctlrow">
+      <span class="ctllabel">Window</span>
+      {% for d in periods %}<button class="opt{{ ' on' if d == '1y' }}" data-k="days" data-v="{{ d }}">{{ d }}</button>{% endfor %}
+      <span class="ctllabel" style="margin-left:14px">Currency</span>
+      {% for c in currencies %}<button class="opt{{ ' on' if c == 'USD' }}" data-k="ccy" data-v="{{ c }}">{{ c }}</button>{% endfor %}
+    </div>
+  </div>
+  <figure class="chart" id="pricechart">
+    <figcaption class="chart-head"><div class="t">—</div><div class="s"></div></figcaption>
+    <div class="chart-canvas"></div>
+  </figure>
+</section>
+
+{# ── standing figures, one pane per tab ─────────────────────────────── #}
+{% for t in tabs %}
+<section class="tabpane" data-pane="t{{ loop.index }}">
+  {% for s in t.specs %}
+  <figure class="chart" id="{{ s.key }}" data-chart="{{ s.key }}" data-title="{{ s.title|lower }}">
+    <figcaption class="chart-head">
+      <div class="t">{{ s.title }}</div>
+      {% if s.subtitle %}<div class="s">{{ s.subtitle }}</div>{% endif %}
+      {% if s.rebuildable %}
+      <div class="ctlrow chartperiods" data-key="{{ s.key }}">
+        <button class="opt" data-days="3m">3m</button>
+        <button class="opt on" data-days="1y">1y</button>
+        <button class="opt" data-days="3y">3y</button>
+        <button class="opt" data-days="5y">5y</button>
+      </div>
+      {% endif %}
+    </figcaption>
+    <div class="chart-canvas"></div>
+  </figure>
+  {% endfor %}
+</section>
 {% endfor %}
+<p class="empty" id="nosearch" style="display:none">No figure matches that search.</p>
+
+<script src="/static/charts-page.js" defer></script>
 {% endblock %}

@@ -166,6 +166,11 @@ instruments:
     asset_class: fx
     source: yfinance
     source_id: "USDMXN=X"
+  - symbol: USDKES
+    name: USD/KES (Kenyan shilling)
+    asset_class: fx
+    source: yfinance
+    source_id: "KES=X"
 
   # ── Non-US equity blocks ────────────────────────────────────────────────
   - symbol: JAPAN

@@ -1,9 +1,10 @@
-"""Scheduler: the loops that make MIA continuous rather than on-demand.
+"""Scheduler: the loops that make Alfred continuous rather than on-demand.
 
-  every 15 min   ingest -> embed -> classify -> stats -> triggers -> alerts
-  every 8 hours  deep analysis digest (00:05, 08:05, 16:05 UTC)
+  every 30 min   full tick: ingest -> embed -> classify -> stats -> triggers
+  offset 15 min  prices-only tick (free), so triggers still see fresh prices
+  twice daily    deep brief at 09:05 and 21:05 UTC (7pm and 7am Melbourne)
   daily 02:00    FRED refresh + daily price refresh
-  daily 03:00    graph hygiene, stats vacuum, spend report
+  daily 03:00    graph hygiene, retention, spend report
 
 Each job records to `job_runs`, so `mia status` shows what ran and what broke.
 Jobs never raise into the scheduler — a failing feed must not stop the loop.
@@ -13,7 +14,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -39,19 +40,30 @@ def _guard(name: str, fn) -> None:
 
 
 # ─────────────────────────────────── jobs ───────────────────────────────────
-def job_tick() -> dict:
+def job_tick(harvest_news: bool = True) -> dict:
+    """One ingestion cycle.
+
+    Prices and trigger evaluation are free — no model touches them — so they can
+    run as often as we like. Harvest, embedding and classification are the only
+    steps that spend AI credit, so the schedule runs them at half the cadence:
+    the full tick every 30 minutes, a prices-only tick in between. News minutes
+    old is indistinguishable from news half an hour old at a twice-daily brief.
+    """
     from brain import alert as alert_mod
-    from brain import classify
     from ingest import feeds, prices
-    from memory import store
     from signals import stats, triggers
 
     detail: dict = {}
     detail["prices"] = prices.tick()
-    harvest = feeds.harvest()
-    detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
-    detail["embedded"] = store.embed_documents(limit=120)
-    detail["classified"] = classify.run(batch=20, max_batches=3, workers=3)
+    harvest = {}
+    if harvest_news:
+        from brain import classify
+        from memory import store
+
+        harvest = feeds.harvest()
+        detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
+        detail["embedded"] = store.embed_documents(limit=120)
+        detail["classified"] = classify.run(batch=20, max_batches=3, workers=3)
 
     pack = stats.build(persist=True)
     fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
@@ -66,7 +78,7 @@ def job_tick() -> dict:
     detail["alerts_sent"] = len(sent)
 
     out.info(
-        f"tick · {detail['feeds'].get('inserted', 0)} new docs · "
+        f"tick · {detail.get('feeds', {}).get('inserted', 0)} new docs · "
         f"{detail['triggers_fired']} triggers · {detail['alerts_sent']} alerts"
     )
     return detail
@@ -75,7 +87,7 @@ def job_tick() -> dict:
 def job_digest() -> dict:
     from brain import digest
 
-    result = digest.run(hours=8)
+    result = digest.run(hours=12)
     if not result.get("ok"):
         out.error(f"digest failed: {result.get('error')}")
         raise RuntimeError(f"digest produced no output: {result.get('error')}")
@@ -162,13 +174,21 @@ def build_scheduler() -> BlockingScheduler:
     )
     sched.add_job(
         lambda: _guard("tick", job_tick),
-        IntervalTrigger(minutes=15),
+        IntervalTrigger(minutes=30),
         id="tick",
         next_run_time=datetime.now(timezone.utc),
     )
+    # Offset by 15 minutes so the two never coincide.
+    sched.add_job(
+        lambda: _guard("tick", lambda: job_tick(harvest_news=False)),
+        IntervalTrigger(minutes=30, start_date=datetime.now(timezone.utc) + timedelta(minutes=15)),
+        id="tick_prices",
+    )
+    # 21:05 UTC / 09:05 UTC: morning and evening briefs in Melbourne, each
+    # covering the 12 hours since the other.
     sched.add_job(
         lambda: _guard("digest", job_digest),
-        CronTrigger(hour="0,8,16", minute=5),
+        CronTrigger(hour="9,21", minute=5),
         id="digest",
     )
     sched.add_job(
@@ -202,8 +222,10 @@ def build_background_scheduler():
         job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 300},
     )
     for job_id, fn, trigger in (
-        ("tick", job_tick, IntervalTrigger(minutes=15)),
-        ("digest", job_digest, CronTrigger(hour="0,8,16", minute=5)),
+        ("tick", job_tick, IntervalTrigger(minutes=30)),
+        ("tick_prices", lambda: job_tick(harvest_news=False),
+         IntervalTrigger(minutes=30, start_date=datetime.now(timezone.utc) + timedelta(minutes=15))),
+        ("digest", job_digest, CronTrigger(hour="9,21", minute=5)),
         ("daily_data", job_daily_data, CronTrigger(hour=2, minute=0)),
         ("maintenance", job_maintenance, CronTrigger(hour=3, minute=0)),
     ):

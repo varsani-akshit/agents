@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Graph — Alfred{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">Knowledge base</div>
+  <h1>Relationship graph</h1>
+  <p class="sub">
+    {{ counts.entities }} entities and {{ counts.edges }} relationships, extracted
+    from the corpus and confirmed across sightings. Drag to explore; click a node
+    to see its connections. The graph grows as documents arrive — including
+    anything you add.
+  </p>
+</header>
+<figure class="chart" id="graphfig">
+  <div class="chart-canvas" id="graphcanvas" style="height:640px"></div>
+</figure>
+<div id="graphdetail" class="graphdetail" style="display:none"></div>
+<script src="/static/graph.js" defer></script>
+{% endblock %}

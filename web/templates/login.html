@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Sign in — MIA{% endblock %}
+{% block title %}Sign in — Alfred{% endblock %}
 {% block chrome %}{% endblock %}
 {% block content %}
 <div class="login-wrap">
   <form class="login-card" method="post" action="/login">
-    <h1>MIA</h1>
-    <p class="sub">Macro intelligence. Sign in to continue.</p>
+    <div class="login-mark"><svg class="mark" viewBox="0 0 32 28" width="26" height="23" role="img" aria-label="Alfred"><polygon points="1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16" fill="currentColor"/></svg></div>
+    <h1>Alfred</h1>
+    <p class="sub">At your service. Sign in to continue.</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     <input type="hidden" name="next" value="{{ next }}">
     <label for="u">Username</label>

@@ -1,4 +1,4 @@
-"""MIA command line. `./mia <command>`"""
+"""Alfred command line. `./mia <command>`"""
 from __future__ import annotations
 
 import argparse
@@ -141,7 +141,7 @@ def cmd_status(args) -> int:
                   (SELECT count(*) FROM entities) AS entities,
                   (SELECT count(*) FROM edges) AS edges"""
     )
-    t = Table(title="MIA status", show_header=False, box=None)
+    t = Table(title="Alfred status", show_header=False, box=None)
     for k, v in counts.items():
         t.add_row(f"[cyan]{k}[/cyan]", str(v))
     c.print(t)
