@@ -27,6 +27,13 @@ DIGEST_MODEL = os.getenv("DIGEST_MODEL", "claude-sonnet-5")
 CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "claude-haiku-4-5")
 ASK_MODEL = os.getenv("ASK_MODEL", DIGEST_MODEL)
 
+# Task routing. "provider:model"; a bare name means Anthropic. High-volume
+# schema-constrained work goes to a fast cheap model; deep reasoning stays on
+# Claude. See brain/llm.py.
+CLASSIFY_SPEC = os.getenv("MIA_CLASSIFY_SPEC", "gemini:gemini-flash-latest")
+EXTRACT_SPEC = os.getenv("MIA_EXTRACT_SPEC", "gemini:gemini-flash-latest")
+ALERT_SPEC = os.getenv("MIA_ALERT_SPEC", f"anthropic:{CLASSIFY_MODEL}")
+
 # Hard spend guards (USD). The ledger refuses calls once these are reached.
 DAILY_USD_CAP = _f("MIA_DAILY_USD_CAP", 0.60)
 TOTAL_USD_CAP = _f("MIA_TOTAL_USD_CAP", 3.00)

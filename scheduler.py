@@ -1,7 +1,7 @@
 """Scheduler: the loops that make MIA continuous rather than on-demand.
 
   every 15 min   ingest -> embed -> classify -> stats -> triggers -> alerts
-  every 6 hours  deep analysis digest (00:05, 06:05, 12:05, 18:05 UTC)
+  every 8 hours  deep analysis digest (00:05, 08:05, 16:05 UTC)
   daily 02:00    FRED refresh + daily price refresh
   daily 03:00    graph hygiene, stats vacuum, spend report
 
@@ -75,7 +75,7 @@ def job_tick() -> dict:
 def job_digest() -> dict:
     from brain import digest
 
-    result = digest.run(hours=6)
+    result = digest.run(hours=8)
     if result.get("ok"):
         out.digest(result)
         return {k: v for k, v in result.items() if k != "body"}
@@ -124,7 +124,7 @@ def build_scheduler() -> BlockingScheduler:
     )
     sched.add_job(
         lambda: _guard("digest", job_digest),
-        CronTrigger(hour="0,6,12,18", minute=5),
+        CronTrigger(hour="0,8,16", minute=5),
         id="digest",
     )
     sched.add_job(

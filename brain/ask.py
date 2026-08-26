@@ -76,7 +76,7 @@ Question: {question}"""
         model=model or config.ASK_MODEL,
         purpose="ask",
         max_turns=max_turns,
-        max_tokens=6000,
+        max_tokens=12000,
         use_web_search=use_web_search,
         effort="high",
     )

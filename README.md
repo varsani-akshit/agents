@@ -77,7 +77,7 @@ Installed as a launchd agent (`com.mia.scheduler`), restarts on crash and at log
 | Job | Cadence |
 |---|---|
 | tick | every 15 min |
-| digest | 00:05, 06:05, 12:05, 18:05 UTC |
+| digest | 00:05, 08:05, 16:05 UTC (3/day) |
 | daily data refresh | 02:00 UTC |
 | maintenance (graph hygiene, pruning) | 03:00 UTC |
 
@@ -96,13 +96,39 @@ allowed. Two hard caps in `.env`; a call that would breach either raises
 failing.
 
 ```
-MIA_DAILY_USD_CAP=2.60     # lower to ~1.20 for steady state
-MIA_TOTAL_USD_CAP=3.00     # lifetime guard on the prepaid balance
-MIA_DIGEST_EFFORT=low      # low ~$0.26 | medium ~$0.33 | high ~$0.40 per digest
+MIA_DAILY_USD_CAP=2.50        # rolling 24-hour rate limit
+MIA_TOTAL_USD_CAP=4.50        # lifetime guard on the prepaid balance
+MIA_AUTONOMOUS_USD_CAP=4.00   # scheduled jobs stop here; rest reserved for `ask`
+MIA_DIGEST_EFFORT=low         # low ~$0.26 | medium ~$0.33 | high ~$0.40 per digest
 ```
 
-Data sources are all free tiers (yfinance, CoinGecko, FRED, RSS), so the only
-running cost is inference.
+**Caps guard Anthropic spend only.** Routed Gemini/Groq/OpenAI spend is tracked
+separately — counting it against these caps would defeat the point of routing
+work off Anthropic. Data sources are all free tiers, so the only running cost is
+inference.
+
+## Model routing
+
+Not every call needs Claude. Tasks are routed by requirement, not preference:
+
+| Task | Model | Why |
+|---|---|---|
+| classify | `gemini:gemini-flash-latest` | high volume, narrow schema |
+| extract_edges | `gemini:gemini-flash-latest` | high volume, narrow schema |
+| alert | `anthropic:claude-haiku-4-5` | user-facing prose, low volume |
+| digest | `anthropic:claude-sonnet-5` | deep reasoning + tool use + caching |
+| ask | `anthropic:claude-sonnet-5` | deep reasoning + tool use |
+
+Override any of these with `MIA_CLASSIFY_SPEC`, `MIA_EXTRACT_SPEC`,
+`MIA_ALERT_SPEC`. Format is `provider:model`; a bare name means Anthropic.
+Providers are `anthropic`, `gemini`, `groq`, `openai`. Any provider failure falls
+back to Anthropic automatically, so a routing choice cannot break the pipeline.
+`./mia status` shows the live routing table and per-provider spend.
+
+On a benchmark headline ("Fed holds rates steady, signals no cuts"), Gemini Flash
+rated it High correctly while gpt-4o-mini and Gemini Flash-Lite both under-rated
+it Medium — which is why classification routes to Flash rather than the cheapest
+option available.
 
 ## Output
 

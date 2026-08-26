@@ -70,6 +70,9 @@ def run_agent(
     calls: list[dict] = []
     spent_start = client.spend_total()
     stopped_reason = None
+    # Text accumulates across continuations: a max_tokens hit mid-answer is
+    # resumed, and the pieces must be joined rather than the last one returned.
+    parts: list[str] = []
 
     for turn in range(max_turns):
         try:
@@ -106,13 +109,33 @@ def run_agent(
         tool_uses = [b for b in resp.content if getattr(b, "type", "") == "tool_use"]
         if not tool_uses:
             messages.append({"role": "assistant", "content": resp.content})
+            parts.append(client.text_of(resp))
+
+            # Adaptive thinking bills against max_tokens alongside the prose, so a
+            # ceiling hit can truncate the answer mid-sentence. Ask it to continue
+            # rather than silently shipping half an answer.
+            if resp.stop_reason == "max_tokens" and turn + 1 < max_turns:
+                log.warning("hit max_tokens (%s) — requesting continuation", max_tokens)
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your previous response was cut off by the output limit. "
+                            "Continue from exactly where it stopped. Do not repeat any "
+                            "text you already wrote and do not restart the answer."
+                        ),
+                    }
+                )
+                continue
+
             return {
-                "text": client.text_of(resp),
+                "text": "\n\n".join(p for p in parts if p).strip(),
                 "messages": messages,
                 "tool_calls": calls,
                 "turns": turn + 1,
                 "usd": round(client.spend_total() - spent_start, 5),
                 "stopped": stopped_reason,
+                "truncated": resp.stop_reason == "max_tokens",
             }
 
         messages.append({"role": "assistant", "content": resp.content})
@@ -133,6 +156,16 @@ def run_agent(
         messages.append({"role": "user", "content": results})
 
     # Fell out of the loop: either turns exhausted or halted mid-flight.
+    if parts:
+        return {
+            "text": "\n\n".join(p for p in parts if p).strip(),
+            "messages": messages,
+            "tool_calls": calls,
+            "turns": max_turns,
+            "usd": round(client.spend_total() - spent_start, 5),
+            "stopped": stopped_reason or "max_turns",
+        }
+
     last_text = ""
     for m in reversed(messages):
         if m["role"] == "assistant":

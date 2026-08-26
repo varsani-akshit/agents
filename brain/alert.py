@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 import config
 import db
-from brain import client
+from brain import client, llm
 from signals import stats
 
 log = logging.getLogger("mia.alert")
@@ -106,7 +106,7 @@ def write(event: dict) -> dict:
     ctx = _context_for(event)
     try:
         resp = client.complete(
-            model=config.CLASSIFY_MODEL,
+            model=llm.parse_spec(config.ALERT_SPEC)[1],
             purpose="alert",
             system=SYSTEM,
             messages=[{"role": "user", "content": json.dumps(ctx, default=str)[:12000]}],

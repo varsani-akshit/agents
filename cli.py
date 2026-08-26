@@ -152,6 +152,17 @@ def cmd_status(args) -> int:
         f"${b['interactive_reserve_usd']:.4f} reserved for your own queries[/dim]"
     )
 
+    from brain import llm
+    pt = Table(title="\nmodel routing", box=None)
+    for col in ("task", "routed to", "spend"):
+        pt.add_column(col)
+    by_prov = {r["provider"]: r for r in client.spend_by_provider()}
+    for r in llm.routing_table():
+        prov = llm.parse_spec(r["spec"])[0]
+        spent = by_prov.get(prov, {}).get("usd", 0)
+        pt.add_row(r["task"], r["spec"], f"${float(spent):.4f} ({prov} total)")
+    c.print(pt)
+
     jobs = db.query(
         """SELECT DISTINCT ON (job) job, started_at, finished_at, ok, error
            FROM job_runs ORDER BY job, started_at DESC"""

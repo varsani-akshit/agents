@@ -194,7 +194,7 @@ def _split_world_model(text: str) -> tuple[str, str | None, str | None]:
     return body.strip(), wm, regime
 
 
-def run(hours: int = 6, extract_edges: bool = True) -> dict:
+def run(hours: int = 8, extract_edges: bool = True) -> dict:
     """Execute one deep-analysis cycle end to end."""
     world_model.ensure_seeded()
     user, pack = _build_prompt(hours)
@@ -217,7 +217,7 @@ def run(hours: int = 6, extract_edges: bool = True) -> dict:
         model=config.DIGEST_MODEL,
         purpose="digest",
         max_turns=6,
-        max_tokens=6000,
+        max_tokens=10000,
         use_web_search=True,
         # Adaptive thinking bills as output tokens, so effort is the dominant
         # cost lever on a 4x/day cadence. Measured per digest on this workload:

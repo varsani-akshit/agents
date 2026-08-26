@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import config
 import db
-from brain import client
+from brain import client, llm
 
 log = logging.getLogger("mia.classify")
 
@@ -163,16 +163,14 @@ def _classify_batch(docs: list[dict]) -> list[dict]:
         }
         for d in docs
     ]
-    resp = client.complete(
-        model=config.CLASSIFY_MODEL,
-        purpose="classify",
+    return llm.complete_json(
+        config.CLASSIFY_SPEC,
         system=SYSTEM,
-        messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+        user=json.dumps(payload, ensure_ascii=False),
+        schema=SCHEMA,
+        purpose="classify",
         max_tokens=3000,
-        estimated_usd=0.01,
-        output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
-    )
-    return json.loads(client.text_of(resp)).get("items", [])
+    ).get("items", [])
 
 
 def run(batch: int = 20, max_batches: int = 8, workers: int = 3) -> dict:
@@ -198,6 +196,9 @@ def run(batch: int = 20, max_batches: int = 8, workers: int = 3) -> dict:
                 items = fut.result()
             except client.BudgetExceeded as exc:
                 stopped = str(exc)
+                continue
+            except llm.ProviderError as exc:
+                log.error("classification batch failed: %s", exc)
                 continue
             except Exception as exc:  # noqa: BLE001
                 log.error("classification batch failed: %s", exc)

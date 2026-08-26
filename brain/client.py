@@ -44,14 +44,31 @@ def spend_today() -> float:
     """
     row = db.one(
         "SELECT COALESCE(SUM(usd),0) AS s FROM api_calls "
-        "WHERE created_at > now() - interval '24 hours'"
+        "WHERE provider='anthropic' AND created_at > now() - interval '24 hours'"
     )
     return float(row["s"]) if row else 0.0
 
 
 def spend_total() -> float:
-    row = db.one("SELECT COALESCE(SUM(usd),0) AS s FROM api_calls")
+    """Anthropic spend only.
+
+    The caps exist to protect one prepaid Anthropic balance. Counting routed
+    Gemini/Groq/OpenAI spend against them would defeat the point of routing work
+    off Anthropic in the first place — the cheap providers would consume the very
+    headroom the routing was meant to free. Cross-provider spend is reported
+    separately by `spend_by_provider`.
+    """
+    row = db.one(
+        "SELECT COALESCE(SUM(usd),0) AS s FROM api_calls WHERE provider='anthropic'"
+    )
     return float(row["s"]) if row else 0.0
+
+
+def spend_by_provider() -> list[dict]:
+    return db.query(
+        """SELECT provider, count(*) AS calls, round(sum(usd)::numeric, 4) AS usd
+           FROM api_calls GROUP BY provider ORDER BY sum(usd) DESC"""
+    )
 
 
 def price_call(model: str, usage: Any, web_searches: int = 0) -> float:
@@ -146,6 +163,7 @@ def complete(
     max_tokens: int = 4000,
     tools: list[dict] | None = None,
     estimated_usd: float = 0.02,
+    _skip_ledger: bool = False,
     **kwargs,
 ) -> Any:
     """One non-streaming call, priced and recorded. Raises BudgetExceeded first."""
@@ -161,6 +179,8 @@ def complete(
     params.update(kwargs)
 
     resp = client().messages.create(**params)
+    if _skip_ledger:      # caller (brain/llm.py router) records it instead
+        return resp
     usd = record(model, purpose, resp.usage, _count_web_searches(resp))
     log.info("%s via %s: $%.5f (in=%s out=%s)", purpose, model, usd,
              resp.usage.input_tokens, resp.usage.output_tokens)

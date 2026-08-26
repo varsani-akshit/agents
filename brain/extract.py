@@ -13,7 +13,7 @@ import re
 
 import config
 import db
-from brain import client
+from brain import client, llm
 
 log = logging.getLogger("mia.extract")
 
@@ -207,16 +207,14 @@ def run(hours: int = 6, limit: int = 30) -> int:
         for d in docs
     ]
     try:
-        resp = client.complete(
-            model=config.CLASSIFY_MODEL,
-            purpose="extract_edges",
+        edges = llm.complete_json(
+            config.EXTRACT_SPEC,
             system=SYSTEM,
-            messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False)}],
+            user=json.dumps(payload, ensure_ascii=False),
+            schema=SCHEMA,
+            purpose="extract_edges",
             max_tokens=3000,
-            estimated_usd=0.01,
-            output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
-        )
-        edges = json.loads(client.text_of(resp)).get("edges", [])
+        ).get("edges", [])
     except client.BudgetExceeded as exc:
         log.warning("edge extraction skipped: %s", exc)
         return 0
