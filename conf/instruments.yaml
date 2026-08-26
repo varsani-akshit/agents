@@ -69,6 +69,53 @@ instruments:
     asset_class: energy
     source: yfinance
     source_id: "CL=F"
+  # Cross-asset breadth. Analysing "how does this hit different assets" requires
+  # actually tracking them — metals and crypto alone cannot answer it.
+  - symbol: REIT
+    name: US real estate (VNQ)
+    asset_class: real_estate
+    source: yfinance
+    source_id: "VNQ"
+  - symbol: HOMEBUILDERS
+    name: US homebuilders (ITB)
+    asset_class: real_estate
+    source: yfinance
+    source_id: "ITB"
+  - symbol: NASDAQ
+    name: Nasdaq Composite
+    asset_class: equity
+    source: yfinance
+    source_id: "^IXIC"
+  - symbol: RUSSELL
+    name: Russell 2000 small caps
+    asset_class: equity
+    source: yfinance
+    source_id: "^RUT"
+  - symbol: EM
+    name: Emerging markets equity (EEM)
+    asset_class: equity
+    source: yfinance
+    source_id: "EEM"
+  - symbol: HYG
+    name: US high-yield credit (HYG)
+    asset_class: credit
+    source: yfinance
+    source_id: "HYG"
+  - symbol: TLT
+    name: Long Treasury bond ETF (TLT)
+    asset_class: rate
+    source: yfinance
+    source_id: "TLT"
+  - symbol: VIX
+    name: Equity volatility index
+    asset_class: volatility
+    source: yfinance
+    source_id: "^VIX"
+  - symbol: URANIUM
+    name: Uranium miners (URA)
+    asset_class: commodity
+    source: yfinance
+    source_id: "URA"
   - symbol: BTC
     name: Bitcoin
     asset_class: crypto
@@ -105,3 +152,8 @@ fred_series:
   DFII5: 5-year TIPS real yield
   T5YIE: 5-year breakeven inflation
   SOFR: Secured overnight financing rate
+  MORTGAGE30US: 30-year fixed mortgage rate
+  BAMLH0A0HYM2: US high-yield credit spread
+  BAMLC0A0CM: US investment-grade credit spread
+  CSUSHPINSA: Case-Shiller national home price index
+  RRVRUSQ156N: Rental vacancy rate

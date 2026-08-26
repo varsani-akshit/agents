@@ -256,3 +256,49 @@ def test_relation_vocabulary_is_sign_neutral():
     for signed in ("supports", "pressures", "suppresses", "diverges_from"):
         assert signed not in extract.RELATIONS, f"{signed} re-encodes sign in the verb"
     assert "affects" in extract.RELATIONS
+
+
+def test_intraday_moves_compare_to_prior_close():
+    """Regression: a digest must not report the prior close as 'today'.
+
+    Silver closed at 67.735 and traded 69.085 live (+1.99%); using the daily bar
+    alone, the digest said silver *fell* 1.18% while it was actually up 2%.
+    """
+    idx = pd.date_range("2026-08-20", periods=6, freq="D")
+    wide = pd.DataFrame({"SILVER": [66.0, 66.5, 67.0, 67.2, 67.4, 67.735]}, index=idx)
+
+    import signals.stats as st
+
+    real = st.latest_intraday
+    st.latest_intraday = lambda: {
+        "SILVER": {"ts": pd.Timestamp("2026-08-26T15:00Z"), "price": 69.085}
+    }
+    try:
+        rows = {r["symbol"]: r for r in st.intraday_moves(wide)}
+    finally:
+        st.latest_intraday = real
+
+    silver = rows["SILVER"]
+    assert silver["live"] == 69.085
+    assert silver["prior_close"] == 67.735
+    assert silver["chg_pct"] == pytest.approx(1.99, abs=0.01)
+    assert silver["chg_pct"] > 0, "direction must match the live move, not the stale bar"
+
+
+def test_intraday_moves_use_basis_points_for_rates():
+    idx = pd.date_range("2026-08-20", periods=3, freq="D")
+    wide = pd.DataFrame({"US10Y": [4.60, 4.62, 4.656]}, index=idx)
+
+    import signals.stats as st
+
+    real = st.latest_intraday
+    st.latest_intraday = lambda: {
+        "US10Y": {"ts": pd.Timestamp("2026-08-26T04:50Z"), "price": 4.639}
+    }
+    try:
+        row = {r["symbol"]: r for r in st.intraday_moves(wide)}["US10Y"]
+    finally:
+        st.latest_intraday = real
+
+    assert row["chg_bp"] == pytest.approx(-1.7, abs=0.1)
+    assert "chg_pct" not in row

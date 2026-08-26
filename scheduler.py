@@ -76,11 +76,11 @@ def job_digest() -> dict:
     from brain import digest
 
     result = digest.run(hours=8)
-    if result.get("ok"):
-        out.digest(result)
-        return {k: v for k, v in result.items() if k != "body"}
-    out.error(f"digest failed: {result.get('error')}")
-    return {"ok": False, "error": str(result.get("error"))}
+    if not result.get("ok"):
+        out.error(f"digest failed: {result.get('error')}")
+        raise RuntimeError(f"digest produced no output: {result.get('error')}")
+    out.digest(result)
+    return {k: v for k, v in result.items() if k != "body"}
 
 
 def job_daily_data() -> dict:

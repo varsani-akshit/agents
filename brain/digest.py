@@ -16,7 +16,7 @@ import config
 import db
 from brain import agent, client, extract
 from memory import store, world_model
-from signals import stats
+from signals import charts, stats
 
 log = logging.getLogger("mia.digest")
 
@@ -24,10 +24,16 @@ ROLE = """You are MIA, a senior macro strategist running continuously for one
 sophisticated individual investor. Your domain is the intersection of precious
 metals, fiat currencies, sovereign debt, central bank policy, and crypto.
 
-You are not a news summariser. Your value is in relationships the reader would
-not spot alone: a correlation that broke, a move inconsistent with its usual
-driver, a policy action whose second-order effect lands three assets away. Lead
-with those.
+Your reader can look up any price in seconds. What they cannot do is read
+several hundred articles, work out which five mattered, and trace each one
+through to the assets it touches. That is the job.
+
+So: lead with what happened and what it means, not with how much gold moved.
+Your value is in relationships they would not spot alone — a correlation that
+broke, a move inconsistent with its usual driver, a policy action whose
+second-order effect lands three asset classes away. Metals and crypto are the
+reader's core interest, but the analysis is global macro: equities, credit, real
+estate, rates, energy, FX and volatility all matter when tracing consequences.
 
 The principles below are your standing analytical frame. The stats pack is your
 only source of numbers. Apply the analysis discipline strictly — especially the
@@ -35,46 +41,88 @@ rule that every quantitative claim comes from a tool result, never from memory."
 
 FORMAT = """Write the digest in this exact structure, in markdown.
 
-Length discipline: this is a briefing for someone who reads four of these a day.
-Aim for 700-1000 words total. Every sentence must carry information the reader
-does not already have. Cut throat-clearing, cut restatement, cut any section that
-has nothing in it this cycle down to a single line. A short digest on a quiet day
-is correct output, not laziness.
+This is a full analytical brief, not a summary — the standard is a strategy note
+from a research desk retained to tell one investor what to pay attention to.
+Be comprehensive: depth, tables, and traced mechanisms are the product.
+
+Discipline still applies, and it is about *substance*, not length. Every
+paragraph must carry something the reader could not get from a price screen.
+Cut throat-clearing and restatement, never analysis. A quiet window produces a
+shorter brief because less happened — not a padded one.
+
+Use markdown tables wherever data is comparative: cross-asset moves, correlation
+values, scenario matrices, before/after readings. Tables are easier to scan than
+prose lists and are expected in every cycle.
+
+Charts have already been rendered from the same data you are reading and are
+listed under `# Charts available` below. Reference them inline with standard
+markdown image syntax, e.g. `![Cross-asset performance](charts/cross_asset_performance.png)`,
+placing each one in the section where it supports the argument. Interpret every
+chart you place — an unexplained chart is decoration. Never invent a chart that
+is not in the list.
 
 
 ## Bottom Line
-Two or three sentences. What changed, what it means, what to watch. If nothing
-material changed, say so plainly — that is a valid and useful finding.
+Two or three sentences. What happened that matters, and what it changes. If
+nothing material happened, say so plainly — that is a valid finding.
 
-## Prices
-The moves that matter, with measured numbers. Skip instruments that did nothing.
-For yields use basis points, not percent.
+## What Happened
+The heart of the digest: the 3-6 developments from this window worth knowing
+about, each as a short paragraph. For each one give what happened, who reported
+it and how credible they are, and — the part that earns its place — what it
+implies that is not already obvious from the headline. Cite sources with links
+where you have them.
 
-## Key Developments
-New information since the last cycle that has macro consequence. Cite sources by
-name and note tier where credibility matters. Omit routine churn entirely.
+Rank by consequence, not recency. A quiet policy detail that changes the fiscal
+path outranks a loud headline that changes nothing. Omit routine churn entirely;
+five real items beat fifteen padded ones.
 
-## Correlations & Anomalies
-The statistical heart of the digest. Which relationships are holding, which
-broke, and what a break implies. Quote measured correlation values. If the pack
-shows no anomalies, say the relationships are behaving normally and name the one
-worth watching.
+## Worth Your Attention
+A short list — one line each, at most three — of the specific things the reader
+should actually go read or watch in full, and why. This is the "you need to look
+into this" section. If nothing clears that bar this cycle, write "Nothing this
+cycle requires your direct attention" and stop. Never manufacture an item.
+
+## Cross-Asset Impact
+For the developments above, trace the consequences across asset classes using
+`cross_asset_board` — not just metals and crypto. Cover, where genuinely
+affected: equities (SPX/NASDAQ/RUSSELL/EM), credit (HYG and the FRED spread
+series), real estate (REIT, HOMEBUILDERS, MORTGAGE30US, Case-Shiller), rates and
+duration (TLT, the curve), commodities and energy, volatility (VIX), FX, and
+metals/crypto.
+
+Say which assets the mechanism should hit, in which direction, and then whether
+the measured data agrees. A predicted transmission that is *not* showing up in
+the prices is a finding worth stating — it means either the market disagrees or
+the move has not happened yet. Skip asset classes with nothing real to say.
+
+## Signals & Correlations
+What the measured statistics say: relationships holding, relationships that
+broke, and what a break implies. Quote measured values. Where a news development
+above should have moved a correlation and did not, flag it. If the pack shows no
+anomalies, say the relationships are behaving normally and name the one worth
+watching.
+
+Prices belong here as evidence, compressed — never a long list of instruments and
+percentages. The reader can look up a price anywhere; they cannot look up which
+relationship just broke.
 
 ## Framework View
-Map the current picture onto the debt-cycle / debasement / repression frames.
-Which of the four levers is being pulled? What regime does the evidence support?
+Map the picture onto the debt-cycle / debasement / repression frames. Which of
+the four levers is being pulled? What regime does the evidence support, and did
+this window's news strengthen or weaken that call?
 
 ## Tensions
-Where credible sources or the data disagree. State both sides, say which the
-data favours and by how much, and name the observation that would resolve it.
-Omit this section only if there is genuinely no tension.
+Where credible sources or the data disagree. State both sides, say which the data
+favours and by how much, and name the observation that would resolve it. Omit
+only if there is genuinely no tension.
 
 ## Scenarios
 Two or three forward paths with rough likelihoods and the leading indicator that
-would confirm each. These are scenarios, not predictions.
+would confirm each. Scenarios, not predictions.
 
 ## Confidence
-What you are confident about, what is uncertain, and what would change your mind.
+What you are confident about, what is uncertain, what would change your mind.
 
 ---
 After the digest, output a fenced block exactly like this:
@@ -105,10 +153,20 @@ The world_model block replaces the previous one wholesale, so carry forward
 anything still true. It is read by the next cycle as its starting point."""
 
 
-def _build_prompt(hours: int) -> tuple[str, dict]:
+def _build_prompt(hours: int) -> tuple[str, dict, dict]:
     pack = stats.build(persist=True)
+    # Charts are rendered deterministically from the same series the pack uses;
+    # the model places and interprets them but never invents one.
+    try:
+        chart_manifest = charts.render_pack()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("chart rendering failed: %s", exc)
+        chart_manifest = {}
+    chart_lines = "\n".join(
+        f"- `{path}` — {key.replace('_', ' ')}" for key, path in chart_manifest.items()
+    )
     prior = world_model.current_body()
-    docs = store.recent_documents(hours=hours, limit=70)
+    docs = store.recent_documents(hours=hours, limit=120)
     triggers = db.query(
         """SELECT rule, severity, symbol, detail, created_at FROM trigger_events
            WHERE created_at > now() - make_interval(hours => %s)
@@ -128,6 +186,13 @@ def _build_prompt(hours: int) -> tuple[str, dict]:
             for row in pack.get("performance", [])
         ],
         "yield_curve": pack.get("yield_curve"),
+        # Live prices. `performance` is the last *daily close*; this is where
+        # the instrument is trading right now. Use this for anything described
+        # as today/now/currently.
+        "intraday_moves": pack.get("intraday_moves"),
+        # Every tracked instrument by asset class — the board for tracing a
+        # development through to equities, credit, real estate and vol.
+        "cross_asset_board": pack.get("cross_asset_board"),
         "ratios": pack.get("ratios"),
         "gold_in_currencies": pack.get("gold_in_currencies"),
         "correlation_flips": pack.get("correlation_flips"),
@@ -137,7 +202,11 @@ def _build_prompt(hours: int) -> tuple[str, dict]:
         "macro_keys": sorted((pack.get("macro") or {}).keys()),
         "_note": (
             "Compact brief. Full sections (macro levels, 90d/180d correlation "
-            "matrices, intraday) available via get_stats_pack."
+            "matrices) available via get_stats_pack. IMPORTANT: `performance` "
+            "holds the last completed DAILY CLOSE, which may be up to a day old. "
+            "`intraday_moves` holds the live price and its change since that "
+            "close. When you say an instrument rose or fell 'today', cite "
+            "intraday_moves — the daily close can show the opposite direction."
         ),
     }
 
@@ -154,7 +223,7 @@ def _build_prompt(hours: int) -> tuple[str, dict]:
 
 # Computed statistics (authoritative for all numbers)
 ```json
-{json.dumps(slim, default=str)[:9000]}
+{json.dumps(slim, default=str)[:13000]}
 ```
 
 # Code-detected trigger events this window
@@ -163,7 +232,10 @@ def _build_prompt(hours: int) -> tuple[str, dict]:
 ```
 
 # New documents since last cycle ({len(doc_lines)} non-Low of {len(docs)} total)
-{chr(10).join(doc_lines[:60]) or "(nothing above Low urgency)"}
+{chr(10).join(doc_lines[:100]) or "(nothing above Low urgency)"}
+
+# Charts available (reference inline with markdown image syntax)
+{chart_lines or "(none rendered this cycle)"}
 
 # Prior world model — reconcile your analysis against this
 {prior}
@@ -184,7 +256,7 @@ The RSS corpus lags and is incomplete by construction; treating it as the whole
 world is how this system would miss the thing that mattered. Cite what you find.
 
 Then write the digest in the required format."""
-    return user, pack
+    return user, pack, chart_manifest
 
 
 def _split_world_model(text: str) -> tuple[str, str | None, str | None]:
@@ -206,7 +278,7 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
         effort: str | None = None) -> dict:
     """Execute one deep-analysis cycle end to end."""
     world_model.ensure_seeded()
-    user, pack = _build_prompt(hours)
+    user, pack, chart_manifest = _build_prompt(hours)
 
     system = [
         {"type": "text", "text": ROLE},
@@ -235,8 +307,8 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             user_message=user,
             model=model,
             purpose="digest",
-            max_turns=6,
-            max_tokens=10000,
+            max_turns=8,
+            max_tokens=24000,
             effort=chosen_effort,
             use_web_search=True,
         )
@@ -246,8 +318,8 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             user_message=user,
             model=model or config.DIGEST_MODEL,
             purpose="digest",
-            max_turns=6,
-            max_tokens=10000,
+            max_turns=8,
+            max_tokens=24000,
             use_web_search=True,
             # Adaptive thinking bills as output tokens, so effort is the dominant
             # cost lever. Measured per digest: high ~$0.40, medium ~$0.33, low ~$0.26.
@@ -273,6 +345,7 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             "stopped": result.get("stopped"),
             "regime": regime,
             "citations": result.get("citations", []),
+            "charts": chart_manifest,
             "model": model or config.DIGEST_MODEL,
             "provider": provider,
             "effort": chosen_effort,

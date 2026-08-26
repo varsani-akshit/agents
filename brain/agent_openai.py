@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 
 import httpx
@@ -83,9 +84,28 @@ def to_responses_tools(defs: list[dict], web_search: bool) -> list[dict]:
     return out
 
 
+def _retry_after(resp: httpx.Response) -> float:
+    """Seconds to wait, from the header or the message body.
+
+    OpenAI's 429 states exactly how long to wait ("try again in 5.63s"). A fixed
+    short backoff ignores it and burns the retry budget before the window opens.
+    """
+    header = resp.headers.get("retry-after") or resp.headers.get("x-ratelimit-reset-tokens")
+    if header:
+        try:
+            return min(float(str(header).rstrip("smh")), 90.0)
+        except ValueError:
+            pass
+    m = re.search(r"try again in ([\d.]+)\s*(ms|s)", resp.text, re.I)
+    if m:
+        secs = float(m.group(1)) / (1000 if m.group(2).lower() == "ms" else 1)
+        return min(secs, 90.0)
+    return 0.0
+
+
 def _post(payload: dict) -> dict:
     last: Exception | None = None
-    for attempt in range(4):
+    for attempt in range(5):
         try:
             r = httpx.post(
                 _URL,
@@ -95,7 +115,12 @@ def _post(payload: dict) -> dict:
             )
             if r.status_code in (429, 500, 502, 503):
                 last = RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
-                time.sleep(2 * (attempt + 1))
+                wait = _retry_after(r) or (2 ** attempt)
+                # Token-per-minute limits need a real pause, not a token gesture.
+                wait = max(wait + 1.0, 5.0) if r.status_code == 429 else wait
+                log.warning("HTTP %s — waiting %.1fs before retry %d/5",
+                            r.status_code, wait, attempt + 1)
+                time.sleep(wait)
                 continue
             r.raise_for_status()
             return r.json()

@@ -19,7 +19,8 @@ import db
 log = logging.getLogger("mia.stats")
 
 WINDOWS = (30, 90, 180)
-CORE = ["GOLD", "SILVER", "BTC", "DXY", "US10Y", "US2Y", "US30Y", "SPX", "OIL", "ETH", "COPPER"]
+CORE = ["GOLD", "SILVER", "BTC", "DXY", "US10Y", "US2Y", "US30Y", "SPX", "OIL",
+        "ETH", "COPPER", "NASDAQ", "HYG", "REIT", "VIX", "TLT"]
 RATIOS = {
     "gold_silver": ("GOLD", "SILVER"),
     "gold_spx": ("GOLD", "SPX"),
@@ -261,6 +262,81 @@ def anomalies(wide: pd.DataFrame, perf: list[dict]) -> list[str]:
 
 
 # ─────────────────────────────── macro context ──────────────────────────────
+def cross_asset_board(wide: pd.DataFrame) -> dict:
+    """Every tracked instrument grouped by asset class.
+
+    The question "how does this development hit different assets" cannot be
+    answered from a metals-and-crypto table. This is the board the digest reads
+    when tracing a macro event through to equities, credit, real estate and vol.
+    """
+    classes = {
+        r["symbol"]: r["asset_class"]
+        for r in db.query("SELECT symbol, asset_class FROM instruments")
+    }
+    out: dict[str, list[dict]] = {}
+    for sym in wide.columns:
+        series = wide[sym].dropna()
+        if len(series) < 25:
+            continue
+        is_rate = sym.startswith("US") and sym.endswith("Y")
+        row = {"symbol": sym}
+        if is_rate:
+            row["last_pct"] = round(float(series.iloc[-1]), 3)
+            for label, n in (("1d", 1), ("1w", 5), ("1m", 21)):
+                if len(series) > n:
+                    row[f"chg_{label}_bp"] = round(
+                        float((series.iloc[-1] - series.iloc[-1 - n]) * 100), 1
+                    )
+        else:
+            row["last"] = round(float(series.iloc[-1]), 2)
+            for label, n in (("1d", 1), ("1w", 5), ("1m", 21), ("3m", 63)):
+                v = pct_change(series, n)
+                if v is not None:
+                    row[f"chg_{label}_pct"] = round(v, 2)
+        out.setdefault(classes.get(sym, "other"), []).append(row)
+    return out
+
+
+def intraday_moves(wide: pd.DataFrame) -> list[dict]:
+    """Live 15-minute price versus the prior daily close.
+
+    Without this the digest reports the previous session's close as "today".
+    At three cycles a day two of them see an unchanged daily bar, so a 2%
+    intraday reversal is invisible — and the digest can state the opposite of
+    what an instrument is currently doing.
+    """
+    latest = latest_intraday()
+    if not latest or wide.empty:
+        return []
+    out = []
+    for sym, info in sorted(latest.items()):
+        if sym not in wide.columns:
+            continue
+        series = wide[sym].dropna()
+        if series.empty:
+            continue
+        prior_close = float(series.iloc[-1])
+        price = info["price"]
+        # If the intraday print IS the latest daily bar, compare to the one before.
+        if abs(price - prior_close) < 1e-9 and len(series) > 1:
+            prior_close = float(series.iloc[-2])
+        if not prior_close:
+            continue
+        is_rate = sym.startswith("US") and sym.endswith("Y")
+        row = {
+            "symbol": sym,
+            "live": round(price, 4),
+            "prior_close": round(prior_close, 4),
+            "as_of": info["ts"].isoformat(),
+        }
+        if is_rate:
+            row["chg_bp"] = round((price - prior_close) * 100, 1)
+        else:
+            row["chg_pct"] = round((price - prior_close) / prior_close * 100, 2)
+        out.append(row)
+    return out
+
+
 def gold_in_currencies(wide: pd.DataFrame) -> dict:
     """Gold priced in non-USD currencies.
 
@@ -370,6 +446,8 @@ def build(persist: bool = True) -> dict:
         "correlation_flips": correlation_flips(wide),
         "ratios": ratio_divergence(wide),
         "gold_in_currencies": gold_in_currencies(wide),
+        "intraday_moves": intraday_moves(wide),
+        "cross_asset_board": cross_asset_board(wide),
         "yield_curve": yield_curve(),
         "macro": macro_snapshot(),
         "anomalies": anomalies(wide, perf),

@@ -94,7 +94,9 @@ def cmd_digest(args) -> int:
         detail.update({k: v for k, v in result.items() if k not in ("body",)})
         if not result.get("ok"):
             out.error(f"digest failed: {result.get('error')}")
-            return 1
+            # Raise so job_runs records ok=false. Returning quietly logged a
+            # successful run for a digest that produced nothing.
+            raise RuntimeError(f"digest produced no output: {result.get('error')}")
         out.digest(result)
     return 0
 
