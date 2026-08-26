@@ -70,16 +70,32 @@ Your standing world model (written by the most recent analysis cycle):
 ---
 Question: {question}"""
 
-    result = agent.run_agent(
-        system=system,
-        user_message=user,
-        model=model or config.ASK_MODEL,
-        purpose="ask",
-        max_turns=max_turns,
-        max_tokens=12000,
-        use_web_search=use_web_search,
-        effort="high",
-    )
+    chosen = model or config.ASK_MODEL
+    if chosen.startswith(("gpt-", "o3", "o4")):
+        from brain import agent_openai
+
+        result = agent_openai.run_agent(
+            system="\n\n---\n\n".join(
+                b["text"] if isinstance(b, dict) else str(b) for b in system
+            ),
+            user_message=user,
+            model=chosen,
+            purpose="ask",
+            max_turns=max_turns,
+            max_tokens=12000,
+            effort="medium",
+        )
+    else:
+        result = agent.run_agent(
+            system=system,
+            user_message=user,
+            model=chosen,
+            purpose="ask",
+            max_turns=max_turns,
+            max_tokens=12000,
+            use_web_search=use_web_search,
+            effort="high",
+        )
 
     answer = result["text"]
     analysis_id = None

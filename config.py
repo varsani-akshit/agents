@@ -25,7 +25,11 @@ VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY", "")
 
 DIGEST_MODEL = os.getenv("MIA_DIGEST_MODEL", os.getenv("DIGEST_MODEL", "claude-sonnet-5"))
 CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "claude-haiku-4-5")
-ASK_MODEL = os.getenv("ASK_MODEL", DIGEST_MODEL)
+# `ask` stays on Claude independently of the digest model: server-side web
+# search exists only on the Anthropic path, and interactive questions are where
+# fresh-source lookup matters most. Decoupled deliberately — inheriting from
+# DIGEST_MODEL would silently hand a GPT id to the Anthropic loop.
+ASK_MODEL = os.getenv("MIA_ASK_MODEL", "claude-sonnet-5")
 
 # Task routing. "provider:model"; a bare name means Anthropic. High-volume
 # schema-constrained work goes to a fast cheap model; deep reasoning stays on
