@@ -182,8 +182,20 @@ h1, h2, h3, p { text-wrap: pretty; }
 .mbody table td:first-child, table.data td:first-child { color: var(--t1); }
 .mbody table tr:last-child td, table.data tr:last-child td { border-bottom: none; }
 .mbody table td, .mbody table th { font-variant-numeric: tabular-nums; }
-/* Wide tables scroll inside their own box; the page never scrolls sideways. */
-.tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 32px 0; }
+/* Wide tables scroll inside their own box; the page never scrolls sideways.
+   The paired gradients are the standard scroll-shadow trick: the `local` layers
+   are painted with the content and slide away as it scrolls, uncovering the
+   `scroll` layers pinned to the edges. The shadow therefore appears only on a
+   side that actually has more table, so a column cut off at the edge reads as
+   scrollable rather than as missing. */
+.tablewrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 32px 0;
+  background:
+    linear-gradient(to right, var(--bg) 30%, rgba(250,250,250,0)) left / 28px 100% no-repeat local,
+    linear-gradient(to left, var(--bg) 30%, rgba(250,250,250,0)) right / 28px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(17,17,17,.09), transparent) left / 11px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(17,17,17,.09), transparent) right / 11px 100% no-repeat scroll;
+}
 .tablewrap > table { margin: 0; min-width: 540px; }
 
 /* ─────────────────────────────── charts ──────────────────────────── */
