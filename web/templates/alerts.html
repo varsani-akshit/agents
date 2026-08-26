@@ -3,27 +3,28 @@
 {% block content %}
 <div class="layout">
   <div>
-    <div class="panel">
-      <h3>Trigger events</h3>
-      <div class="hint" style="margin-bottom:14px">
+    <div class="pagehead">
+      <h1>Alerts</h1>
+      <p class="lede">
         Fired by code against explicit thresholds, before any model runs.
         Backtested to about 0.27 Critical events per day.
-      </div>
-      {% for e in events %}
-      <div class="alert {{ e.severity }}">
-        <div class="head">
-          <span class="sev">{{ e.severity|upper }}</span>
-          <strong>{{ e.symbol or e.rule }}</strong>
-          <span class="dim" style="font-size:12px">{{ e.rule }} · {{ e.created_at|ago }}
-            {% if not e.notified_at %}· <span class="dim">suppressed</span>{% endif %}</span>
-        </div>
-        {% if e.text %}<pre>{{ e.text }}</pre>{% endif %}
-        {% if e.detail %}<div class="dim" style="font-size:12px;margin-top:6px">
-          {% for k, v in e.detail.items() %}{% if v is string or v is number %}{{ k }}={{ v }} {% endif %}{% endfor %}
-        </div>{% endif %}
-      </div>
-      {% else %}<div class="empty">No trigger events recorded.</div>{% endfor %}
+      </p>
     </div>
+    {% for e in events %}
+    <div class="alert {{ e.severity }}">
+      <div class="head">
+        <span class="sev">{{ e.severity }}</span>
+        <span class="sym">{{ e.symbol or e.rule }}</span>
+        <span>{{ e.rule }}</span>
+        <span>{{ e.created_at|ago }}</span>
+        {% if not e.notified_at %}<span>suppressed</span>{% endif %}
+      </div>
+      {% if e.text %}<div class="body">{{ e.text }}</div>{% endif %}
+      {% if e.detail %}<div class="hint" style="margin-top:8px">
+        {% for k, v in e.detail.items() %}{% if v is string or v is number %}{{ k }}={{ v }}&ensp;{% endif %}{% endfor %}
+      </div>{% endif %}
+    </div>
+    {% else %}<p class="empty">No trigger events recorded.</p>{% endfor %}
   </div>
   {% set recent = none %}{% include "_sidebar.html" %}
 </div>

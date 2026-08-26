@@ -3,30 +3,33 @@
 {% block content %}
 <div class="layout">
   <div>
-    <div class="panel">
-      <h3>Digests</h3>
-      <div class="rows">
+    <div class="pagehead"><h1>Archive</h1></div>
+
+    <section style="margin-bottom:52px">
+      <h2>Digests</h2>
+      <div class="entries">
         {% for d in digests %}
-        <a class="row" href="/digest/{{ d.id }}">
-          <span class="when">{{ d.created_at|utc('%d %b %H:%M') }}</span>
-          <span class="what">{{ d.regime or d.title }}</span>
-          <span class="cost">{{ d.model or '' }} {% if d.usd %}· ${{ d.usd }}{% endif %}</span>
+        <a class="entry" href="/digest/{{ d.id }}">
+          <span class="entry-when">{{ d.created_at|utc('%d %b · %H:%M') }}</span>
+          <span class="entry-title">{{ d.regime or d.title }}</span>
+          <span class="entry-note">{{ d.model or '' }}{% if d.usd %} · ${{ d.usd }}{% endif %}</span>
         </a>
-        {% else %}<div class="empty">No digests yet.</div>{% endfor %}
+        {% else %}<p class="empty">No digests yet.</p>{% endfor %}
       </div>
-    </div>
-    <div class="panel">
-      <h3>Questions asked</h3>
-      <div class="rows">
+    </section>
+
+    <section>
+      <h2>Questions</h2>
+      <div class="entries">
         {% for a in answers %}
-        <a class="row" href="/answer/{{ a.id }}">
-          <span class="when">{{ a.created_at|utc('%d %b %H:%M') }}</span>
-          <span class="what">{{ a.title|replace('Q: ','') }}</span>
-          <span class="cost">{% if a.usd %}${{ a.usd }}{% endif %}</span>
+        <a class="entry" href="/answer/{{ a.id }}">
+          <span class="entry-when">{{ a.created_at|utc('%d %b · %H:%M') }}</span>
+          <span class="entry-title">{{ a.title|replace('Q: ','') }}</span>
+          <span class="entry-note">{% if a.usd %}${{ a.usd }}{% endif %}</span>
         </a>
-        {% else %}<div class="empty">Nothing asked yet.</div>{% endfor %}
+        {% else %}<p class="empty">Nothing asked yet.</p>{% endfor %}
       </div>
-    </div>
+    </section>
   </div>
   {% set recent = none %}{% include "_sidebar.html" %}
 </div>

@@ -55,10 +55,36 @@ at minimum a cross-asset move table, a correlation table, and a scenario matrix
 with columns for probability, mechanism and the confirming signal. Add more
 wherever you would otherwise write a list of numbers in prose.
 
+Unit and sign conventions in the stats pack. Each of these has produced a wrong
+statement in a previous digest, so read them as hard rules:
+- Yields carry basis points only, in `chg_*_bp`. There is no percent change of a
+  yield in the pack because it is a misleading quantity: a 1% change in a 4.7%
+  yield is 4.7bp, not 100bp.
+- `fx_board` resolves quote direction for you. Use the `dollar_1d` field and
+  `currency_1m_vs_usd_pct` rather than reasoning from the raw pair change —
+  USDJPY rising means the dollar strengthened and the yen weakened.
+- `intraday_moves` is the live price against the prior close. When it disagrees
+  with the daily bar, the intraday figure is what is happening now, and the daily
+  bar is history. Say which one you are quoting.
+- `net_liquidity` is weekly. `regime_score` components are votes in [-1, +1],
+  not returns or probabilities.
+- Correlations are computed on returns, never on levels.
+
 Two mechanical rules, because they silently break rendering:
 - Put every table at the top level, never indented inside a bullet or numbered
   list item. An indented table renders as plain text.
 - Leave one blank line immediately before the header row and after the last row.
+
+House style. The brief should read as though a person wrote it:
+- No horizontal rules (`---`) between sections. The headings already separate
+  them; adding rules on top gives the page a generated, templated look.
+- Use em dashes sparingly — at most one or two in a section. Where one is doing
+  the work of a comma, a colon or a full stop, use that instead. Strings of
+  dashes are the clearest tell of machine-written prose.
+- Prefer plain declaratives to the "not just X, but Y" and "it isn't A — it's B"
+  constructions. State the finding.
+- Bold carries emphasis only where a number or claim is genuinely load-bearing.
+  A paragraph with six bold phrases has none.
 
 Charts have already been rendered from the same data you are reading and are
 listed under `# Charts available` below. Reference them inline with standard
@@ -102,6 +128,14 @@ the measured data agrees. A predicted transmission that is *not* showing up in
 the prices is a finding worth stating — it means either the market disagrees or
 the move has not happened yet. Skip asset classes with nothing real to say.
 
+Three further inputs belong here, because a return without context misleads:
+- `drawdowns` — how far each asset sits from its own 52-week high. "Gold +14% in
+  a month" and "gold 12% below its high" are both true and point opposite ways.
+- `volatility` — whether a move came with expanding or contracting vol, and where
+  30-day vol sits in its own one-year range.
+- `fx_board` — currencies beyond the dollar index. DXY is 58% euro and cannot
+  speak for the yen, the yuan or the Australian dollar.
+
 ## Signals & Correlations
 What the measured statistics say: relationships holding, relationships that
 broke, and what a break implies. Quote measured values. Where a news development
@@ -109,9 +143,40 @@ above should have moved a correlation and did not, flag it. If the pack shows no
 anomalies, say the relationships are behaving normally and name the one worth
 watching.
 
-Prices belong here as evidence, compressed — never a long list of instruments and
-percentages. The reader can look up a price anywhere; they cannot look up which
-relationship just broke.
+`themed_correlations` carries the pairs that answer a standing question — each
+one ships with the question it answers, plus its 30d value, its 90d value and
+the drift between them. Lead with the pairs whose drift is largest. Prices belong
+here as evidence, compressed — never a long list of instruments and percentages.
+
+## Regime & Liquidity
+Open with the scored regime reading from `regime_score`: the number, the label,
+and — the part that matters — which components dissent. A score of +0.2 built
+from six bullish votes and two strongly bearish ones is a different world from
++0.2 built from eight lukewarm ones. Name the dissenters and say what would flip
+them.
+
+Then `net_liquidity`: the level, the direction over one and three months, and
+whether the hard-asset complex is behaving consistently with it. Note that this
+is a weekly series — do not describe it as a daily move. Bring in
+`credit_conditions` as the counterweight: spread widening is a deflationary
+impulse that cuts against the debasement trade even though both read as "bad
+macro". Use `breadth` to say whether a move is broad or narrow: one asset at a
+52-week high is a story about that asset, eleven across four asset classes is a
+story about money.
+
+## Historical Analogue
+`historical_analogues` returns past dates whose macro fingerprint most resembles
+today, with what actually followed. Treat this with visible discipline:
+
+- Say how the matches were found and over how much history — the pack tells you.
+- Report the median forward returns, but lead with the *dispersion*. If gold
+  ranged from -5% to +28% across four matches, the median is nearly meaningless
+  and you should say so.
+- Ask what is genuinely different now versus each analogue. This is the section's
+  real value: the ways today does *not* rhyme.
+- Never phrase any of it as a forecast or a base rate. Four matches is four
+  observations. If the engine reports `available: false`, say the sample was
+  insufficient and move on — do not substitute recalled history.
 
 ## Framework View
 Map the picture onto the debt-cycle / debasement / repression frames. Which of
@@ -125,10 +190,33 @@ only if there is genuinely no tension.
 
 ## Scenarios
 Two or three forward paths with rough likelihoods and the leading indicator that
-would confirm each. Scenarios, not predictions.
+would confirm each. Scenarios, not predictions. Present these as a table with
+columns for scenario, rough probability, mechanism, and the confirming signal.
+
+## Positioning Implications
+The section the reader acts on. For each asset class where this cycle actually
+changed something, state the implication and the reasoning behind it. Use a table
+with columns: asset class, direction of the argument, the specific mechanism, the
+measured evidence, and what would invalidate it.
+
+Cover the full board where there is something real to say — precious metals,
+crypto, equities by region and sector, credit, rates and duration, real estate,
+energy and commodities, FX. Metals and crypto are the reader's core interest but
+they are not the whole portfolio.
+
+Three hard rules:
+- This is analysis of how assets are positioned against the macro, not advice to
+  buy or sell. Never state or imply a recommended trade, size, entry or exit.
+  Write "the argument for duration weakened" — never "reduce duration".
+- An asset class where nothing changed gets one line saying so, or is omitted.
+  Do not manufacture a view to fill the table.
+- Every row must trace to measured evidence in the pack. A row you cannot
+  evidence does not belong in the table.
 
 ## Confidence
 What you are confident about, what is uncertain, what would change your mind.
+Close with the single observation over the next cycle that would most change the
+picture — one line, specific enough to check.
 
 ---
 After the digest, output a fenced block exactly like this:
@@ -199,16 +287,30 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
         # Every tracked instrument by asset class — the board for tracing a
         # development through to equities, credit, real estate and vol.
         "cross_asset_board": pack.get("cross_asset_board"),
+        # Currencies beyond DXY, with quote direction already resolved.
+        "fx_board": pack.get("fx_board"),
         "ratios": pack.get("ratios"),
         "gold_in_currencies": pack.get("gold_in_currencies"),
         "correlation_flips": pack.get("correlation_flips"),
+        "themed_correlations": pack.get("themed_correlations"),
         "anomalies": pack.get("anomalies"),
         "lead_lag": pack.get("lead_lag"),
         "correlations_30d": pack.get("correlations", {}).get("30d", {}),
+        # Position within the range, and whether vol is expanding — momentum
+        # alone reads the same on a breakout and on a dead-cat bounce.
+        "drawdowns": pack.get("drawdowns"),
+        "volatility": (pack.get("volatility") or [])[:12],
+        "breadth": pack.get("breadth"),
+        # Derived macro state: the scored regime, system liquidity, credit, and
+        # the nearest historical analogues.
+        "regime_score": pack.get("regime_score"),
+        "net_liquidity": pack.get("net_liquidity"),
+        "credit_conditions": pack.get("credit_conditions"),
+        "historical_analogues": pack.get("historical_analogues"),
         "macro_keys": sorted((pack.get("macro") or {}).keys()),
         "_note": (
-            "Compact brief. Full sections (macro levels, 90d/180d correlation "
-            "matrices) available via get_stats_pack. IMPORTANT: `performance` "
+            "Compact brief. Full sections (macro levels, 90d correlation "
+            "matrix) available via get_stats_pack. IMPORTANT: `performance` "
             "holds the last completed DAILY CLOSE, which may be up to a day old. "
             "`intraday_moves` holds the live price and its change since that "
             "close. When you say an instrument rose or fell 'today', cite "
@@ -229,7 +331,7 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
 
 # Computed statistics (authoritative for all numbers)
 ```json
-{json.dumps(slim, default=str)[:13000]}
+{json.dumps(slim, default=str)[:30000]}
 ```
 
 # Code-detected trigger events this window

@@ -3,52 +3,57 @@
 {% block content %}
 <div class="layout">
   <div>
-    <div class="panel">
-      <h3>Model routing</h3>
-      <table class="plain">
-        <tr><th>Task</th><th>Model</th><th>Why</th></tr>
-        {% for r in routing %}
-        <tr><td>{{ r.task }}</td><td><code>{{ r.spec }}</code></td><td class="dim">{{ r.why }}</td></tr>
-        {% endfor %}
-      </table>
+    <div class="pagehead"><h1>Status</h1></div>
+
+    <div class="grid2" style="margin-bottom:44px">
+      <section>
+        <h2>Model routing</h2>
+        <table class="plain">
+          <tr><th>Task</th><th>Model</th></tr>
+          {% for r in routing %}
+          <tr><td>{{ r.task }}</td><td class="dim">{{ r.spec }}</td></tr>
+          {% endfor %}
+        </table>
+      </section>
+
+      <section>
+        <h2>Spend by task</h2>
+        <table class="plain">
+          <tr><th>Model</th><th>Purpose</th><th class="num">Calls</th><th class="num">USD</th></tr>
+          {% for s in spend %}
+          <tr><td>{{ s.model }}</td><td class="dim">{{ s.purpose }}</td>
+              <td class="num">{{ s.calls }}</td><td class="num">${{ '%.4f'|format(s.usd) }}</td></tr>
+          {% endfor %}
+        </table>
+      </section>
     </div>
 
-    <div class="panel">
-      <h3>Spend by task</h3>
-      <table class="plain">
-        <tr><th>Provider</th><th>Model</th><th>Purpose</th><th class="num">Calls</th><th class="num">USD</th></tr>
-        {% for s in spend %}
-        <tr><td>{{ s.provider }}</td><td class="dim">{{ s.model }}</td><td>{{ s.purpose }}</td>
-            <td class="num">{{ s.calls }}</td><td class="num">${{ '%.4f'|format(s.usd) }}</td></tr>
-        {% endfor %}
-      </table>
+    <div class="grid2" style="margin-bottom:44px">
+      <section>
+        <h2>Recent jobs</h2>
+        <table class="plain">
+          <tr><th>Job</th><th>Started</th><th>OK</th></tr>
+          {% for j in jobs %}
+          <tr><td>{{ j.job }}</td><td class="dim">{{ j.started_at|utc('%d %b %H:%M') }}</td>
+              <td class="{{ 'ok' if j.ok else 'bad' }}">{{ 'yes' if j.ok else ('no' if j.ok is false else '…') }}</td></tr>
+          {% endfor %}
+        </table>
+      </section>
+
+      <section>
+        <h2>Source health, 7 days</h2>
+        <table class="plain">
+          <tr><th>Source</th><th class="num">Tier</th><th class="num">Docs</th><th>Last</th></tr>
+          {% for s in sources %}
+          <tr><td>{{ s.source }}</td><td class="num">{{ s.source_tier }}</td>
+              <td class="num">{{ s.docs }}</td><td class="dim">{{ s.last_seen|ago }}</td></tr>
+          {% endfor %}
+        </table>
+      </section>
     </div>
 
-    <div class="panel">
-      <h3>Recent jobs</h3>
-      <table class="plain">
-        <tr><th>Job</th><th>Started</th><th>OK</th><th>Error</th></tr>
-        {% for j in jobs %}
-        <tr><td>{{ j.job }}</td><td class="dim">{{ j.started_at|utc('%d %b %H:%M') }}</td>
-            <td class="{{ 'ok' if j.ok else 'bad' }}">{{ 'yes' if j.ok else ('no' if j.ok is false else '…') }}</td>
-            <td class="dim">{{ j.error }}</td></tr>
-        {% endfor %}
-      </table>
-    </div>
-
-    <div class="panel">
-      <h3>Source health (7 days)</h3>
-      <table class="plain">
-        <tr><th>Source</th><th class="num">Tier</th><th class="num">Docs</th><th>Last seen</th></tr>
-        {% for s in sources %}
-        <tr><td>{{ s.source }}</td><td class="num">{{ s.source_tier }}</td>
-            <td class="num">{{ s.docs }}</td><td class="dim">{{ s.last_seen|ago }}</td></tr>
-        {% endfor %}
-      </table>
-    </div>
-
-    <div class="panel">
-      <h3>Relationship graph — {{ graph.entities }} entities, {{ graph.edges }} edges</h3>
+    <section>
+      <h2>Relationship graph — {{ graph.entities }} entities, {{ graph.edges }} edges</h2>
       <table class="plain">
         <tr><th>From</th><th>Relation</th><th>To</th><th class="num">Strength</th><th class="num">Seen</th></tr>
         {% for e in graph.strongest_edges %}
@@ -58,7 +63,7 @@
             <td class="num">{{ e.strength }}</td><td class="num">{{ e.confirm_count }}</td></tr>
         {% endfor %}
       </table>
-    </div>
+    </section>
   </div>
   {% set recent = none %}{% include "_sidebar.html" %}
 </div>

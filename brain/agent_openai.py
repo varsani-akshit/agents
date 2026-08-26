@@ -103,33 +103,76 @@ def _retry_after(resp: httpx.Response) -> float:
     return 0.0
 
 
+def _stream_once(payload: dict) -> dict:
+    """One streamed Responses call, returning the final response object.
+
+    Streaming is not an optimisation here, it is a requirement: OpenAI refuses
+    any non-streamed request that could exceed ten minutes, and a digest at high
+    reasoning effort over a 13k-token brief does exactly that. The scheduled
+    16:05 cycle failed outright on `Streaming is required for operations that
+    may take longer than 10 minutes` while the same call at low effort passed,
+    which is the worst kind of bug — it only appears when the work is hardest.
+
+    Nothing is rendered incrementally; the terminal `response.completed` event
+    carries the same object the non-streamed endpoint would have returned.
+    """
+    headers = {"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"}
+    final: dict | None = None
+    with httpx.stream("POST", _URL, headers=headers,
+                      json={**payload, "stream": True}, timeout=1800) as r:
+        if r.status_code != 200:
+            r.read()
+            raise _HTTPError(r.status_code, r)
+        for line in r.iter_lines():
+            if not line.startswith("data:"):
+                continue
+            chunk = line[5:].strip()
+            if not chunk or chunk == "[DONE]":
+                continue
+            try:
+                evt = json.loads(chunk)
+            except json.JSONDecodeError:
+                continue
+            kind = evt.get("type")
+            # `incomplete` is a real terminal state, not an error: it is how the
+            # output ceiling reports itself, and the loop continues from it.
+            if kind in ("response.completed", "response.incomplete"):
+                final = evt.get("response")
+            elif kind == "response.failed":
+                err = (evt.get("response") or {}).get("error") or {}
+                raise RuntimeError(f"openai response.failed: {err.get('message', evt)}")
+            elif kind == "error":
+                raise RuntimeError(f"openai stream error: {evt.get('message', evt)}")
+    if final is None:
+        raise RuntimeError("openai stream ended without a terminal response event")
+    return final
+
+
+class _HTTPError(Exception):
+    def __init__(self, status: int, resp: httpx.Response):
+        super().__init__(f"HTTP {status}: {resp.text[:200]}")
+        self.status = status
+        self.resp = resp
+
+
 def _post(payload: dict) -> dict:
     last: Exception | None = None
     for attempt in range(5):
         try:
-            r = httpx.post(
-                _URL,
-                headers={"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"},
-                json=payload,
-                timeout=900,
-            )
-            if r.status_code in (429, 500, 502, 503):
-                last = RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
-                wait = _retry_after(r) or (2 ** attempt)
-                # Token-per-minute limits need a real pause, not a token gesture.
-                wait = max(wait + 1.0, 5.0) if r.status_code == 429 else wait
-                log.warning("HTTP %s — waiting %.1fs before retry %d/5",
-                            r.status_code, wait, attempt + 1)
-                time.sleep(wait)
-                continue
-            r.raise_for_status()
-            return r.json()
-        except httpx.HTTPStatusError as exc:
-            raise RuntimeError(
-                f"openai HTTP {exc.response.status_code}: {exc.response.text[:300]}"
-            ) from exc
+            return _stream_once(payload)
+        except _HTTPError as exc:
+            last = exc
+            if exc.status not in (429, 500, 502, 503):
+                raise RuntimeError(f"openai {exc}") from exc
+            wait = _retry_after(exc.resp) or (2 ** attempt)
+            # Token-per-minute limits need a real pause, not a token gesture.
+            wait = max(wait + 1.0, 5.0) if exc.status == 429 else wait
+            log.warning("HTTP %s — waiting %.1fs before retry %d/5",
+                        exc.status, wait, attempt + 1)
+            time.sleep(wait)
         except Exception as exc:  # noqa: BLE001
             last = exc
+            log.warning("openai attempt %d/5 failed: %s", attempt + 1, exc)
             time.sleep(1.5 * (attempt + 1))
     raise RuntimeError(f"openai failed after retries: {last}")
 

@@ -3,55 +3,56 @@
 {% block content %}
 <div class="layout">
   <div>
-    <div class="panel">
-      <h3>Ask</h3>
-      <form class="ask" method="post" action="/ask" onsubmit="go(this)">
-        <textarea name="question" rows="3" required autofocus
-          placeholder="e.g. Why is silver lagging gold, and does our stored analysis agree?">{{ question or '' }}</textarea>
-        <div class="askrow">
-          <select name="model" style="width:auto">
-            <option value="">Claude Sonnet 5 (default · web search)</option>
-            <option value="claude-opus-5">Claude Opus 5 (deepest · slower)</option>
-            <option value="gpt-5.1">GPT-5.1 (cheapest)</option>
-            <option value="gpt-5.4">GPT-5.4</option>
-          </select>
-          <button type="submit" id="go">Ask</button>
-          <span class="spinner" id="sp"><span class="spin"></span>
-            searching memory, statistics and the web — usually 30-90s</span>
-        </div>
-        <div class="hint">
-          Answers draw on every stored document, the computed statistics, the
-          relationship graph, and a live web search. Each one costs roughly $0.05–0.25.
-        </div>
-      </form>
+    <div class="pagehead">
+      <h1>Ask</h1>
+      <p class="lede">
+        Answers draw on the stored corpus, the computed statistics, the
+        relationship graph, and a live web search.
+      </p>
     </div>
 
+    <form class="ask" method="post" action="/ask" onsubmit="go(this)">
+      <textarea name="question" rows="2" required autofocus
+        placeholder="Why is silver lagging gold, and does our stored analysis agree?">{{ question or '' }}</textarea>
+      <div class="askrow">
+        <select name="model">
+          <option value="">Claude Sonnet 5 — default</option>
+          <option value="claude-opus-5">Claude Opus 5 — deepest, slower</option>
+          <option value="gpt-5.1">GPT-5.1 — cheapest</option>
+          <option value="gpt-5.4">GPT-5.4</option>
+        </select>
+        <button type="submit" id="go">Ask</button>
+        <span class="spinner" id="sp"><span class="spin"></span>
+          searching memory, statistics and the web — usually 30–90s</span>
+      </div>
+    </form>
+
     {% if answer %}
-    <div class="panel">
-      <div class="meta" style="margin-bottom:10px">
+    <div class="pagehead">
+      <h1>{{ question }}</h1>
+      <div class="meta">
         <span>{{ answer.created_at|utc }} UTC</span>
         {% set m = answer.meta or {} %}
-        {% if m.usd %}<span class="tag">${{ m.usd }}</span>{% endif %}
-        {% if m.tool_calls %}<span class="tag">{{ m.tool_calls|length }} tool calls</span>{% endif %}
+        {% if m.usd %}<span>${{ m.usd }}</span>{% endif %}
+        {% if m.tool_calls %}<span>{{ m.tool_calls|length }} tool calls</span>{% endif %}
       </div>
-      <h1 style="font-size:19px;margin:0 0 14px">{{ question }}</h1>
-      <article>{{ answer_html|safe }}</article>
     </div>
+    <article>{{ answer_html|safe }}</article>
     {% endif %}
   </div>
 
   <aside>
-    <div class="panel">
-      <h3>Previous questions</h3>
-      <div class="rows">
+    <section>
+      <h3>Previous</h3>
+      <div class="side-list">
         {% for a in history %}
-        <a class="row" href="/answer/{{ a.id }}">
+        <a href="/answer/{{ a.id }}">
           <span class="when">{{ a.created_at|utc('%d %b') }}</span>
           <span class="what">{{ a.title|replace('Q: ','') }}</span>
         </a>
-        {% else %}<div class="empty">None yet.</div>{% endfor %}
+        {% else %}<p class="hint">None yet.</p>{% endfor %}
       </div>
-    </div>
+    </section>
   </aside>
 </div>
 <script>

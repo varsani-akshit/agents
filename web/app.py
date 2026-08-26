@@ -35,12 +35,41 @@ app.mount("/outbox", StaticFiles(directory=str(config.OUTBOX)), name="outbox")
 _MD = md.Markdown(extensions=["tables", "fenced_code", "attr_list", "sane_lists"])
 
 
+_LIST_ITEM = re.compile(r"^(\s+)([-*+]|\d+[.)])\s")
+
+
+def normalise_list_indent(text: str) -> str:
+    """Round sub-list indentation up to a multiple of four spaces.
+
+    Python-Markdown needs four spaces to nest a list under an ordered item, and
+    the model writes three (aligning under "1. "). With `sane_lists` the nested
+    bullets then render as literal "- " inside the parent paragraph; without it
+    they are silently promoted into the numbered list, which is worse — the
+    sub-points become top-level findings and the structure of the argument is
+    quietly rewritten.
+
+    Fenced code blocks are left untouched, since indentation is content there.
+    """
+    out, in_fence = [], False
+    for line in (text or "").split("\n"):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        m = None if in_fence else _LIST_ITEM.match(line)
+        if m:
+            depth = -(-len(m.group(1)) // 4)  # ceil to the next multiple of 4
+            line = " " * (4 * depth) + line.lstrip()
+        out.append(line)
+    return "\n".join(out)
+
+
 def render_markdown(text: str, day: str | None = None) -> str:
     """Markdown to HTML, rewriting relative chart paths to served URLs."""
     if day:
         text = re.sub(r"\]\((charts/[^)]+)\)", rf"](/outbox/{day}/\1)", text)
     _MD.reset()
-    return _MD.convert(text or "")
+    return _MD.convert(normalise_list_indent(text))
 
 
 def _day_of(dt: datetime) -> str:
@@ -246,8 +275,9 @@ async def alerts(request: Request):
     for e in events:
         e["text"] = (written.get(e["id"]) or {}).get("body")
     return templates.TemplateResponse(
+        request,
         "alerts.html",
-        {"request": request, "events": events, "summary": system_summary(), "active": "alerts"},
+        {"events": events, "summary": system_summary(), "active": "alerts"},
     )
 
 

@@ -126,6 +126,156 @@ instruments:
     asset_class: crypto
     source: coingecko
     source_id: ethereum
+  - symbol: SOL
+    name: Solana
+    asset_class: crypto
+    source: coingecko
+    source_id: solana
+
+  # ── FX beyond the dollar index ──────────────────────────────────────────
+  # DXY is 58% euro. It cannot answer "an RBA hike is priced — what moved?",
+  # and a digest that reaches that question and finds no data says so in the
+  # text, which is exactly what happened on 2026-08-26.
+  - symbol: AUDUSD
+    name: AUD/USD
+    asset_class: fx
+    source: yfinance
+    source_id: "AUDUSD=X"
+  - symbol: GBPUSD
+    name: GBP/USD
+    asset_class: fx
+    source: yfinance
+    source_id: "GBPUSD=X"
+  - symbol: USDCNY
+    name: USD/CNY (onshore)
+    asset_class: fx
+    source: yfinance
+    source_id: "USDCNY=X"
+  - symbol: USDCHF
+    name: USD/CHF
+    asset_class: fx
+    source: yfinance
+    source_id: "USDCHF=X"
+  - symbol: USDINR
+    name: USD/INR
+    asset_class: fx
+    source: yfinance
+    source_id: "USDINR=X"
+  - symbol: USDMXN
+    name: USD/MXN (carry / risk proxy)
+    asset_class: fx
+    source: yfinance
+    source_id: "USDMXN=X"
+
+  # ── Non-US equity blocks ────────────────────────────────────────────────
+  - symbol: JAPAN
+    name: Japan equity (EWJ)
+    asset_class: equity
+    source: yfinance
+    source_id: "EWJ"
+  - symbol: EUROPE
+    name: Euro STOXX 50 (FEZ)
+    asset_class: equity
+    source: yfinance
+    source_id: "FEZ"
+  - symbol: CHINA
+    name: China large cap (FXI)
+    asset_class: equity
+    source: yfinance
+    source_id: "FXI"
+  - symbol: INDIA
+    name: India equity (INDA)
+    asset_class: equity
+    source: yfinance
+    source_id: "INDA"
+
+  # ── Credit and duration detail ──────────────────────────────────────────
+  # HYG alone conflates spread and duration. IG, EM debt and an intermediate
+  # Treasury let the two be separated.
+  - symbol: IG
+    name: US investment-grade credit (LQD)
+    asset_class: credit
+    source: yfinance
+    source_id: "LQD"
+  - symbol: EMDEBT
+    name: EM sovereign USD debt (EMB)
+    asset_class: credit
+    source: yfinance
+    source_id: "EMB"
+  - symbol: IEF
+    name: 7-10y Treasury (IEF)
+    asset_class: rate
+    source: yfinance
+    source_id: "IEF"
+  - symbol: TIPS
+    name: Inflation-protected Treasuries (TIP)
+    asset_class: rate
+    source: yfinance
+    source_id: "TIP"
+  - symbol: MOVE
+    name: Treasury volatility index
+    asset_class: volatility
+    source: yfinance
+    source_id: "^MOVE"
+
+  # ── Miners: the levered read on the metal ───────────────────────────────
+  # Miners lead or lag the metal depending on whether a move is monetary
+  # (miners lag; nobody believes it) or cyclical (miners lead). That
+  # distinction is not visible in the metal price alone.
+  - symbol: GOLDMINERS
+    name: Gold miners (GDX)
+    asset_class: metal
+    source: yfinance
+    source_id: "GDX"
+  - symbol: SILVERMINERS
+    name: Silver miners (SIL)
+    asset_class: metal
+    source: yfinance
+    source_id: "SIL"
+  - symbol: PALLADIUM
+    name: Palladium
+    asset_class: metal
+    source: yfinance
+    source_id: "PA=F"
+
+  # ── Energy and agriculture ──────────────────────────────────────────────
+  - symbol: NATGAS
+    name: US natural gas (Henry Hub)
+    asset_class: energy
+    source: yfinance
+    source_id: "NG=F"
+  - symbol: WHEAT
+    name: Wheat
+    asset_class: commodity
+    source: yfinance
+    source_id: "ZW=F"
+
+  # ── US sectors: where a macro story actually lands inside equities ──────
+  - symbol: ENERGY_EQ
+    name: US energy sector (XLE)
+    asset_class: sector
+    source: yfinance
+    source_id: "XLE"
+  - symbol: FINANCIALS
+    name: US financials (XLF)
+    asset_class: sector
+    source: yfinance
+    source_id: "XLF"
+  - symbol: UTILITIES
+    name: US utilities (XLU)
+    asset_class: sector
+    source: yfinance
+    source_id: "XLU"
+  - symbol: TECH
+    name: US technology (XLK)
+    asset_class: sector
+    source: yfinance
+    source_id: "XLK"
+  - symbol: DEFENSE
+    name: Aerospace and defence (ITA)
+    asset_class: sector
+    source: yfinance
+    source_id: "ITA"
 
 # FRED macro series carried separately from prices — levels, not tradables.
 fred_series:
@@ -157,3 +307,24 @@ fred_series:
   BAMLC0A0CM: US investment-grade credit spread
   CSUSHPINSA: Case-Shiller national home price index
   RRVRUSQ156N: Rental vacancy rate
+  # Front end of the curve — where Treasury actually funds itself. Bill yields
+  # versus the funding rate is how you see the TGA and issuance mix operating.
+  DGS3MO: US 3-month Treasury bill yield
+  DGS1MO: US 1-month Treasury bill yield
+  DGS1: US 1-year Treasury constant maturity
+  IORB: Interest on reserve balances
+  # 5y5y forward breakeven: the market's long-run inflation anchor. If
+  # debasement is being priced rather than just discussed, it shows up here
+  # before it shows up in spot breakevens.
+  T5YIFR: 5-year 5-year forward inflation expectation
+  # System liquidity, which drives the debasement complex more reliably than
+  # the policy rate does.
+  WRESBAL: Reserve balances at Federal Reserve banks
+  WM2NS: M2 money stock, weekly
+  NFCI: Chicago Fed national financial conditions index
+  # Core inflation the Fed actually targets, and two real-economy prints that
+  # decide whether "sticky inflation" is demand or supply.
+  PCEPILFE: Core PCE price index
+  ICSA: Initial jobless claims
+  INDPRO: Industrial production index
+  BAMLEMCBPIOAS: EM corporate credit spread

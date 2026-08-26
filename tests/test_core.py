@@ -317,3 +317,46 @@ def test_utc_filter_converts_from_session_timezone():
     dt = datetime(2026, 8, 26, 15, 57, tzinfo=melbourne)
     assert _utc(dt) == "26 Aug 2026, 05:57"
     assert _utc(dt, "%H:%M") == "05:57"
+
+
+@pytest.mark.parametrize(
+    "path", ["/", "/archive", "/ask", "/alerts", "/world", "/status", "/healthz", "/api/latest"]
+)
+def test_every_page_renders(path):
+    """Smoke test across every route.
+
+    Starlette 1.6 changed TemplateResponse to (request, name, context); the
+    legacy (name, {"request": ...}) form reads the context dict as the template
+    name and raises `unhashable type: 'dict'`. That bug shipped twice, because
+    each route fails independently and eyeballing the pages missed /alerts
+    entirely. One parametrised test covers every route for good.
+    """
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        resp = client.get(path)
+    assert resp.status_code == 200, f"{path} -> {resp.status_code}"
+
+
+def test_nested_list_indent_is_normalised():
+    """Regression: three-space nesting under an ordered item.
+
+    Python-Markdown needs four spaces. With `sane_lists` the model's three-space
+    bullets rendered as literal "- " text; without it they were promoted to
+    top-level numbered items, silently restructuring the argument.
+    """
+    from web.app import render_markdown
+
+    html = render_markdown("1. **Point**\n   - sub one\n   - sub two\n")
+    assert "<ul>" in html
+    assert html.count("<li>") == 3
+    assert "- sub one" not in html
+
+
+def test_list_normalisation_leaves_code_blocks_alone():
+    from web.app import normalise_list_indent
+
+    src = "```\n   - not a list\n```\n"
+    assert normalise_list_indent(src) == src

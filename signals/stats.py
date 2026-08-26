@@ -18,15 +18,43 @@ import db
 
 log = logging.getLogger("mia.stats")
 
-WINDOWS = (30, 90, 180)
+WINDOWS = (30, 90)
+# The correlation universe is deliberately smaller than the tracked universe.
+# A full matrix over 50 instruments is 1,225 pairs per window — mostly noise,
+# and it would dominate the prompt by volume without adding signal. Everything
+# else is still covered by the cross-asset board and the themed pairs below.
 CORE = ["GOLD", "SILVER", "BTC", "DXY", "US10Y", "US2Y", "US30Y", "SPX", "OIL",
-        "ETH", "COPPER", "NASDAQ", "HYG", "REIT", "VIX", "TLT"]
+        "ETH", "COPPER", "NASDAQ", "HYG", "REIT", "VIX", "TLT",
+        "GOLDMINERS", "AUDUSD", "IG", "MOVE"]
+
+# Pairs that carry a specific thesis, tracked regardless of whether they clear
+# the flip detector's threshold. Each one answers a question the digest keeps
+# asking, so it should never have to go looking.
+THEMED_PAIRS = [
+    ("GOLD", "TIPS", "gold vs real-yield proxy — is the classic rule still binding?"),
+    ("GOLD", "GOLDMINERS", "metal vs miners — is the market underwriting the move?"),
+    ("SILVER", "SILVERMINERS", "same test in silver, where industrial demand muddies it"),
+    ("BTC", "NASDAQ", "crypto as tech beta or as a monetary asset"),
+    ("BTC", "GOLD", "the two debasement expressions, competing or confirming"),
+    ("DXY", "EM", "dollar as the emerging-market funding constraint"),
+    ("USDJPY", "GOLD", "carry unwind risk into the metal"),
+    ("HYG", "IG", "credit stress by quality — spread widening or duration"),
+    ("TLT", "UTILITIES", "duration expressed in bonds and in equities"),
+    ("OIL", "ENERGY_EQ", "commodity vs the equity claim on it"),
+    ("COPPER", "CHINA", "the growth signal and its largest consumer"),
+    ("MOVE", "GOLD", "rate volatility as a gold driver"),
+]
+
 RATIOS = {
     "gold_silver": ("GOLD", "SILVER"),
     "gold_spx": ("GOLD", "SPX"),
     "btc_gold": ("BTC", "GOLD"),
     "gold_oil": ("GOLD", "OIL"),
     "copper_gold": ("COPPER", "GOLD"),
+    "gold_miners": ("GOLDMINERS", "GOLD"),
+    "spx_gold": ("SPX", "GOLD"),
+    "hyg_ig": ("HYG", "IG"),
+    "tech_utilities": ("TECH", "UTILITIES"),
 }
 
 
@@ -237,6 +265,26 @@ def correlation_matrix(wide: pd.DataFrame) -> dict:
     return matrix
 
 
+def themed_correlations(wide: pd.DataFrame) -> list[dict]:
+    """Named pairs with their 30d and 90d correlation and the direction of travel."""
+    out = []
+    for a, b, why in THEMED_PAIRS:
+        if a not in wide.columns or b not in wide.columns:
+            continue
+        c30, c90 = rolling_corr(wide[a], wide[b], 30), rolling_corr(wide[a], wide[b], 90)
+        if c30 is None:
+            continue
+        row = {"pair": f"{a}/{b}", "question": why, "corr_30d": round(c30, 3)}
+        if c90 is not None:
+            row["corr_90d"] = round(c90, 3)
+            row["drift"] = round(c30 - c90, 3)
+        cs = corr_series(wide[a], wide[b], 30)
+        if len(cs) > 45:
+            row["corr_30d_45_sessions_ago"] = round(float(cs.iloc[-45]), 3)
+        out.append(row)
+    return out
+
+
 def anomalies(wide: pd.DataFrame, perf: list[dict]) -> list[str]:
     """Plain-language flags. These are *observations*, never explanations."""
     notes = []
@@ -334,6 +382,148 @@ def intraday_moves(wide: pd.DataFrame) -> list[dict]:
         else:
             row["chg_pct"] = round((price - prior_close) / prior_close * 100, 2)
         out.append(row)
+    return out
+
+
+def drawdown_table(wide: pd.DataFrame) -> list[dict]:
+    """Distance from the 52-week high and low, plus the worst drawdown in a year.
+
+    "Gold +14% in a month" and "gold 12% below its high" are both true and mean
+    opposite things to someone deciding whether to buy. Momentum without
+    position in the range is half a picture.
+    """
+    out = []
+    for sym in wide.columns:
+        if sym.startswith("US") and sym.endswith("Y"):
+            continue  # a yield has no meaningful "drawdown"
+        s = wide[sym].dropna().iloc[-252:]
+        if len(s) < 60:
+            continue
+        last, hi, lo = float(s.iloc[-1]), float(s.max()), float(s.min())
+        trough = float((s / s.cummax() - 1).min() * 100)
+        out.append({
+            "symbol": sym,
+            "last": round(last, 2),
+            "high_52w": round(hi, 2),
+            "low_52w": round(lo, 2),
+            "pct_from_high": round((last - hi) / hi * 100, 1) if hi else None,
+            "pct_above_low": round((last - lo) / lo * 100, 1) if lo else None,
+            "max_drawdown_1y_pct": round(trough, 1),
+            "at_52w_high": bool(last >= hi * 0.995),
+            "at_52w_low": bool(last <= lo * 1.005),
+        })
+    return sorted(out, key=lambda r: r["pct_from_high"] or 0, reverse=True)
+
+
+def vol_table(wide: pd.DataFrame) -> list[dict]:
+    """Realised vol across horizons, with the 30-day figure ranked against its own year.
+
+    Rising vol on a rising price is a different regime from falling vol on a
+    rising price, and the level alone does not say which one this is.
+    """
+    out = []
+    for sym in wide.columns:
+        s = wide[sym].dropna()
+        if len(s) < 120:
+            continue
+        rets = s.pct_change().dropna()
+        v30 = realised_vol(s, 30)
+        if v30 is None:
+            continue
+        hist = rets.rolling(30).std().dropna().iloc[-252:] * np.sqrt(252) * 100
+        pct = float((hist < v30).mean() * 100) if len(hist) > 30 else None
+        out.append({
+            "symbol": sym,
+            "vol_10d": round(realised_vol(s, 10) or 0, 1),
+            "vol_30d": round(v30, 1),
+            "vol_90d": round(realised_vol(s, 90) or 0, 1),
+            "vol_30d_percentile_1y": round(pct, 0) if pct is not None else None,
+            "direction": "expanding" if (realised_vol(s, 10) or 0) > v30 else "contracting",
+        })
+    return sorted(out, key=lambda r: -(r["vol_30d_percentile_1y"] or 0))
+
+
+def breadth(wide: pd.DataFrame) -> dict:
+    """How broad the move is, by asset class.
+
+    One asset at a 52-week high is a story about that asset. Eleven at once
+    across four asset classes is a story about money.
+    """
+    classes = {r["symbol"]: r["asset_class"]
+               for r in db.query("SELECT symbol, asset_class FROM instruments")}
+    buckets: dict[str, dict] = {}
+    highs, lows = [], []
+    for sym in wide.columns:
+        if sym.startswith("US") and sym.endswith("Y"):
+            continue
+        s = wide[sym].dropna()
+        if len(s) < 210:
+            continue
+        last = float(s.iloc[-1])
+        cls = classes.get(sym, "other")
+        b = buckets.setdefault(cls, {"n": 0, "above_50d": 0, "above_200d": 0})
+        b["n"] += 1
+        if last > float(s.iloc[-50:].mean()):
+            b["above_50d"] += 1
+        if last > float(s.iloc[-200:].mean()):
+            b["above_200d"] += 1
+        window = s.iloc[-252:]
+        if last >= float(window.max()) * 0.995:
+            highs.append(sym)
+        if last <= float(window.min()) * 1.005:
+            lows.append(sym)
+
+    total = sum(b["n"] for b in buckets.values())
+    return {
+        "universe_size": total,
+        "pct_above_50d": round(
+            sum(b["above_50d"] for b in buckets.values()) / total * 100, 0) if total else None,
+        "pct_above_200d": round(
+            sum(b["above_200d"] for b in buckets.values()) / total * 100, 0) if total else None,
+        "by_class": {
+            k: {**v, "pct_above_200d": round(v["above_200d"] / v["n"] * 100, 0)}
+            for k, v in sorted(buckets.items())
+        },
+        "at_52w_high": sorted(highs),
+        "at_52w_low": sorted(lows),
+    }
+
+
+def fx_board(wide: pd.DataFrame) -> list[dict]:
+    """FX moves with the dollar's direction stated explicitly.
+
+    USDJPY rising means the dollar strengthened and the yen weakened. Half of
+    the pairs quote one way and half the other, and a model reading a bare
+    percentage will eventually narrate the move backwards. The sign is resolved
+    here, in code, so the text cannot get it wrong.
+    """
+    pairs = {
+        "EURUSD": ("EUR", False), "GBPUSD": ("GBP", False), "AUDUSD": ("AUD", False),
+        "USDJPY": ("JPY", True), "USDCHF": ("CHF", True), "USDCNY": ("CNY", True),
+        "USDINR": ("INR", True), "USDMXN": ("MXN", True),
+    }
+    out = []
+    for sym, (ccy, usd_is_base) in pairs.items():
+        if sym not in wide.columns:
+            continue
+        s = wide[sym].dropna()
+        if len(s) < 30:
+            continue
+        moves = {f"chg_{lbl}_pct": round(pct_change(s, n) or 0, 2)
+                 for lbl, n in (("1d", 1), ("1w", 5), ("1m", 21), ("3m", 63))}
+        d1 = moves["chg_1d_pct"]
+        # A rise in the quote strengthens the dollar only when USD is the base.
+        usd_stronger = (d1 > 0) if usd_is_base else (d1 < 0)
+        out.append({
+            "pair": sym,
+            "currency": ccy,
+            "last": round(float(s.iloc[-1]), 4),
+            **moves,
+            "quote_convention": f"{'USD per unit of ' + ccy if not usd_is_base else ccy + ' per USD'}",
+            "dollar_1d": "stronger" if usd_stronger else "weaker",
+            "currency_1m_vs_usd_pct": round(
+                (pct_change(s, 21) or 0) * (-1 if usd_is_base else 1), 2),
+        })
     return out
 
 
@@ -444,10 +634,15 @@ def build(persist: bool = True) -> dict:
         "performance": perf,
         "correlations": correlation_matrix(wide),
         "correlation_flips": correlation_flips(wide),
+        "themed_correlations": themed_correlations(wide),
         "ratios": ratio_divergence(wide),
         "gold_in_currencies": gold_in_currencies(wide),
         "intraday_moves": intraday_moves(wide),
         "cross_asset_board": cross_asset_board(wide),
+        "fx_board": fx_board(wide),
+        "drawdowns": drawdown_table(wide),
+        "volatility": vol_table(wide),
+        "breadth": breadth(wide),
         "yield_curve": yield_curve(),
         "macro": macro_snapshot(),
         "anomalies": anomalies(wide, perf),
@@ -461,6 +656,11 @@ def build(persist: bool = True) -> dict:
             for k, v in latest_intraday().items()
         },
     }
+    # Liquidity, the scored regime reading, and analogues. Imported here rather
+    # than at module scope because regime imports this module.
+    from signals import regime
+
+    pack |= regime.build()
     if persist:
         import json
 

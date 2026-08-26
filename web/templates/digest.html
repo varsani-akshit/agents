@@ -4,23 +4,23 @@
 <div class="layout">
   <div>
     {% if digest %}
-    <div class="panel">
-      <h1 style="margin:0 0 8px;font-size:22px">{{ digest.title }}</h1>
+    {% set m = digest.meta or {} %}
+    <div class="pagehead">
+      <h1>{{ digest.title }}</h1>
       <div class="meta">
-        <span>{{ digest.created_at|utc }} UTC · {{ digest.created_at|ago }}</span>
-        {% set m = digest.meta or {} %}
-        {% if m.regime %}<span class="tag gold">{{ m.regime }}</span>{% endif %}
-        {% if m.model %}<span class="tag">{{ m.model }}</span>{% endif %}
-        {% if m.usd %}<span class="tag">${{ m.usd }}</span>{% endif %}
-        {% if m.citations %}<span class="tag">{{ m.citations|length }} sources</span>{% endif %}
+        <span>{{ digest.created_at|utc }} UTC</span>
+        <span>{{ digest.created_at|ago }}</span>
+        {% if m.regime %}<span class="regime">{{ m.regime }}</span>{% endif %}
+        {% if m.model %}<span>{{ m.model }}</span>{% endif %}
+        {% if m.usd %}<span>${{ m.usd }}</span>{% endif %}
+        {% if m.citations %}<span>{{ m.citations|length }} sources</span>{% endif %}
       </div>
     </div>
     <article>{{ body_html|safe }}</article>
     {% else %}
-    <div class="panel empty">
-      No digest yet. The scheduler produces one at 00:05, 08:05 and 16:05 UTC —
-      or run <code>./mia digest</code> to generate one now.
-    </div>
+    <p class="empty">
+      No digest yet. The scheduler produces one at 00:05, 08:05 and 16:05 UTC.
+    </p>
     {% endif %}
   </div>
   {% include "_sidebar.html" %}

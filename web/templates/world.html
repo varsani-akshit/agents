@@ -3,28 +3,28 @@
 {% block content %}
 <div class="layout">
   <div>
-    <div class="panel">
-      <h3>Current world model{% if current %} — v{{ current.version }}{% endif %}</h3>
-      <div class="hint" style="margin-bottom:14px">
-        Rewritten by every digest cycle. Each cycle must reconcile new evidence
+    <div class="pagehead">
+      <h1>World model{% if current %} <span style="color:var(--faint)">v{{ current.version }}</span>{% endif %}</h1>
+      <p class="lede">
+        Rewritten by every digest cycle. Each cycle reconciles new evidence
         against its predecessor rather than analysing in isolation.
-      </div>
-      {% if current %}<article>{{ current_html|safe }}</article>
-      {% else %}<div class="empty">Not yet written.</div>{% endif %}
+      </p>
     </div>
+    {% if current %}<article>{{ current_html|safe }}</article>
+    {% else %}<p class="empty">Not yet written.</p>{% endif %}
   </div>
   <aside>
-    <div class="panel">
-      <h3>Version history</h3>
-      <div class="rows">
+    <section>
+      <h3>Versions</h3>
+      <div class="side-list">
         {% for v in versions %}
-        <div class="row">
-          <span class="when">v{{ v.version }}</span>
-          <span class="what">{{ (v.regime or '')[:34] }}</span>
-        </div>
+        <a style="cursor:default">
+          <span class="when">v{{ v.version }} · {{ v.created_at|utc('%d %b') }}</span>
+          <span class="what">{{ (v.regime or '')[:44] }}</span>
+        </a>
         {% endfor %}
       </div>
-    </div>
+    </section>
   </aside>
 </div>
 {% endblock %}

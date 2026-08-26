@@ -154,6 +154,24 @@ def fetch_coingecko(instruments: list[dict], days: int = 365) -> int:
     return total
 
 
+def fetch_crypto_history(instruments: list[dict], period: str = "12y") -> int:
+    """Deep daily crypto history from Yahoo, since CoinGecko's free tier stops at 365 days.
+
+    That 365-day wall was silently capping everything downstream: any analysis
+    joining crypto to another series — correlations, the analogue engine — is
+    truncated to the shortest input, so one free-tier limit was deciding how far
+    back the whole system could look. CoinGecko still serves live 15-minute
+    spot, where it is the better source; this only backfills daily bars.
+    """
+    tickers = {"BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD"}
+    proxies = [
+        {"symbol": i["symbol"], "source_id": tickers[i["symbol"]], "is_rate": False}
+        for i in instruments
+        if i["symbol"] in tickers
+    ]
+    return fetch_yfinance(proxies, period=period, interval="1d") if proxies else 0
+
+
 def fetch_coingecko_spot(instruments: list[dict]) -> int:
     """Current price for the 15-minute tick — one call for all coins."""
     ids = ",".join(str(i["source_id"]) for i in instruments)
@@ -190,6 +208,7 @@ def backfill(days_daily: str = "2y") -> dict:
     out = {
         "daily_rows": fetch_yfinance(yf_inst, period=days_daily, interval="1d"),
         "crypto_rows": fetch_coingecko(cg_inst),
+        "crypto_history_rows": fetch_crypto_history(cg_inst, period=days_daily),
         "intraday_rows": fetch_yfinance(yf_inst, period="5d", interval="15m"),
     }
     return out

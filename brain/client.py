@@ -29,7 +29,12 @@ def client() -> anthropic.Anthropic:
     if _client is None:
         if not config.ANTHROPIC_API_KEY:
             raise RuntimeError("ANTHROPIC_API_KEY is not set")
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, max_retries=3)
+        # An explicit ceiling matters more here than in an interactive tool: a
+        # hung request in a scheduled cycle stalls that cycle silently, and the
+        # next thing anyone notices is a missing digest.
+        _client = anthropic.Anthropic(
+            api_key=config.ANTHROPIC_API_KEY, max_retries=3, timeout=1800.0
+        )
     return _client
 
 
@@ -166,7 +171,13 @@ def complete(
     _skip_ledger: bool = False,
     **kwargs,
 ) -> Any:
-    """One non-streaming call, priced and recorded. Raises BudgetExceeded first."""
+    """One call, priced and recorded. Raises BudgetExceeded first.
+
+    Streamed rather than blocking: adaptive thinking on a long brief can run past
+    the ten-minute ceiling for a non-streamed request, and the failure only shows
+    up on the hardest cycles. Nothing is consumed incrementally —
+    `get_final_message()` returns the same Message a blocking call would.
+    """
     check_budget(estimated_usd)
     params: dict[str, Any] = {
         "model": model,
@@ -178,7 +189,8 @@ def complete(
         params["tools"] = tools
     params.update(kwargs)
 
-    resp = client().messages.create(**params)
+    with client().messages.stream(**params) as stream:
+        resp = stream.get_final_message()
     if _skip_ledger:      # caller (brain/llm.py router) records it instead
         return resp
     usd = record(model, purpose, resp.usage, _count_web_searches(resp))
