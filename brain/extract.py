@@ -109,7 +109,17 @@ SCHEMA = {
                 "properties": {
                     "doc_id": {"type": "integer"},
                     "source": {"type": "string"},
+                    "source_kind": {
+                        "type": "string",
+                        "enum": ["institution", "asset", "country", "person",
+                                 "policy", "concept"],
+                    },
                     "target": {"type": "string"},
+                    "target_kind": {
+                        "type": "string",
+                        "enum": ["institution", "asset", "country", "person",
+                                 "policy", "concept"],
+                    },
                     "relation": {"type": "string", "enum": RELATIONS},
                     "direction": {
                         "type": "string",
@@ -119,8 +129,8 @@ SCHEMA = {
                     "rationale": {"type": "string"},
                 },
                 "required": [
-                    "doc_id", "source", "target", "relation", "direction",
-                    "strength", "rationale",
+                    "doc_id", "source", "source_kind", "target", "target_kind",
+                    "relation", "direction", "strength", "rationale",
                 ],
                 "additionalProperties": False,
             },
@@ -145,7 +155,11 @@ def upsert_entity(name: str, kind: str = "unknown") -> None:
         """INSERT INTO entities (canonical, kind, mention_count)
            VALUES (%s,%s,1)
            ON CONFLICT (canonical) DO UPDATE
-             SET last_seen=now(), mention_count = entities.mention_count + 1""",
+             SET last_seen=now(), mention_count = entities.mention_count + 1,
+                 -- An unknown kind never overwrites a known one; a known one
+                 -- fills in an unknown left by an older extraction.
+                 kind = CASE WHEN entities.kind = 'unknown' AND EXCLUDED.kind <> 'unknown'
+                             THEN EXCLUDED.kind ELSE entities.kind END""",
         (name, kind),
     )
 
@@ -157,8 +171,8 @@ def upsert_edge(e: dict) -> bool:
     if e.get("relation") not in RELATIONS:
         return False
 
-    upsert_entity(src)
-    upsert_entity(tgt)
+    upsert_entity(src, e.get("source_kind", "unknown"))
+    upsert_entity(tgt, e.get("target_kind", "unknown"))
     doc_id = e.get("doc_id")
     docs = [int(doc_id)] if isinstance(doc_id, int) else []
 
