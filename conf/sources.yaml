@@ -1,0 +1,106 @@
+# RSS/Atom sources with credibility tiers.
+#   tier 1 = official (central banks, treasuries, statistical agencies)
+#   tier 2 = major financial press
+#   tier 3 = sector/specialist press
+#   tier 4 = low-credibility / high-noise (kept for narrative signal, never for facts)
+# `official: true` makes any new item auto-escalate to at least High urgency.
+#
+# Every URL here was verified live on 2026-08-25. Feeds that 403 bot traffic
+# (IMF, BLS) or publish no RSS at all (US Treasury) are covered by targeted
+# news-proxy queries instead, marked with `proxy: true`.
+
+- name: Federal Reserve — all press
+  url: https://www.federalreserve.gov/feeds/press_all.xml
+  tier: 1
+  official: true
+- name: Federal Reserve — monetary policy
+  url: https://www.federalreserve.gov/feeds/press_monetary.xml
+  tier: 1
+  official: true
+- name: Federal Reserve — speeches
+  url: https://www.federalreserve.gov/feeds/speeches.xml
+  tier: 1
+  official: true
+- name: ECB — press
+  url: https://www.ecb.europa.eu/rss/press.html
+  tier: 1
+  official: true
+- name: Bank of England — news
+  url: https://www.bankofengland.co.uk/rss/news
+  tier: 1
+  official: true
+- name: Bank of England — publications
+  url: https://www.bankofengland.co.uk/rss/publications
+  tier: 1
+  official: true
+- name: Bank of Japan — releases
+  url: https://www.boj.or.jp/en/rss/whatsnew.xml
+  tier: 1
+  official: true
+
+# Official bodies without a usable feed — proxied, so tier 2 not 1.
+- name: US Treasury (proxy)
+  url: https://news.google.com/rss/search?q=%22Treasury+Department%22+OR+%22Treasury+Secretary%22+OR+%22debt+issuance%22+OR+%22buyback%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: BLS / inflation data (proxy)
+  url: https://news.google.com/rss/search?q=%22CPI%22+OR+%22inflation+data%22+OR+%22payrolls%22+OR+%22jobs+report%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: IMF / global institutions (proxy)
+  url: https://news.google.com/rss/search?q=IMF+OR+%22Bank+for+International+Settlements%22+OR+%22World+Bank%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+
+- name: CNBC — finance
+  url: https://www.cnbc.com/id/10000664/device/rss/rss.html
+  tier: 2
+- name: CNBC — economy
+  url: https://www.cnbc.com/id/20910258/device/rss/rss.html
+  tier: 2
+- name: MarketWatch — top stories
+  url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+  tier: 2
+- name: Yahoo Finance
+  url: https://finance.yahoo.com/news/rssindex
+  tier: 2
+- name: Federal Reserve coverage (proxy)
+  url: https://news.google.com/rss/search?q=%22Federal+Reserve%22+OR+%22FOMC%22+OR+%22Powell%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Gold market coverage (proxy)
+  url: https://news.google.com/rss/search?q=gold+price+OR+%22central+bank+gold%22+OR+bullion+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Silver market coverage (proxy)
+  url: https://news.google.com/rss/search?q=silver+price+OR+%22silver+squeeze%22+OR+%22industrial+silver%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Sovereign debt coverage (proxy)
+  url: https://news.google.com/rss/search?q=%22Treasury+yields%22+OR+%22sovereign+debt%22+OR+%22bond+auction%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Currency / debasement coverage (proxy)
+  url: https://news.google.com/rss/search?q=%22dollar+debasement%22+OR+%22currency+devaluation%22+OR+%22de-dollarization%22+when:7d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+
+- name: Mining.com
+  url: https://www.mining.com/feed/
+  tier: 3
+- name: Investing.com — commodities
+  url: https://www.investing.com/rss/news_11.rss
+  tier: 3
+- name: Investing.com — economy
+  url: https://www.investing.com/rss/news_14.rss
+  tier: 3
+- name: CoinDesk
+  url: https://www.coindesk.com/arc/outboundfeeds/rss/
+  tier: 3
+- name: Cointelegraph
+  url: https://cointelegraph.com/rss
+  tier: 3
+
+- name: ZeroHedge
+  url: https://feeds.feedburner.com/zerohedge/feed
+  tier: 4

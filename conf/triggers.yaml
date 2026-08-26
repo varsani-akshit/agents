@@ -1,0 +1,81 @@
+# Alert thresholds. Pure code evaluates these every ingestion tick — no model in
+# the hot path, so critical-alert latency is bounded by the 15-minute loop, not
+# by inference time. Tuned by backtest against 2y of history (see `mia backtest`)
+# to target roughly 0-3 critical alerts per day rather than dozens.
+
+price_moves:
+  # Daily percentage moves. `critical` fires the immediate path; `high` is logged
+  # and folded into the next digest.
+  - symbol: GOLD
+    high_pct: 1.8
+    critical_pct: 3.0
+  - symbol: SILVER
+    high_pct: 3.0
+    critical_pct: 5.0
+  - symbol: BTC
+    high_pct: 5.0
+    critical_pct: 8.0
+  - symbol: ETH
+    high_pct: 6.0
+    critical_pct: 10.0
+  - symbol: DXY
+    high_pct: 0.7
+    critical_pct: 1.2
+  - symbol: SPX
+    high_pct: 2.0
+    critical_pct: 3.5
+  - symbol: OIL
+    high_pct: 4.0
+    critical_pct: 7.0
+
+# Yields move in basis points, not percent — a 1% move in a 4% yield is 4bp,
+# which is noise; 15bp in a day is a genuine event.
+yield_moves:
+  - symbol: US10Y
+    high_bp: 10
+    critical_bp: 18
+  - symbol: US2Y
+    high_bp: 12
+    critical_bp: 20
+  - symbol: US30Y
+    high_bp: 10
+    critical_bp: 18
+
+# Statistical outliers, independent of the fixed thresholds above. Catches
+# unusual moves in instruments whose normal volatility is low.
+zscore:
+  high: 2.5
+  critical: 3.2
+  symbols: [GOLD, SILVER, BTC, DXY, US10Y, US2Y, US30Y, SPX, OIL]
+
+# Structural / regime signals evaluated on the daily close.
+structural:
+  gold_silver_ratio_z: 2.0        # ratio stretched vs its own 1y distribution
+  curve_flip: true                 # 2s10s crossing zero in either direction
+  correlation_flip_delta: 0.7      # a core pair's 30d correlation moving this much
+
+# News-driven. Tier-1 sources are official bodies, so anything genuinely new
+# from them is at least High by construction.
+news:
+  official_source_min_severity: high
+  critical_keywords:
+    - emergency
+    - unscheduled
+    - intermeeting
+    - "rate cut"
+    - "rate hike"
+    - intervention
+    - "capital controls"
+    - default
+    - moratorium
+    - devaluation
+    - "gold standard"
+    - revaluation
+    - "buyback operation"
+    - "debt ceiling"
+    - sanction
+  # Keywords only escalate when they appear in a credible source (tier <= 2).
+  keyword_max_tier: 2
+
+# Suppression: identical alerts inside this window collapse into one.
+dedupe_window_hours: 12

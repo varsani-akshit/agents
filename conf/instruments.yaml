@@ -1,0 +1,98 @@
+# Canonical instrument universe.
+instruments:
+  - symbol: GOLD
+    name: Gold spot (COMEX front month)
+    asset_class: metal
+    source: yfinance
+    source_id: "GC=F"
+  - symbol: SILVER
+    name: Silver spot (COMEX front month)
+    asset_class: metal
+    source: yfinance
+    source_id: "SI=F"
+  - symbol: PLATINUM
+    name: Platinum
+    asset_class: metal
+    source: yfinance
+    source_id: "PL=F"
+  - symbol: COPPER
+    name: Copper
+    asset_class: metal
+    source: yfinance
+    source_id: "HG=F"
+  - symbol: DXY
+    name: US Dollar Index
+    asset_class: fx
+    source: yfinance
+    source_id: "DX-Y.NYB"
+  - symbol: EURUSD
+    name: EUR/USD
+    asset_class: fx
+    source: yfinance
+    source_id: "EURUSD=X"
+  - symbol: USDJPY
+    name: USD/JPY
+    asset_class: fx
+    source: yfinance
+    source_id: "USDJPY=X"
+  - symbol: US10Y
+    name: US 10-year Treasury yield
+    asset_class: rate
+    source: yfinance
+    source_id: "^TNX"
+    is_rate: true
+  - symbol: US30Y
+    name: US 30-year Treasury yield
+    asset_class: rate
+    source: yfinance
+    source_id: "^TYX"
+    is_rate: true
+  - symbol: US5Y
+    name: US 5-year Treasury yield
+    asset_class: rate
+    source: yfinance
+    source_id: "^FVX"
+    is_rate: true
+  - symbol: US2Y
+    name: US 2-year Treasury yield
+    asset_class: rate
+    source: fred
+    source_id: "DGS2"
+    is_rate: true
+  - symbol: SPX
+    name: S&P 500
+    asset_class: equity
+    source: yfinance
+    source_id: "^GSPC"
+  - symbol: OIL
+    name: WTI crude
+    asset_class: energy
+    source: yfinance
+    source_id: "CL=F"
+  - symbol: BTC
+    name: Bitcoin
+    asset_class: crypto
+    source: coingecko
+    source_id: bitcoin
+  - symbol: ETH
+    name: Ethereum
+    asset_class: crypto
+    source: coingecko
+    source_id: ethereum
+
+# FRED macro series carried separately from prices — levels, not tradables.
+fred_series:
+  DGS2: US 2-year Treasury constant maturity
+  DGS10: US 10-year Treasury constant maturity
+  DGS30: US 30-year Treasury constant maturity
+  T10YIE: 10-year breakeven inflation
+  DFII10: 10-year TIPS real yield
+  WALCL: Fed total assets (balance sheet)
+  M2SL: M2 money stock
+  GFDEBTN: Federal debt total public
+  RRPONTSYD: Overnight reverse repo volume
+  DTWEXBGS: Broad trade-weighted dollar index
+  WTREGEN: Treasury General Account balance
+  CPIAUCSL: CPI all urban consumers
+  UNRATE: Unemployment rate
+  FEDFUNDS: Effective federal funds rate

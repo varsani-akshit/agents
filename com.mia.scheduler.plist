@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mia.scheduler</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/akshit/Documents/agents/mia/.venv/bin/python</string>
+        <string>/Users/akshit/Documents/agents/mia/scheduler.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/akshit/Documents/agents/mia</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if the process dies, but back off so a crash-loop cannot spin. -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/akshit/Documents/agents/mia/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/akshit/Documents/agents/mia/logs/launchd.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

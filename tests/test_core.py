@@ -1,0 +1,243 @@
+"""Unit tests for the deterministic layers. No network, no model calls."""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from ingest import dedupe
+from signals import stats, triggers
+
+
+# ───────────────────────────────── dedupe ───────────────────────────────────
+def test_canonical_url_strips_tracking():
+    a = dedupe.canonical_url("https://WWW.Example.com/story/?utm_source=x&id=5&fbclid=z")
+    assert a == "https://example.com/story?id=5"
+
+
+def test_canonical_url_unwraps_google_news():
+    wrapped = "https://news.google.com/rss/articles/abc?url=https://reuters.com/a/b&oc=5"
+    assert dedupe.canonical_url(wrapped) == "https://reuters.com/a/b"
+
+
+def test_canonical_url_trailing_slash_and_case():
+    assert dedupe.canonical_url("HTTPS://Site.com/Path/") == "https://site.com/Path"
+
+
+def test_content_hash_ignores_whitespace_and_case():
+    a = dedupe.content_hash("Gold  Rises", "Body   text")
+    b = dedupe.content_hash("gold rises", "body text")
+    assert a == b
+
+
+def test_content_hash_distinguishes_real_differences():
+    assert dedupe.content_hash("Gold rises") != dedupe.content_hash("Silver rises")
+
+
+def test_content_hash_falls_back_to_url_when_empty():
+    h = dedupe.content_hash("", "", "https://example.com/x")
+    assert h and h == dedupe.content_hash("", "", "https://example.com/x/")
+
+
+def test_title_fingerprint_ignores_stopwords_and_order():
+    a = dedupe.title_fingerprint("The Fed raises rates in March")
+    b = dedupe.title_fingerprint("Fed raises rates March")
+    assert a == b
+
+
+# ───────────────────────────────── stats ────────────────────────────────────
+def _series(values: list[float]) -> pd.Series:
+    idx = pd.date_range("2026-01-01", periods=len(values), freq="D")
+    return pd.Series(values, index=idx)
+
+
+def test_pct_change_basic():
+    s = _series([100, 110])
+    assert stats.pct_change(s, 1) == pytest.approx(10.0)
+
+
+def test_pct_change_returns_none_when_too_short():
+    assert stats.pct_change(_series([100]), 1) is None
+
+
+def test_zscore_flags_outlier_move():
+    # 60 days of ~0.1% drift then a 10% jump: must register as a large z-score.
+    vals = [100 * (1.001**i) for i in range(60)]
+    vals.append(vals[-1] * 1.10)
+    z = stats.zscore_of_last_move(_series(vals))
+    assert z is not None and z > 3
+
+
+def test_zscore_none_on_constant_series():
+    assert stats.zscore_of_last_move(_series([100.0] * 50)) is None
+
+
+def test_rolling_corr_uses_returns_not_levels():
+    """Two rising-but-unrelated series must not show near-perfect correlation."""
+    rng = np.random.default_rng(0)
+    a = _series(list(100 * np.cumprod(1 + rng.normal(0.001, 0.01, 200))))
+    b = _series(list(100 * np.cumprod(1 + rng.normal(0.001, 0.01, 200))))
+    corr = stats.rolling_corr(a, b, 90)
+    assert corr is not None and abs(corr) < 0.5
+
+
+def test_rolling_corr_detects_true_relationship():
+    rng = np.random.default_rng(1)
+    base = rng.normal(0, 0.01, 200)
+    a = _series(list(100 * np.cumprod(1 + base)))
+    b = _series(list(100 * np.cumprod(1 - base)))  # exact inverse
+    corr = stats.rolling_corr(a, b, 90)
+    assert corr is not None and corr < -0.9
+
+
+def test_gold_in_currencies_reading_is_labelled():
+    idx = pd.date_range("2025-01-01", periods=300, freq="D")
+    wide = pd.DataFrame(
+        {
+            "GOLD": np.linspace(2000, 4000, 300),
+            "EURUSD": np.full(300, 1.1),
+            "USDJPY": np.full(300, 150.0),
+        },
+        index=idx,
+    )
+    out = stats.gold_in_currencies(wide)
+    assert "USD" in out and "EUR" in out and "JPY" in out
+    # Monotonically rising gold with flat FX => at highs in every currency.
+    assert out["_reading"].startswith("systemic")
+
+
+# ──────────────────────────────── triggers ──────────────────────────────────
+def _pack(symbol: str, chg_pct: float = 0.0, z: float = 0.0, bp: float | None = None):
+    row = {"symbol": symbol, "last": 100.0, "chg_1d_pct": chg_pct, "z_1d_move": z}
+    if bp is not None:
+        row["chg_1d_bp"] = bp
+    return {"performance": [row], "ratios": [], "yield_curve": {}, "correlation_flips": []}
+
+
+def test_price_trigger_fires_critical_above_threshold():
+    rules = triggers.load_rules()
+    events = triggers.check_prices(_pack("GOLD", chg_pct=4.0), rules)
+    assert any(e["severity"] == "Critical" and e["rule"] == "price_move" for e in events)
+
+
+def test_price_trigger_silent_on_normal_move():
+    rules = triggers.load_rules()
+    events = triggers.check_prices(_pack("GOLD", chg_pct=0.4), rules)
+    assert not [e for e in events if e["rule"] == "price_move"]
+
+
+def test_yield_trigger_uses_basis_points_not_percent():
+    """A 1% relative move in a 4% yield is 4bp — noise. Must not fire."""
+    rules = triggers.load_rules()
+    events = triggers.check_prices(_pack("US10Y", chg_pct=1.0, bp=4.0), rules)
+    assert not [e for e in events if e["rule"] == "yield_move"]
+
+    events = triggers.check_prices(_pack("US10Y", chg_pct=5.0, bp=20.0), rules)
+    assert any(e["rule"] == "yield_move" and e["severity"] == "Critical" for e in events)
+
+
+def test_zscore_trigger_fires_on_statistical_outlier():
+    rules = triggers.load_rules()
+    events = triggers.check_prices(_pack("DXY", chg_pct=0.5, z=3.5), rules)
+    assert any(e["rule"] == "zscore_outlier" and e["severity"] == "Critical" for e in events)
+
+
+def test_dedupe_key_stable_within_bucket():
+    a = triggers._dedupe_key("price_move", "GOLD", "2026-08-26-0")
+    b = triggers._dedupe_key("price_move", "GOLD", "2026-08-26-0")
+    c = triggers._dedupe_key("price_move", "GOLD", "2026-08-26-1")
+    assert a == b and a != c
+
+
+# ───────────────────────────── entity hygiene ───────────────────────────────
+def test_entity_aliases_canonicalise():
+    from brain import extract
+
+    for alias in ("Fed", "FOMC", "the fed", "Federal Open Market Committee"):
+        assert extract.canonical(alias) == "Federal Reserve"
+    assert extract.canonical("btc") == "Bitcoin"
+    assert extract.canonical("treasuries") == "US Treasury Bonds"
+
+
+def test_edge_rejects_self_reference():
+    from brain import extract
+
+    assert extract.upsert_edge(
+        {"source": "Gold", "target": "gold", "relation": "supports",
+         "direction": "positive", "strength": 0.5, "rationale": "x"}
+    ) is False
+
+
+def test_edge_rejects_unknown_relation():
+    from brain import extract
+
+    assert extract.upsert_edge(
+        {"source": "Gold", "target": "Silver", "relation": "invented_relation",
+         "direction": "positive", "strength": 0.5, "rationale": "x"}
+    ) is False
+
+
+# ─────────────────────────────── cost guard ─────────────────────────────────
+class _Usage:
+    input_tokens = 10_000
+    output_tokens = 2_000
+    cache_read_input_tokens = 0
+    cache_creation_input_tokens = 0
+
+
+def test_pricing_matches_published_rates():
+    from brain import client
+
+    # Sonnet 5: $3/M in, $15/M out -> 10k in + 2k out = 0.03 + 0.03
+    usd = client.price_call("claude-sonnet-5", _Usage())
+    assert usd == pytest.approx(0.06, rel=1e-6)
+
+
+def test_pricing_counts_web_searches():
+    from brain import client
+
+    base = client.price_call("claude-haiku-4-5", _Usage())
+    with_search = client.price_call("claude-haiku-4-5", _Usage(), web_searches=10)
+    assert with_search - base == pytest.approx(0.10, rel=1e-6)
+
+
+def test_unknown_model_priced_conservatively():
+    from brain import client
+
+    assert client.price_call("some-future-model", _Usage()) >= client.price_call(
+        "claude-sonnet-5", _Usage()
+    )
+
+
+def test_rate_rows_never_emit_percent_change():
+    """Regression: a -1.02% change in a 4.7% yield is -4.8bp, not -102bp.
+
+    Emitting both units invited the model to read the percent figure as basis
+    points, so rate rows must carry basis points exclusively.
+    """
+    idx = pd.date_range("2025-01-01", periods=300, freq="D")
+    wide = pd.DataFrame(
+        {"US10Y": np.linspace(4.0, 4.7, 300), "GOLD": np.linspace(2000, 4000, 300)},
+        index=idx,
+    )
+    rows = {r["symbol"]: r for r in stats.performance_table(wide)}
+
+    rate = rows["US10Y"]
+    assert rate["unit"] == "percent_yield"
+    assert "chg_1d_bp" in rate
+    assert not any(k.endswith("_pct") for k in rate), (
+        f"rate row leaked a percent field: {sorted(rate)}"
+    )
+
+    price = rows["GOLD"]
+    assert price["unit"] == "usd"
+    assert "chg_1d_pct" in price
+    assert not any(k.endswith("_bp") for k in price)
+
+
+def test_anomalies_render_rates_in_basis_points():
+    perf = [{"symbol": "US10Y", "z_1d_move": 3.0, "chg_1d_bp": -22.5},
+            {"symbol": "GOLD", "z_1d_move": 2.5, "chg_1d_pct": 3.1}]
+    notes = stats.anomalies(pd.DataFrame(), perf)
+    joined = " ".join(notes)
+    assert "-22.5bp" in joined and "+3.10%" in joined
