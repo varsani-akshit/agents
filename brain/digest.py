@@ -260,7 +260,9 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
 # New documents since last cycle ({len(doc_lines)} non-Low of {len(docs)} total)
 {chr(10).join(doc_lines[:100]) or "(nothing above Low urgency)"}
 
-# Charts available (reference inline with markdown image syntax)
+# Charts available — LINK these in prose using the link form shown.
+# Embedding is the rare exception, only for a figure that demonstrates a
+# specific finding from THIS cycle.
 {chart_lines or "(none rendered this cycle)"}
 
 # Prior world model — reconcile your analysis against this

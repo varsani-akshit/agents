@@ -118,6 +118,10 @@ def _stream_once(payload: dict) -> dict:
     """
     headers = {"Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"}
     final: dict | None = None
+    # Citations also arrive as their own events. They are usually present on the
+    # terminal object too, but collecting both costs nothing and the merge
+    # de-duplicates by URL.
+    streamed_annotations: list[dict] = []
     with httpx.stream("POST", _URL, headers=headers,
                       json={**payload, "stream": True}, timeout=1800) as r:
         if r.status_code != 200:
@@ -133,11 +137,15 @@ def _stream_once(payload: dict) -> dict:
                 evt = json.loads(chunk)
             except json.JSONDecodeError:
                 continue
-            kind = evt.get("type")
+            kind = evt.get("type") or ""
             # `incomplete` is a real terminal state, not an error: it is how the
             # output ceiling reports itself, and the loop continues from it.
             if kind in ("response.completed", "response.incomplete"):
                 final = evt.get("response")
+            elif kind.endswith("annotation.added"):
+                ann = evt.get("annotation")
+                if isinstance(ann, dict):
+                    streamed_annotations.append(ann)
             elif kind == "response.failed":
                 err = (evt.get("response") or {}).get("error") or {}
                 raise RuntimeError(f"openai response.failed: {err.get('message', evt)}")
@@ -145,6 +153,8 @@ def _stream_once(payload: dict) -> dict:
                 raise RuntimeError(f"openai stream error: {evt.get('message', evt)}")
     if final is None:
         raise RuntimeError("openai stream ended without a terminal response event")
+    if streamed_annotations:
+        final.setdefault("_streamed_annotations", streamed_annotations)
     return final
 
 
@@ -177,6 +187,27 @@ def _post(payload: dict) -> dict:
     raise RuntimeError(f"openai failed after retries: {last}")
 
 
+# OpenAI wraps inline citations in Private Use Area delimiters — U+E200 opens,
+# U+E201 closes, U+E202 separates — expecting the client to swap the span for a
+# real link using the response's url_citation annotations. Taking the raw text
+# leaves sequences like "\ue200cite\ue202turn0search1\ue201" in the prose,
+# which render as garbage boxes. The span's contents ("turn0search1") is an
+# internal search-result handle, not a URL, so there is nothing to recover from
+# it locally: strip the markers and let the annotation list carry attribution.
+_CITE_SPAN = re.compile("\ue200[^\ue201]*\ue201")
+_CITE_STRAY = re.compile("[\ue200-\ue206]")
+
+
+def strip_citation_markers(text: str) -> str:
+    if not text:
+        return text
+    text = _CITE_SPAN.sub("", text)
+    text = _CITE_STRAY.sub("", text)
+    # Stripping mid-sentence can leave a doubled space or a space before punctuation.
+    text = re.sub(r" {2,}", " ", text)
+    return re.sub(r" +([.,;:)])", r"\1", text)
+
+
 def _text_of(output: list[dict]) -> str:
     parts = []
     for item in output:
@@ -184,11 +215,18 @@ def _text_of(output: list[dict]) -> str:
             for c in item.get("content", []):
                 if c.get("type") in ("output_text", "text"):
                     parts.append(c.get("text", ""))
-    return "\n".join(p for p in parts if p).strip()
+    return strip_citation_markers("\n".join(p for p in parts if p).strip())
 
 
-def _citations(output: list[dict]) -> list[dict]:
-    """Surface url_citation annotations so sources stay traceable."""
+def _citations(output: list[dict], streamed: list[dict] | None = None) -> list[dict]:
+    """Surface url_citation annotations so sources stay traceable.
+
+    Reads both the message content and any annotations seen as stream events.
+    A single-turn probe carries them on the terminal object, but the last digest
+    finished with an empty source list even though a search ran two turns
+    earlier, so both channels are merged and de-duplicated rather than trusting
+    either alone.
+    """
     cites = []
     for item in output:
         if item.get("type") != "message":
@@ -197,6 +235,9 @@ def _citations(output: list[dict]) -> list[dict]:
             for a in c.get("annotations") or []:
                 if a.get("type") == "url_citation":
                     cites.append({"url": a.get("url"), "title": a.get("title")})
+    for a in streamed or []:
+        if a.get("type") == "url_citation":
+            cites.append({"url": a.get("url"), "title": a.get("title")})
     return cites
 
 
@@ -266,7 +307,9 @@ def run_agent(
             usage.get("output_tokens"), searches,
         )
 
-        all_citations.extend(_citations(output))
+        all_citations.extend(
+            _citations(output, data.get("_streamed_annotations"))
+        )
         for o in output:
             if o.get("type") == "web_search_call":
                 calls.append({"tool": "web_search", "args": o.get("action", {}), "chars": 0})
