@@ -271,14 +271,29 @@ def complete_json(
     raise ProviderError(f"all providers failed for {purpose}: {last}")
 
 
+def _qualify(model: str) -> str:
+    """Attach the provider a bare model id actually belongs to.
+
+    Assuming Anthropic here mislabelled `gpt-5.1` as `anthropic:gpt-5.1` in the
+    status table and attributed its spend to the wrong provider.
+    """
+    if ":" in model:
+        return model
+    if model.startswith(("gpt-", "o3", "o4")):
+        return f"openai:{model}"
+    if model.startswith("gemini"):
+        return f"gemini:{model}"
+    return f"anthropic:{model}"
+
+
 def routing_table() -> list[dict]:
     """What each task is currently routed to — surfaced by `mia status`."""
     return [
         {"task": "classify", "spec": config.CLASSIFY_SPEC, "why": "high volume, narrow schema"},
         {"task": "extract_edges", "spec": config.EXTRACT_SPEC, "why": "high volume, narrow schema"},
-        {"task": "alert", "spec": config.ALERT_SPEC, "why": "user-facing prose, low volume"},
-        {"task": "digest", "spec": f"anthropic:{config.DIGEST_MODEL}",
-         "why": "deep reasoning + tool use + prompt caching"},
-        {"task": "ask", "spec": f"anthropic:{config.ASK_MODEL}",
-         "why": "deep reasoning + tool use"},
+        {"task": "alert", "spec": _qualify(config.ALERT_SPEC), "why": "user-facing prose"},
+        {"task": "digest", "spec": _qualify(config.DIGEST_MODEL),
+         "why": "scheduled; cheapest adequate reasoning"},
+        {"task": "ask", "spec": _qualify(config.ASK_MODEL),
+         "why": "deep reasoning + web search"},
     ]
