@@ -3,6 +3,12 @@
 # Idempotent - safe to re-run. Run as the default `ubuntu` user.
 set -euo pipefail
 
+# iptables-persistent opens a dialog asking whether to save current rules, which
+# hangs any unattended run. Answer it in advance.
+export DEBIAN_FRONTEND=noninteractive
+echo 'iptables-persistent iptables-persistent/autosave_v4 boolean true' | sudo debconf-set-selections
+echo 'iptables-persistent iptables-persistent/autosave_v6 boolean true' | sudo debconf-set-selections
+
 REPO="${REPO:-https://github.com/varsani-akshit/agents.git}"
 APP_DIR="${APP_DIR:-/opt/alfred}"
 DB_NAME=alfred
