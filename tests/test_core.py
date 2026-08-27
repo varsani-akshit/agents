@@ -465,3 +465,19 @@ def test_session_is_rolling_and_long_lived():
         cookie = resp.headers.get("set-cookie", "")
         assert "mia_session" in cookie, "session cookie not refreshed on a normal request"
         assert "Max-Age=5184000" in cookie, f"expected a 60-day cookie, got: {cookie}"
+
+
+@pytest.mark.parametrize("path", ["/login", "/", "/charts", "/graph"])
+def test_no_empty_chart_bootstrap(path):
+    """Regression: routes that bypass page() left `window.MIA_CHARTS = ;` in the
+    HTML, a syntax error that killed every script after it on that page."""
+    from fastapi.testclient import TestClient
+
+    from web.app import app
+
+    with TestClient(app) as client:
+        if path != "/login":
+            _sign_in(client)
+        body = client.get(path).text
+    assert "window.MIA_CHARTS = ;" not in body
+    assert "window.MIA_CHARTS = " in body

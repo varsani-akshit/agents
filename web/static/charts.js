@@ -367,13 +367,30 @@
 
   /* Exposed for the charts page: redraws a mount with a freshly fetched spec
      (period/currency controls) without re-running the lazy-load machinery. */
-  window.AlfredCharts = {
-    draw: function (node, spec) {
+  window.AlfredCharts = window.AlfredCharts || {};
+
+  /* Draw one figure on demand, wherever it sits.
+     Defined here rather than inside init() because init() waits for
+     DOMContentLoaded, which fires *after* deferred scripts — so charts-page.js
+     looked for this during its own startup and found nothing, leaving every
+     deep-linked figure blank. */
+  window.AlfredCharts.ensure = function (node) {
+    if (node.dataset.drawn) return;
+    var spec = (window.MIA_CHARTS || {})[node.dataset.chart];
+    if (!spec) {
+      node.innerHTML = '<p class="chart-missing">No data for this figure.</p>';
+      node.dataset.drawn = "1";
+      return;
+    }
+    draw(node, spec);
+  };
+  window.AlfredCharts.draw = (function () {
+    return function (node, spec) {
       if (node._chart) { node._chart.dispose(); node._chart = null; }
       delete node.dataset.drawn;
       draw(node, spec);
-    }
-  };
+    };
+  })();
 
   function init() {
     var packs = window.MIA_CHARTS || {};
@@ -387,16 +404,8 @@
       return;
     }
 
-    var render = function (node) {
-      if (node.dataset.drawn) return;
-      var spec = packs[node.dataset.chart];
-      if (!spec) {
-        node.innerHTML = '<p class="chart-missing">No data for this figure.</p>';
-        node.dataset.drawn = "1";
-        return;
-      }
-      draw(node, spec);
-    };
+    var render = window.AlfredCharts.ensure;
+
 
     if (!("IntersectionObserver" in window)) {
       nodes.forEach(render);

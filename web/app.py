@@ -163,6 +163,25 @@ def _utc(dt: datetime, fmt: str = "%d %b %Y, %H:%M") -> str:
     return dt.astimezone(timezone.utc).strftime(fmt)
 
 
+def asset(path: str) -> str:
+    """Static URL stamped with the file's modification time.
+
+    Without this the browser keeps serving the JavaScript and CSS it cached
+    before a change — locally that wastes debugging time chasing behaviour that
+    is already fixed, and on a deploy it ships new HTML against old scripts,
+    which is worse because the two disagree. The stamp changes only when the
+    file does, so caching stays aggressive and correctness is not negotiable.
+    """
+    file = BASE / "static" / path.lstrip("/")
+    try:
+        return f"/static/{path.lstrip('/')}?v={int(file.stat().st_mtime)}"
+    except OSError:
+        return f"/static/{path.lstrip('/')}"
+
+
+templates.env.globals["asset"] = asset
+
+
 templates.env.filters["ago"] = _ago
 templates.env.filters["utc"] = _utc
 

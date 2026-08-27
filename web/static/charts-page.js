@@ -27,17 +27,35 @@
     });
   });
 
-  /* ── deep links: /charts#rolling_correlations lands on the right tab ── */
-  if (location.hash) {
+  /* ── deep links: /charts#rolling_correlations lands on the right tab ──
+     The browser scrolls to the hash before this runs, while the target's pane
+     is still hidden; showing the pane then reflows everything and leaves the
+     figure hundreds of pixels above the viewport. So: switch the tab, wait for
+     layout, scroll deliberately, and draw the figure — the lazy observer never
+     fires for a node that is off-screen, which left deep links on a blank
+     frame. */
+  function openHash() {
+    if (!location.hash) return;
     var target = document.getElementById(location.hash.slice(1));
-    if (target) {
-      var pane = target.closest(".tabpane");
-      if (pane) {
-        showTab(pane.dataset.pane);
-        setTimeout(function () { target.scrollIntoView({ block: "start" }); }, 60);
+    if (!target) return;
+    var pane = target.closest(".tabpane");
+    if (pane) showTab(pane.dataset.pane);
+    var settle = function () {
+      if (window.AlfredCharts && window.AlfredCharts.ensure) {
+        // Draw the neighbours too: each figure sizes itself to its content when
+        // drawn, so an undrawn one above the target changes height later and
+        // slides the target back out of view.
+        var pane = target.closest(".tabpane") || document;
+        pane.querySelectorAll("[data-chart]").forEach(window.AlfredCharts.ensure);
       }
-    }
+      target.scrollIntoView({ block: "start" });
+    };
+    requestAnimationFrame(function () { requestAnimationFrame(settle); });
+    // One correction after ECharts has laid out, for any residual shift.
+    setTimeout(settle, 260);
   }
+  openHash();
+  window.addEventListener("hashchange", openHash);
 
   /* ── search: matches across every tab, flattening the tab structure ── */
   function applySearch(q) {
