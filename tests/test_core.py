@@ -531,3 +531,31 @@ def test_feed_age_window_covers_the_query_window():
         assert feeds.age_window({"tier": tier}) >= widest_query_hours, (
             f"tier {tier} age window is narrower than the {max(windows)}-day query"
         )
+
+
+def test_retention_never_touches_the_series_analysis_depends_on():
+    """Daily prices, FRED series, briefs and the world model are deliberately
+    exempt. The analogue engine reads twelve years of daily bars and macro
+    series are meaningless without decades, so a retention rule that caught them
+    would quietly hollow out the analysis rather than fail loudly."""
+    import scheduler
+
+    protected = {"fred_series", "analyses", "world_model", "users", "instruments"}
+    for label, table, _ts, _window, predicate in scheduler.RETENTION:
+        assert table not in protected, f"{label} would delete from {table}"
+        if table == "prices":
+            assert "15m" in predicate, "price retention must be limited to intraday bars"
+
+
+def test_retention_rules_are_valid_sql():
+    """Every rule runs as a real DELETE, so a typo in a predicate surfaces here
+    rather than at 03:00 in a job nobody is watching."""
+    import db
+    import scheduler
+
+    for label, table, ts, window, predicate in scheduler.RETENTION:
+        rows = db.query(
+            f"SELECT count(*) AS n FROM {table} "
+            f"WHERE {ts} < now() - interval '{window}' AND ({predicate})"
+        )
+        assert rows and "n" in rows[0], f"{label} produced no result"

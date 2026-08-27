@@ -68,6 +68,10 @@ statement in a previous brief, so read them as hard rules:
 - `intraday_moves` is the live price against the prior close; the daily bar is
   history. Say which one you are quoting.
 - `net_liquidity` is weekly. Correlations are computed on returns, never levels.
+- Every document below carries its publication time. The corpus spans about a
+  week, so check dates before drawing a line between two items: an expectation
+  published on Monday and the outcome on Thursday are a sequence, not a
+  contradiction, and the older one is superseded rather than competing.
 
 Charts: the dashboard has a Charts tab where every standing figure (prices,
 correlations, liquidity, drawdowns, the regime gauge) is always available and
@@ -248,9 +252,15 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
     for d in docs:
         if d.get("urgency") == "Low":
             continue
+        # The date is not decoration. Reading a week of coverage undated, the
+        # model cannot tell Monday's expectation from Friday's outcome, and will
+        # cheerfully present a superseded claim alongside the thing that
+        # superseded it.
+        when = d.get("published_at") or d.get("fetched_at")
+        stamp = when.strftime("%d %b %H:%M") if when else "undated"
         doc_lines.append(
-            f"- [{d.get('urgency') or '?'}|tier{d['source_tier']}] {d['title']}"
-            f" — {d.get('summary') or ''} ({d['source']})"
+            f"- [{stamp}] [{d.get('urgency') or '?'}|tier{d['source_tier']}] "
+            f"{d['title']} — {d.get('summary') or ''} ({d['source']})"
         )
 
     user = f"""Run the {hours}-hour deep analysis cycle. Timestamp: {datetime.now(timezone.utc).isoformat()}

@@ -105,62 +105,88 @@ def job_daily_data() -> dict:
     return detail
 
 
-def prune_documents() -> dict:
-    """Age out the corpus by how much each document turned out to matter.
+# ─────────────────────────────── retention ──────────────────────────────────
+# What Alfred keeps, and for how long. Two principles decide these numbers.
+#
+# Storage is the reason to delete. Analysis is the reason to keep. Where they
+# conflict, note that a stale document does not actually cause a wrong answer:
+# search already decays relevance on a three-week half-life, every document the
+# model reads carries its publication time, and a brief that cites an old item
+# alongside a new one is showing a sequence. What deleting history does cost is
+# the ability to recognise continuity — that this is the third time Treasury has
+# floated the same idea — which is exactly the kind of observation the system
+# exists to make.
+#
+# So: routine churn goes quickly, anything that mattered stays for years, and
+# the series that feed quantitative work are never deleted at all.
+# (label, table, timestamp column, window, extra predicate). The timestamp
+# column is named rather than inferred: guessing "created_at" was wrong for
+# job_runs, which uses started_at, and that rule would have failed silently at
+# 03:00 every night while the rest of maintenance appeared to succeed.
+RETENTION = [
+    # -- news corpus, graded by how much each document turned out to matter ----
+    ("docs_churn", "documents", "fetched_at", "21 days",
+     "coalesce(urgency,'Low') = 'Low' AND source_tier >= 3"),
+    ("docs_routine", "documents", "fetched_at", "90 days",
+     "urgency = 'Medium' AND source_tier >= 3"),
+    # Tier 1-2 are sources of record and low volume; High/Critical is whatever
+    # the classifier thought mattered. Two years lets a brief compare a policy
+    # move against the same month last year.
+    ("docs_aged", "documents", "fetched_at", "730 days", "TRUE"),
 
-    Ingestion runs about a thousand documents a day, each carrying a 1024-dim
-    embedding plus its index entry, so the corpus grows a few hundred megabytes a
-    month with nothing to stop it. That is fine on a laptop disk and fatal on any
-    hosted plan with a storage cap.
+    # -- operational history ---------------------------------------------------
+    # Intraday bars exist to catch a same-session reversal. Weeks later the
+    # daily bar carries everything they add, at a fraction of the rows.
+    ("intraday_prices", "prices", "ts", "21 days", "grain = '15m'"),
+    # Regenerable from the series in seconds, so there is no case for keeping them.
+    ("stats_packs", "stats_packs", "created_at", "30 days", "TRUE"),
+    # Figures for archived briefs. Older briefs keep their text and argument.
+    ("chart_packs", "chart_packs", "created_at", "180 days", "TRUE"),
+    # Long enough to backtest an alert rule against a full year of markets.
+    ("trigger_events", "trigger_events", "created_at", "400 days", "TRUE"),
+    # Spend analysis needs a couple of quarters, not forever.
+    ("api_calls", "api_calls", "created_at", "180 days", "TRUE"),
+    ("job_runs", "job_runs", "started_at", "90 days", "TRUE"),
+]
 
-    The windows are deliberately generous and graded by signal: routine churn
-    goes first, anything a source of record published or the classifier flagged
-    is kept for a year. Documents referenced by a stored analysis are never
-    deleted, so no brief ends up citing a source that no longer exists.
-    """
-    keep = """
-      AND NOT EXISTS (
-        SELECT 1 FROM analyses a
-        WHERE a.meta::text LIKE '%%' || d.url || '%%')
-    """
-    windows = [
-        ("low", "d.urgency = 'Low' AND d.source_tier >= 3", "30 days"),
-        ("medium", "d.urgency = 'Medium' AND d.source_tier >= 3", "120 days"),
-        ("aged", "TRUE", "365 days"),
-    ]
-    out_counts: dict[str, int] = {}
-    for name, predicate, window in windows:
-        out_counts[f"docs_pruned_{name}"] = db.execute(
-            f"""DELETE FROM documents d
-                WHERE d.fetched_at < now() - interval '{window}'
-                  AND ({predicate}){keep}"""
+# Never deleted, and listed explicitly so the omission reads as a decision
+# rather than an oversight:
+#   prices (grain='1d')  the analogue engine reads twelve years
+#   fred_series          macro series are meaningless without decades
+#   analyses             the briefs are the product
+#   world_model          the standing view, and its history
+#   users, instruments   configuration
+
+
+def apply_retention() -> dict:
+    """Age out data per the table above. Returns rows removed per rule."""
+    out: dict[str, int] = {}
+    for label, table, ts, window, predicate in RETENTION:
+        # A document cited by a stored brief is never removed: a published
+        # analysis must not end up pointing at a source that no longer exists.
+        guard = ""
+        if table == "documents":
+            guard = """ AND NOT EXISTS (
+                SELECT 1 FROM analyses a
+                WHERE a.meta::text LIKE '%%' || d.url || '%%')"""
+        alias = " d" if table == "documents" else ""
+        out[label] = db.execute(
+            f"""DELETE FROM {table}{alias}
+                WHERE {ts} < now() - interval '{window}'
+                  AND ({predicate}){guard}"""
         )
-    # Intraday bars exist to catch a same-session reversal; a fortnight later
-    # they carry nothing the daily bar does not.
-    out_counts["intraday_pruned"] = db.execute(
-        "DELETE FROM prices WHERE grain='15m' AND ts < now() - interval '21 days'"
-    )
-    return out_counts
+    return out
 
 
 def job_maintenance() -> dict:
     from brain import client, extract
 
     detail = {"hygiene": extract.hygiene()}
-    # Keep the stats_packs table from growing without bound.
-    detail["packs_pruned"] = db.execute(
-        "DELETE FROM stats_packs WHERE created_at < now() - interval '30 days'"
-    )
-    detail.update(prune_documents())
+    detail.update(apply_retention())
     # Refresh semantic links after pruning, so the graph reflects what remains.
     from memory import graph as kg
 
     detail["doc_links"] = kg.rebuild_links(days=7)
-    # Chart packs are ~100KB each and three briefs a day is ~9MB a month. Old
-    # briefs keep their text and their argument; only the figures expire.
-    detail["chart_packs_pruned"] = db.execute(
-        "DELETE FROM chart_packs WHERE created_at < now() - interval '120 days'"
-    )
     detail["budget"] = client.budget_status()
     b = detail["budget"]
     out.info(
