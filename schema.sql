@@ -204,3 +204,17 @@ CREATE TABLE IF NOT EXISTS doc_links (
 CREATE INDEX IF NOT EXISTS doc_links_src_idx ON doc_links (src_id);
 CREATE INDEX IF NOT EXISTS doc_links_dst_idx ON doc_links (dst_id);
 CREATE INDEX IF NOT EXISTS doc_links_sim_idx ON doc_links (similarity DESC);
+
+-- Share links: one unguessable token per brief, so a single brief can be sent to
+-- someone without giving them an account or sight of anything else. Revocable,
+-- and counted so you can see whether a link was ever opened.
+CREATE TABLE IF NOT EXISTS brief_shares (
+  token       TEXT PRIMARY KEY,
+  analysis_id BIGINT NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
+  created_by  TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  revoked_at  TIMESTAMPTZ,
+  view_count  INTEGER NOT NULL DEFAULT 0,
+  last_viewed TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS brief_shares_analysis_idx ON brief_shares (analysis_id);

@@ -576,3 +576,46 @@ def test_every_document_falls_under_some_retention_rule():
     combined = " OR ".join(f"({p})" for p, _w in doc_rules)
     uncovered = db.one(f"SELECT count(*) AS n FROM documents WHERE NOT ({combined})")["n"]
     assert uncovered == 0, f"{uncovered} documents match no retention rule"
+
+
+def test_share_link_shows_one_brief_and_nothing_else():
+    """A share recipient has no account. The token is the only credential, so
+    the page must carry no route into the rest of the dashboard, and a revoked
+    token must stop working immediately."""
+    from fastapi.testclient import TestClient
+
+    import db
+    from web import sharing
+    from web.app import app
+
+    row = db.one("SELECT id FROM analyses WHERE kind='digest' ORDER BY id DESC LIMIT 1")
+    if not row:
+        import pytest as _p
+
+        _p.skip("no brief to share")
+
+    token = sharing.create(row["id"], "pytest")
+    with TestClient(app) as client:
+        # Reachable with no session at all.
+        r = client.get(f"/s/{token}")
+        assert r.status_code == 200
+        html = r.text
+        assert 'href="/archive"' not in html, "share page links into the dashboard"
+        assert 'href="/ask"' not in html
+        assert "noindex" in html, "share pages must not be indexable"
+
+        # Every other route still demands a session.
+        assert client.get("/archive", follow_redirects=False).status_code == 303
+
+        assert sharing.revoke(token) is True
+        assert client.get(f"/s/{token}").status_code == 404
+
+    db.execute("DELETE FROM brief_shares WHERE analysis_id=%s", (row["id"],))
+
+
+def test_share_token_is_unguessable_and_validated():
+    from web import sharing
+
+    assert sharing.resolve("") is None
+    assert sharing.resolve("short") is None
+    assert sharing.resolve("z" * 32) is None

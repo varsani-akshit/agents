@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ digest.title if digest else 'Alfred' }}{% endblock %}
+{% block title %}{{ digest.title if digest else 'Alfred' }}<script src="{{ asset('share.js') }}" defer></script>
+{% endblock %}
 {% block content %}
 <div class="cols">
   <div>
@@ -7,7 +8,8 @@
     {% set m = digest.meta or {} %}
     <header class="ph">
       <div class="eyebrow">Macro brief · {{ digest.created_at|utc('%d %B %Y') }}</div>
-      <h1>{{ m.regime or digest.title }}</h1>
+      <h1>{{ m.headline or digest.title }}</h1>
+      {% if m.standfirst %}<p class="sub">{{ m.standfirst }}</p>{% endif %}
       {% if m.regime %}<p class="sub">{{ digest.title }}</p>{% endif %}
       <div class="facts">
         <span>{{ digest.created_at|utc('%H:%M') }} UTC</span>
@@ -21,6 +23,20 @@
         Figures below are drawn from current data — this brief predates stored chart data.
       </p>
       {% endif %}
+      <div class="sharebar" data-id="{{ digest.id }}">
+        {% if share %}
+        <input type="text" id="shareurl" readonly
+               value="{{ request.base_url }}s/{{ share.token }}">
+        <button type="button" class="opt" data-act="copy">Copy</button>
+        <button type="button" class="opt" data-act="revoke">Revoke</button>
+        <span class="hint">
+          {{ share.view_count }} view{{ '' if share.view_count == 1 else 's' }}
+        </span>
+        {% else %}
+        <button type="button" class="opt" data-act="share">Create share link</button>
+        <span class="hint">Anyone with the link sees only this brief.</span>
+        {% endif %}
+      </div>
     </header>
     <article class="mbody">{{ body_html|safe }}</article>
     {% if m.citations %}

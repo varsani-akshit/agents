@@ -260,6 +260,50 @@ def cmd_user(args) -> int:
     return 0
 
 
+def cmd_rewrite(args) -> int:
+    """Re-render stored briefs in the current format.
+
+    An important limitation, stated plainly: this reformats the analysis that
+    was written at the time. It cannot re-research a past window, because the
+    documents behind an old brief have often aged out under retention and the
+    prices have moved on. What it does is restructure the existing findings into
+    the topic sections, give the brief a headline of its own, and bring the
+    register into line — so the archive reads consistently.
+
+    For a window whose sources are still in the corpus, `digest --hours N` is
+    the better tool: it genuinely re-analyses rather than re-presents.
+    """
+    import db
+    from brain import rewrite
+    from notify import out
+
+    rows = db.query(
+        """SELECT id, title, body, meta, created_at FROM analyses
+           WHERE kind='digest' ORDER BY created_at DESC LIMIT %s""",
+        (args.limit,),
+    )
+    if args.only:
+        rows = [r for r in rows if r["id"] in set(args.only)]
+    if not rows:
+        out.error("no briefs matched")
+        return 1
+
+    out.info(f"rewriting {len(rows)} brief(s) with {config.DIGEST_MODEL}")
+    total = 0.0
+    for r in rows:
+        try:
+            res = rewrite.rewrite_brief(r, dry_run=args.dry_run)
+        except Exception as exc:  # noqa: BLE001
+            out.error(f"  #{r['id']}: {type(exc).__name__}: {exc}")
+            continue
+        total += res.get("usd", 0.0)
+        flag = " (dry run)" if args.dry_run else ""
+        out.info(f"  #{r['id']} {res['words']} words · ${res['usd']:.4f}{flag}")
+        out.info(f"     {res['headline']}")
+    out.info(f"total ${total:.4f}")
+    return 0
+
+
 def cmd_serve(args) -> int:
     import scheduler
 
@@ -322,6 +366,12 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--password", help="skip the prompt (avoid: lands in shell history)")
     u.add_argument("--list", action="store_true", help="list existing users")
     u.set_defaults(func=cmd_user)
+
+    rw = sub.add_parser("rewrite", help="re-render stored briefs in the current format")
+    rw.add_argument("--limit", type=int, default=5, help="how many recent briefs")
+    rw.add_argument("--only", type=int, nargs="*", help="specific analysis ids")
+    rw.add_argument("--dry-run", action="store_true", help="print without saving")
+    rw.set_defaults(func=cmd_rewrite)
 
     sub.add_parser("serve", help="run the scheduler in the foreground").set_defaults(
         func=cmd_serve

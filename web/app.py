@@ -317,8 +317,12 @@ def _digest_page(request: Request, d: dict | None) -> HTMLResponse:
     stale = bool(d and not pack)
     if stale:
         pack = chartdata.latest_pack()
+    from web import sharing
+
+    share = sharing.for_analysis(d["id"]) if d else None
     return page(request, "digest.html", {
         "digest": d,
+        "share": share,
         "body_html": render_markdown(d["body"], pack) if d else "",
         "recent": digest_list(12),
         "charts_json": json.dumps(pack, default=str),
@@ -623,6 +627,53 @@ async def add_submit(
     result = await asyncio.to_thread(library.add, content, title.strip(), note.strip())
     return page(request, "add.html", {
         "result": result, "recent_docs": library.recent(), "active": "add",
+    })
+
+
+# ─────────────────────────────── share links ───────────────────────────────
+@app.post("/digest/{digest_id}/share")
+async def create_share(request: Request, digest_id: int):
+    from web import sharing
+
+    exists = db.one("SELECT id FROM analyses WHERE id=%s AND kind='digest'", (digest_id,))
+    if not exists:
+        return JSONResponse({"error": "no such brief"}, 404)
+    user = auth.current_user(request) or {}
+    token = await asyncio.to_thread(sharing.create, digest_id, user.get("username"))
+    return {"token": token, "url": f"{request.base_url}s/{token}".replace("http://", "https://", 1)
+            if request.url.scheme == "https" else f"{request.base_url}s/{token}"}
+
+
+@app.post("/digest/{digest_id}/unshare")
+async def revoke_share(request: Request, digest_id: int):
+    from web import sharing
+
+    link = await asyncio.to_thread(sharing.for_analysis, digest_id)
+    if link:
+        await asyncio.to_thread(sharing.revoke, link["token"])
+    return {"revoked": bool(link)}
+
+
+@app.get("/s/{token}", response_class=HTMLResponse)
+async def shared_brief(request: Request, token: str):
+    """A single brief, to someone with no account.
+
+    Deliberately its own template with no navigation: the recipient sees this
+    brief and nothing else — no archive, no other briefs, no Ask box, no route
+    back into the dashboard.
+    """
+    from web import sharing
+
+    row = await asyncio.to_thread(sharing.resolve, token)
+    if not row:
+        return templates.TemplateResponse(
+            request, "share_missing.html", {"charts_json": "{}"}, status_code=404)
+
+    pack = chartdata.load_pack(row["id"]) or chartdata.latest_pack()
+    return templates.TemplateResponse(request, "share.html", {
+        "digest": row,
+        "body_html": render_markdown(row["body"], pack),
+        "charts_json": json.dumps(pack, default=str),
     })
 
 

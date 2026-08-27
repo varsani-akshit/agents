@@ -29,7 +29,9 @@ _N, _R, _P, _DKLEN = 2 ** 15, 8, 1, 64
 # to fit an implementation default.
 _MAXMEM = 128 * _R * _N * 2
 
-PUBLIC_PATHS = ("/login", "/logout", "/healthz", "/static")
+# /s/ is the share-link surface: a recipient has no account, and the token in
+# the URL is the credential. Everything else stays behind the session gate.
+PUBLIC_PATHS = ("/login", "/logout", "/healthz", "/static", "/s")
 
 
 def _derive(password: str, salt: str) -> str:

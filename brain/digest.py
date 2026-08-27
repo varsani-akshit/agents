@@ -39,111 +39,148 @@ The principles below are your standing analytical frame. The stats pack is your
 only source of numbers. Apply the analysis discipline strictly — especially the
 rule that every quantitative claim comes from a tool result, never from memory."""
 
-FORMAT = """Write the brief in this exact structure, in markdown.
+FORMAT = """Write the brief in this structure, in markdown.
 
-HARD LENGTH BUDGET: 1,400 words maximum for the whole brief, tables included —
-a complete read in five to ten minutes. This is a ceiling, not a target to pad
-toward. The depth lives in the investigation (use the tools as much as the
-window needs); the writing is the condensed result. If you are over, cut the
-weakest item entirely rather than compressing everything into mush. Never cut
-Bottom Line, Scenarios or Positioning.
+LENGTH: 2,000-2,800 words. Long enough to cover the world properly, short enough
+to read in fifteen minutes. Depth comes from covering every domain that moved,
+not from more words on the same subject.
 
-Per-section ceilings, which together leave room to spare:
-  Bottom Line 70 · What Happened 450 · Worth Your Attention 100
-  Signals 250 · Scenarios 200 · Positioning 300 · Confidence 90
+REGISTER: Formal international English. Use the technical vocabulary of markets
+and policy freely — term premium, carry, bear steepening, fiscal dominance —
+because the reader knows it and precision matters. Avoid American colloquialism
+and newsroom slang entirely: no "hawkish jitters", no "risk-off mood", no
+"walking a tightrope", no "eye-watering". State what happened and what follows
+from it. Prefer British spelling (labour, centre, programme, recognise,
+normalise) except where a proper noun or market term fixes it (Treasury, Federal
+Reserve, Treasuries, S&P 500).
 
-What condensation means in practice:
-- One insight per paragraph, stated once. No restating a table in prose.
-- Numbers appear where they carry an argument, not as inventory. Three numbers
-  that prove the point beat twelve that describe the day.
-- The reader can interrogate anything further in Ask — write the finding, not
-  the full workings behind it.
+Begin with exactly these two lines, before any heading:
 
-Unit and sign conventions in the stats pack. Each of these has produced a wrong
-statement in a previous brief, so read them as hard rules:
-- Yields carry basis points only, in `chg_*_bp`. A 1% change in a 4.7% yield is
-  4.7bp, not 100bp.
-- `fx_board` resolves quote direction for you. Use `dollar_1d` and
-  `currency_1m_vs_usd_pct` rather than reasoning from the raw pair change.
-- `intraday_moves` is the live price against the prior close; the daily bar is
-  history. Say which one you are quoting.
-- `net_liquidity` is weekly. Correlations are computed on returns, never levels.
-- Every document below carries its publication time. The corpus spans about a
-  week, so check dates before drawing a line between two items: an expectation
-  published on Monday and the outcome on Thursday are a sequence, not a
-  contradiction, and the older one is superseded rather than competing.
+    # <headline>
+    *<standfirst>*
 
-Charts: the dashboard has a Charts tab where every standing figure (prices,
-correlations, liquidity, drawdowns, the regime gauge) is always available and
-interactive — do NOT embed those here. Embed a chart ONLY when this cycle
-produced a specific insight that the figure demonstrates — a correlation that
-just flipped, a divergence that just opened. Zero inline charts is the normal
-case.
+The headline is specific to THIS window and its content — the single most
+consequential thing that happened, stated as a finding, in eight to fourteen
+words. "Treasury buybacks meet a rising term premium as Tokyo turns hawkish",
+not "Macro brief" and not the regime label. Two consecutive briefs should never
+carry the same headline; if the same theme persists, the headline says what
+advanced in it.
 
-When a standing figure supports a point, link it in prose using the exact link
-given for it in `# Charts available` below, e.g.
-`[the gold/TLT correlation](/charts#rolling_correlations)`. Do this whenever you
-reference something a figure shows — it is how the reader gets from a claim to
-the interactive chart behind it. To embed the rare insight chart instead, use
-image syntax: `![title](charts/<key>.png)`.
-
-Tables render properly only at the top level with a blank line before and after
-— never indented inside a list item.
-
-Citations: link only to a URL that appeared verbatim in a tool result or search
-result, including its full path. Never assemble one from a publisher's name — a
-bare homepage like `https://apnews.com/` or `https://www.justice.gov/` looks
-like a citation and is not one, since it does not lead to the story you are
-citing. If you have no exact URL, name the source in plain text with no link.
-Every source found by search is listed under the brief automatically, so an
-unlinked mention still leads the reader somewhere.
-
-House style: no horizontal rules; em dashes sparingly; plain declaratives; bold
-only where a number or claim is genuinely load-bearing.
-
+The standfirst is one sentence in italics summarising the window for someone
+deciding whether to read on.
 
 ## Bottom Line
-Two or three sentences. What changed this window and what it means. If nothing
-material happened, say so — that is a valid finding and earns a short brief.
+
+Three or four sentences. What changed across the world this window and what it
+means for how capital is positioned. Where several regions moved for one
+underlying reason, say so here — that connection is usually the most valuable
+sentence in the brief.
 
 ## What Happened
-The 3-5 developments worth knowing, ranked by consequence. Each: 2-4 sentences —
-what happened, the one implication that is not obvious from the headline, source
-linked inline. Omit routine churn entirely.
+
+The substance, organised BY TOPIC rather than as a ranked list. Use these as
+`###` sub-headings, in this order, and include ONLY those where something
+genuinely happened. A section with nothing to report is omitted entirely; never
+write "no material developments".
+
+    ### Monetary Policy and Central Banks
+    ### Fiscal Policy and Sovereign Debt
+    ### Geopolitics, Conflict and Sanctions
+    ### Energy and Commodities
+    ### Equities and Credit
+    ### Digital Assets
+    ### Currencies
+    ### Real Assets and Property
+
+Within each section, every development gets its own bold title on its own line,
+then two to four sentences beneath it. The title states the finding, not the
+subject: "Bank of Japan signals a September move as core inflation holds at 2.4%"
+rather than "Japan update".
+
+For each: what happened, who reported it and how credible they are, and the
+implication that is not obvious from the headline. Link the source inline where
+you have a real URL.
+
+CROSS-LINKING is what makes this analysis rather than a list, and is required
+wherever a genuine connection exists:
+- Where a development explains or is explained by another, name it: "the same
+  repricing visible in *Currencies* below".
+- Where a measured statistic supports a claim, link the chart that shows it,
+  using the exact link form from `# Charts available`.
+- Where something continues a story from a previous cycle, say so and say what
+  has changed since.
+
+Cover the world, not one country. American policy is usually the largest single
+input, but a brief that is entirely about the Federal Reserve has failed. Europe,
+Japan, China, India, the Gulf, emerging markets and the commodity exporters all
+matter, and often move for reasons unconnected to Washington.
 
 ## Worth Your Attention
-At most three one-liners: the specific things to go read in full, and why. If
-nothing clears the bar, write "Nothing this cycle requires your direct
-attention."
+
+At most four items, one or two lines each: what to read in full, and why. If
+nothing clears the bar, say so in one line.
 
 ## Signals
-250 words. The two or three relationships that CHANGED this cycle, and what each
-change means. Not a tour of the stats pack: no sub-headed survey of metals, then
-crypto, then FX, then the curve. If a relationship is behaving as it did last
-cycle, it does not appear here at all.
 
-Pick the changes with the largest measured drift, give each two or three
-sentences with the values that carry the argument, and link the standing chart
-rather than narrating what it shows. Everything you leave out remains one
-question away in Ask.
+The measured story. Two to four relationships that CHANGED this window, each
+with the values carrying the argument and a link to the standing chart. Not a
+tour of the statistics pack: a relationship behaving as it did last cycle does
+not appear. Where a development above should have moved a relationship and did
+not, that absence is itself a finding.
 
 ## Scenarios
+
 A table: scenario, rough probability, mechanism, confirming signal. Two or three
 rows, one tight sentence per cell.
 
 ## Positioning Implications
-A table with one row per asset class where this cycle actually changed the
-argument: direction, mechanism, key evidence, what would invalidate it. At most
-five rows, one tight sentence per cell. Classes where nothing changed are
-omitted — not filled with "unchanged". Analysis of
-alignment, never trade advice: "the argument for duration weakened", never
-"reduce duration".
+
+A table with one row per asset class where this window changed the argument:
+asset class, direction of the argument, mechanism, measured evidence, what would
+invalidate it. At most six rows. Omit classes where nothing changed rather than
+filling them with "unchanged".
+
+Analysis of how assets stand against the macro picture, never advice to
+transact: "the argument for duration weakened", never "reduce duration".
 
 ## Confidence
-Three lines: most confident of, least, and the single observation next cycle
-that would most change the picture.
 
-After the brief, output the fenced world_model block exactly as before:
+Three short paragraphs: what you are most confident of and why, what is least
+certain, and the single observation next cycle that would most change the
+picture.
+
+Unit and sign conventions in the statistics pack. Each has produced a wrong
+statement in a previous brief, so read them as hard rules:
+- Yields carry basis points only, in `chg_*_bp`. A 1% change in a 4.7% yield is
+  4.7bp, not 100bp.
+- `fx_board` resolves quote direction for you. Use `dollar_1d` and
+  `currency_1m_vs_usd_pct` rather than the raw pair change.
+- `intraday_moves` is the live price against the prior close; the daily bar is
+  history. Say which you are quoting.
+- `net_liquidity` is weekly. Correlations are computed on returns, never levels.
+- Every document below carries its publication time. The corpus spans about a
+  week, so check dates before drawing a line between two items: an expectation
+  published on Monday and the outcome on Thursday are a sequence, not a
+  contradiction, and the older is superseded rather than competing.
+
+Citations: link only to a URL that appeared verbatim in a tool or search result,
+including its full path. Never assemble one from a publisher's name — a bare
+homepage looks like a citation and is not one. With no exact URL, name the source
+in plain text. Every source found by search is listed under the brief
+automatically.
+
+Charts: the Charts tab holds every standing figure, always available and
+interactive — do NOT embed those. Link them in prose using the exact link form
+from `# Charts available`. Embed a chart only where this cycle produced a
+specific insight that the figure demonstrates, using image syntax.
+
+Tables render only at the top level, with a blank line before and after, never
+indented inside a list item.
+
+House style: no horizontal rules; em dashes sparingly; bold for the development
+titles above and for genuinely load-bearing numbers, nowhere else.
+
+After the brief, output the fenced world_model block:
 
 ```world_model
 ## Regime label
@@ -168,8 +205,7 @@ After the brief, output the fenced world_model block exactly as before:
 <by area>
 ```
 The world_model block replaces the previous one wholesale and is NOT part of the
-length budget — keep it as complete as the evidence requires. It is read by the
-next cycle as its starting point."""
+length budget. It is read by the next cycle as its starting point."""
 
 
 def _build_prompt(hours: int) -> tuple[str, dict, dict]:
@@ -305,6 +341,38 @@ Then write the digest in the required format."""
     return user, pack, chart_manifest
 
 
+def _split_headline(body: str) -> tuple[str, str | None, str | None]:
+    """Lift the leading `# headline` and italic standfirst out of the body.
+
+    Every brief previously stored the same generated title and the page showed
+    the regime label as its heading — and the regime label barely changes, so an
+    archive of a dozen briefs read as a dozen copies of one entry. The model now
+    writes a headline specific to the window, and it becomes the title
+    everywhere: page, archive, sidebar, share link.
+
+    Both lines are removed from the body, since the page renders them as the
+    header rather than as prose.
+    """
+    lines = body.lstrip().splitlines()
+    headline = standfirst = None
+    consumed = 0
+
+    if lines and lines[0].startswith("# "):
+        headline = lines[0][2:].strip()
+        consumed = 1
+        # The standfirst is the next non-empty line, italicised.
+        for i in range(1, min(4, len(lines))):
+            candidate = lines[i].strip()
+            if not candidate:
+                continue
+            if candidate.startswith("*") and candidate.endswith("*"):
+                standfirst = candidate.strip("*").strip()
+                consumed = i + 1
+            break
+
+    return "\n".join(lines[consumed:]).lstrip(), headline, standfirst
+
+
 def _split_world_model(text: str) -> tuple[str, str | None, str | None]:
     """Separate the digest body from the trailing world_model block."""
     marker = "```world_model"
@@ -398,7 +466,10 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
         return {"ok": False, "error": result.get("stopped"), "usd": result["usd"]}
 
     body, wm_block, regime = _split_world_model(text)
-    title = f"Brief — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
+    body, headline, standfirst = _split_headline(body)
+    # Fall back to a timestamp only if the model omitted the headline entirely;
+    # a brief with no distinguishing title is worse than an ugly one.
+    title = headline or f"Brief — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
 
     analysis_id = store.save_analysis(
         "digest",
@@ -415,6 +486,8 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             # Recorded so length drift is visible on Status rather than
             # something noticed only when a brief feels long.
             "words": len(body.split()),
+            "headline": headline,
+            "standfirst": standfirst,
             # Keys only. The series themselves go to chart_packs — meta is read
             # by every list query, and a pack is ~100KB.
             "charts": sorted(chart_manifest.keys()),
