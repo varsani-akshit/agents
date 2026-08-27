@@ -46,18 +46,29 @@ python3.12 -m venv .venv
 ./.venv/bin/pip install -q --upgrade pip
 ./.venv/bin/pip install -q -r requirements.txt
 
+# Set a key in .env, replacing any existing line rather than appending a second.
+# Appending leaves duplicates: python-dotenv resolves the last, so it happens to
+# work, while the file still carries a stale value that reads as authoritative
+# to anyone editing it later.
+set_env() {
+  local key="$1" val="$2"
+  if [ -f .env ] && grep -qE "^${key}=" .env; then
+    grep -vE "^${key}=" .env > .env.tmp && mv .env.tmp .env
+  fi
+  printf '%s=%s\n' "$key" "$val" >> .env
+}
+
 if [ ! -f .env ]; then
   cp .env.template .env
-  {
-    echo "DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}"
-    echo "MIA_SESSION_SECRET=$(openssl rand -hex 32)"
-    echo "MIA_EMBED_PROVIDER=gemini"
-    echo "MIA_DIGEST_MODEL=gemini-flash-latest"
-    echo "MIA_ASK_MODEL=gemini-flash-latest"
-    echo "MIA_DIGEST_EFFORT=high"
-    echo "MIA_DAILY_USD_CAP=999"
-    echo "MIA_TOTAL_USD_CAP=999"
-  } >> .env
+  set_env DATABASE_URL "postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}"
+  set_env MIA_SESSION_SECRET "$(openssl rand -hex 32)"
+  set_env MIA_EMBED_PROVIDER gemini
+  set_env MIA_DIGEST_MODEL gemini-flash-latest
+  set_env MIA_ASK_MODEL gemini-flash-latest
+  set_env MIA_DIGEST_EFFORT high
+  set_env MIA_DAILY_USD_CAP 999
+  set_env MIA_TOTAL_USD_CAP 999
+  chmod 600 .env
   echo "   .env created - add GEMINI_API_KEY and FRED_API_KEY before starting"
 elif [ "${NEW_DB:-0}" = "1" ]; then
   echo "   NOTE: a new database role was created but .env already exists;"
