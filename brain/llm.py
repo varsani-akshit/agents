@@ -366,7 +366,8 @@ def complete_text(
     purpose: str,
     max_tokens: int = 800,
     fallback: str | None = None,
-) -> str:
+    with_cost: bool = False,
+) -> str | tuple[str, float]:
     """Free-text completion on the routed provider, with the same fallback rules.
 
     Exists because callers that wanted plain prose were parsing a spec for its
@@ -401,7 +402,9 @@ def complete_text(
                    VALUES (%s,%s,%s,%s,%s,%s)""",
                 (provider, model, purpose, itok, otok, price(attempt, itok, otok)),
             )
-            return text
+            # Callers that report cost had to query api_calls afterwards, and
+            # the one that did not simply reported zero.
+            return (text, price(attempt, itok, otok)) if with_cost else text
         except Exception as exc:  # noqa: BLE001
             last = exc
             log.warning("%s via %s failed: %s", purpose, attempt, exc)

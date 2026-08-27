@@ -54,12 +54,13 @@ It was written at {when}. Its regime label was: {meta.get('regime') or 'unrecord
 # The original brief
 {original}"""
 
-    text = llm.complete_text(
+    text, usd = llm.complete_text(
         config.DIGEST_MODEL if ":" in config.DIGEST_MODEL else f"gemini:{config.DIGEST_MODEL}",
         system=SYSTEM,
         user=user,
         purpose="rewrite",
         max_tokens=16000,
+        with_cost=True,
     )
 
     body, wm, regime = digest._split_world_model(text)
@@ -69,7 +70,7 @@ It was written at {when}. Its regime label was: {meta.get('regime') or 'unrecord
         "headline": headline or row["title"],
         "standfirst": standfirst,
         "words": len(body.split()),
-        "usd": 0.0,
+        "usd": usd,
         "body": body,
     }
     if dry_run:
