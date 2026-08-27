@@ -168,13 +168,25 @@ def _call_gemini(model, system, user, schema, max_tokens) -> tuple[Any, int, int
                 "responseSchema": _to_gemini_schema(schema),
                 "maxOutputTokens": max_tokens,
                 "temperature": 0,
+                # Thinking tokens are billed against maxOutputTokens, so a model
+                # that reasons for 2,000 tokens leaves only 1,000 for the JSON
+                # and the object arrives truncated mid-string. These are
+                # mechanical, schema-constrained tasks — classification and
+                # entity extraction — where reasoning buys nothing and silently
+                # costs the answer.
+                "thinkingConfig": {"thinkingBudget": 0},
             },
         },
         timeout=120,
     )
     r.raise_for_status()
     data = r.json()
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
+    cand = data["candidates"][0]
+    if cand.get("finishReason") == "MAX_TOKENS":
+        raise ProviderError(
+            f"response hit maxOutputTokens ({max_tokens}); JSON would be truncated")
+    parts = cand.get("content", {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts)
     usage = data.get("usageMetadata", {})
     return (
         _extract_json(text),
