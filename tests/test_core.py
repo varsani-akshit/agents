@@ -499,3 +499,16 @@ def test_session_cookie_secure_flag_follows_env(monkeypatch):
 
     monkeypatch.delenv("MIA_HTTPS_ONLY", raising=False)
     importlib.reload(web.app)
+
+
+def test_tick_syncs_instruments_before_inserting_prices():
+    """Regression: prices.symbol references instruments, so on a fresh database
+    every scheduled tick failed with a ForeignKeyViolation until someone ran a
+    backfill. The scheduler starts before any data is loaded, so ordering cannot
+    be assumed."""
+    import inspect
+
+    from ingest import prices
+
+    src = inspect.getsource(prices.tick)
+    assert "sync_instruments()" in src

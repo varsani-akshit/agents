@@ -215,7 +215,15 @@ def backfill(days_daily: str = "2y") -> dict:
 
 
 def tick() -> dict:
-    """15-minute incremental refresh."""
+    """15-minute incremental refresh.
+
+    Syncs the instrument table first. `prices.symbol` is a foreign key onto
+    `instruments`, so on a fresh deployment every tick fails until a backfill
+    happens to run — the scheduler starts the moment the service is enabled,
+    which is before anyone has loaded any data. The upsert is 51 rows and
+    idempotent, so paying it each cycle is cheaper than the ordering dependency.
+    """
+    sync_instruments()
     uni = load_universe()
     yf_inst = [i for i in uni if i["source"] == "yfinance"]
     cg_inst = [i for i in uni if i["source"] == "coingecko"]
