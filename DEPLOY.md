@@ -120,7 +120,29 @@ processes, a host that just runs them is less work.
 
 ---
 
-## 4. After deploying
+## 4. Changing configuration on a running system
+
+Both processes read `.env` once at startup, so editing it changes nothing until
+they restart. This is worth stating because the failure is silent rather than
+loud: after switching the embedding provider, the still-running scheduler kept
+embedding new documents with the old model for an hour, quietly splitting the
+corpus across two models whose vectors are not comparable — and search filters
+by model, so those documents simply stopped being findable.
+
+After any change to model or provider settings, restart both services:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.mia.scheduler   # local
+launchctl kickstart -k gui/$(id -u)/com.mia.web
+```
+
+The **Status** page shows an *Embedding coverage* table. More than one row means
+the corpus is split; the next few ticks repair it automatically, since anything
+carrying a stale model is re-embedded on sight.
+
+---
+
+## 5. After deploying
 
 ```bash
 curl https://your-host/healthz     # {"ok": true}

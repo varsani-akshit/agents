@@ -43,6 +43,21 @@
   </section>
 
   <section class="block">
+    <h2>Embedding coverage</h2>
+    <p class="hint" style="margin:-6px 0 14px">
+      Search filters by embedding model, so documents on an older model become
+      invisible to it. More than one row here means the corpus is split.
+    </p>
+    <table class="data">
+      <tr><th>Model</th><th class="num">Documents</th></tr>
+      {% for e in embedding %}
+      <tr><td class="{{ 'bad' if embedding|length > 1 and not loop.first }}">{{ e.model }}</td>
+          <td class="num">{{ e.docs }}</td></tr>
+      {% endfor %}
+    </table>
+  </section>
+
+  <section class="block">
     <h2>Source health, 7 days</h2>
     <div class="tablewrap"><table class="data">
       <tr><th>Source</th><th class="num">Tier</th><th class="num">Docs</th><th>Last</th></tr>

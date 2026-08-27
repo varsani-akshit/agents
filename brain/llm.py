@@ -225,7 +225,7 @@ def complete_json(
     Falls back to `fallback` (default: the configured Anthropic classify model)
     on any provider error, so a routing decision cannot break the pipeline.
     """
-    fallback = fallback or f"anthropic:{config.CLASSIFY_MODEL}"
+    fallback = fallback or config.FALLBACK_SPEC
     attempts = [spec] + ([fallback] if fallback != spec else [])
 
     last: Exception | None = None
@@ -297,3 +297,100 @@ def routing_table() -> list[dict]:
         {"task": "ask", "spec": _qualify(config.ASK_MODEL),
          "why": "deep reasoning + web search"},
     ]
+
+
+# ───────────────────────────── plain-text completion ────────────────────────
+def _text_anthropic(model, system, user, max_tokens):
+    from brain import client
+
+    resp = client.complete(model=model, purpose="_routed", system=system,
+                           messages=[{"role": "user", "content": user}],
+                           max_tokens=max_tokens, estimated_usd=0.005,
+                           _skip_ledger=True)
+    return (client.text_of(resp), resp.usage.input_tokens, resp.usage.output_tokens)
+
+
+def _text_gemini(model, system, user, max_tokens):
+    r = httpx.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        params={"key": os.environ["GEMINI_API_KEY"]},
+        json={
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"parts": [{"text": user}]}],
+            "generationConfig": {"maxOutputTokens": max_tokens},
+        },
+        timeout=180,
+    )
+    r.raise_for_status()
+    d = r.json()
+    parts = (d.get("candidates") or [{}])[0].get("content", {}).get("parts", []) or []
+    text = "".join(p.get("text", "") for p in parts).strip()
+    u = d.get("usageMetadata", {})
+    return (text, u.get("promptTokenCount", 0),
+            u.get("candidatesTokenCount", 0) + u.get("thoughtsTokenCount", 0))
+
+
+def _text_openai_compatible(base, key, model, system, user, max_tokens):
+    r = httpx.post(
+        f"{base}/chat/completions",
+        headers={"Authorization": f"Bearer {key}"},
+        json={"model": model, "max_completion_tokens": max_tokens,
+              "messages": [{"role": "system", "content": system},
+                           {"role": "user", "content": user}]},
+        timeout=180,
+    )
+    r.raise_for_status()
+    d = r.json()
+    text = (d["choices"][0]["message"].get("content") or "").strip()
+    u = d.get("usage", {})
+    return text, u.get("prompt_tokens", 0), u.get("completion_tokens", 0)
+
+
+def complete_text(
+    spec: str,
+    *,
+    system: str,
+    user: str,
+    purpose: str,
+    max_tokens: int = 800,
+    fallback: str | None = None,
+) -> str:
+    """Free-text completion on the routed provider, with the same fallback rules.
+
+    Exists because callers that wanted plain prose were parsing a spec for its
+    model name and then calling the Anthropic client regardless — so pointing a
+    task at Gemini sent a Gemini model id to Anthropic and 404'd.
+    """
+    fallback = fallback or config.FALLBACK_SPEC
+    attempts = [spec] + ([fallback] if fallback != spec else [])
+    last: Exception | None = None
+    for attempt in attempts:
+        if not available(attempt):
+            continue
+        provider, model = parse_spec(attempt)
+        try:
+            if provider == "anthropic":
+                text, itok, otok = _text_anthropic(model, system, user, max_tokens)
+            elif provider == "gemini":
+                text, itok, otok = _text_gemini(model, system, user, max_tokens)
+            elif provider in ("groq", "openai"):
+                base, key = (("https://api.groq.com/openai/v1", "GROQ_API_KEY")
+                             if provider == "groq"
+                             else ("https://api.openai.com/v1", "OPENAI_API_KEY"))
+                text, itok, otok = _text_openai_compatible(
+                    base, os.environ[key], model, system, user, max_tokens)
+            else:
+                raise ProviderError(f"unknown provider '{provider}'")
+            if not text:
+                raise ProviderError("empty completion")
+            db.execute(
+                """INSERT INTO api_calls
+                     (provider,model,purpose,input_tokens,output_tokens,usd)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                (provider, model, purpose, itok, otok, price(attempt, itok, otok)),
+            )
+            return text
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            log.warning("%s via %s failed: %s", purpose, attempt, exc)
+    raise ProviderError(f"{purpose}: all providers failed ({last})")

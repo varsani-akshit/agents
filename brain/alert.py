@@ -105,15 +105,16 @@ def _context_for(event: dict) -> dict:
 def write(event: dict) -> dict:
     ctx = _context_for(event)
     try:
-        resp = client.complete(
-            model=llm.parse_spec(config.ALERT_SPEC)[1],
-            purpose="alert",
+        # Routed by spec, provider included. Parsing the spec for its model name
+        # and then always calling Anthropic meant ALERT_SPEC=gemini:... sent a
+        # Gemini model id to Anthropic and 404'd into the no-model fallback.
+        text = llm.complete_text(
+            config.ALERT_SPEC,
             system=SYSTEM,
-            messages=[{"role": "user", "content": json.dumps(ctx, default=str)[:12000]}],
+            user=json.dumps(ctx, default=str)[:12000],
+            purpose="alert",
             max_tokens=500,
-            estimated_usd=0.005,
         )
-        text = client.text_of(resp)
     except client.BudgetExceeded as exc:
         log.warning("alert written without model (%s)", exc)
         text = _fallback_text(event)

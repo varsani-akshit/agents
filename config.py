@@ -38,6 +38,13 @@ CLASSIFY_SPEC = os.getenv("MIA_CLASSIFY_SPEC", "gemini:gemini-flash-latest")
 EXTRACT_SPEC = os.getenv("MIA_EXTRACT_SPEC", "gemini:gemini-flash-latest")
 ALERT_SPEC = os.getenv("MIA_ALERT_SPEC", "gemini:gemini-flash-latest")
 
+# Where a routed task goes when its own provider errors. Must name a real model
+# on a real provider: this used to be built as f"anthropic:{CLASSIFY_MODEL}",
+# which silently became "anthropic:gemini-flash-latest" the moment
+# classification moved to Gemini — a fallback that 404s is worse than none,
+# because it only fires when something is already wrong.
+FALLBACK_SPEC = os.getenv("MIA_FALLBACK_SPEC", "anthropic:claude-haiku-4-5")
+
 # Hard spend guards (USD). The ledger refuses calls once these are reached.
 DAILY_USD_CAP = _f("MIA_DAILY_USD_CAP", 0.60)
 TOTAL_USD_CAP = _f("MIA_TOTAL_USD_CAP", 3.00)

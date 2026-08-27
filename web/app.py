@@ -487,6 +487,10 @@ async def status(request: Request):
             """SELECT job, started_at, finished_at, ok, left(coalesce(error,''),160) AS error
                FROM job_runs ORDER BY started_at DESC LIMIT 30"""
         ),
+        "embedding": db.query(
+            """SELECT coalesce(embed_model, '(not embedded)') AS model, count(*) AS docs
+               FROM documents GROUP BY 1 ORDER BY 2 DESC"""
+        ),
         "briefs": db.query(
             """SELECT id, created_at, meta->>'model' AS model,
                       (meta->>'words')::int AS words,
