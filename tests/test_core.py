@@ -481,3 +481,21 @@ def test_no_empty_chart_bootstrap(path):
         body = client.get(path).text
     assert "window.MIA_CHARTS = ;" not in body
     assert "window.MIA_CHARTS = " in body
+
+
+def test_session_cookie_secure_flag_follows_env(monkeypatch):
+    """The Secure flag has to be environment-driven: hardcoded on, local
+    development over http:// cannot log in; hardcoded off, the production cookie
+    crosses the internet in clear text."""
+    import importlib, os
+
+    import web.app
+
+    monkeypatch.setenv("MIA_HTTPS_ONLY", "1")
+    reloaded = importlib.reload(web.app)
+    mw = [m for m in reloaded.app.user_middleware if "Session" in str(m.cls)]
+    assert mw, "session middleware missing"
+    assert mw[0].kwargs["https_only"] is True
+
+    monkeypatch.delenv("MIA_HTTPS_ONLY", raising=False)
+    importlib.reload(web.app)

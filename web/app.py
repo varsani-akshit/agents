@@ -266,7 +266,10 @@ app.add_middleware(
     # 60 days, refreshed on every request below, so regular use never expires.
     max_age=60 * 60 * 24 * 60,
     same_site="lax",
-    https_only=False,            # the host terminates TLS; set true behind one you control
+    # Marks the cookie Secure, so the browser will not send it over plain HTTP.
+    # Off by default because that would break local development on http://; set
+    # MIA_HTTPS_ONLY=1 wherever TLS actually terminates in front of the app.
+    https_only=os.getenv("MIA_HTTPS_ONLY", "").lower() in ("1", "true", "yes"),
 )
 
 
