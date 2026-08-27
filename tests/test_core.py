@@ -512,3 +512,22 @@ def test_tick_syncs_instruments_before_inserting_prices():
 
     src = inspect.getsource(prices.tick)
     assert "sync_instruments()" in src
+
+
+def test_feed_age_window_covers_the_query_window():
+    """The proxy queries ask Google News for `when:7d`. If the age filter is
+    narrower than that, the fetch pulls a week and then discards most of it —
+    the two settings have to move together."""
+    import re
+
+    import config
+    from ingest import feeds
+
+    sources = (config.CONFIG_DIR / "sources.yaml").read_text()
+    windows = {int(d) for d in re.findall(r"when:(\d+)d", sources)}
+    assert windows, "no when: windows found in sources.yaml"
+    widest_query_hours = max(windows) * 24
+    for tier in (2, 3, 4):
+        assert feeds.age_window({"tier": tier}) >= widest_query_hours, (
+            f"tier {tier} age window is narrower than the {max(windows)}-day query"
+        )

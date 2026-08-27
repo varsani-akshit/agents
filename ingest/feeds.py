@@ -66,7 +66,14 @@ def _entry_body(entry) -> str:
 # continuously. One global cutoff would silently drop every central-bank release,
 # so the retention window scales with tier. Dedup makes the long tier-1 window
 # free after the first harvest.
-_AGE_BY_TIER = {1: 30 * 24, 2: 72, 3: 72, 4: 48}
+# Hours of history to accept, per source tier. Tier 1 is generous because
+# central banks publish on a days-to-weeks cadence and a 72-hour cutoff silently
+# discarded every one of them. Tiers 2-4 hold a week so the corpus always covers
+# the window a brief is summarising — and so a gap in ingestion is filled in
+# rather than becoming a permanent hole. This has to be at least as wide as the
+# `when:` window in the news-proxy queries in conf/sources.yaml, or the fetch
+# pulls a week and the filter throws most of it away.
+_AGE_BY_TIER = {1: 30 * 24, 2: 7 * 24, 3: 7 * 24, 4: 7 * 24}
 
 
 def age_window(src: dict, override: int | None = None) -> int:

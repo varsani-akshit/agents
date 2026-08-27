@@ -8,6 +8,13 @@
 # Every URL here was verified live on 2026-08-25. Feeds that 403 bot traffic
 # (IMF, BLS) or publish no RSS at all (US Treasury) are covered by targeted
 # news-proxy queries instead, marked with `proxy: true`.
+#
+# These carry `when:7d` rather than a shorter window for two reasons: a
+# brief written after any gap in ingestion then still sees the week it is
+# summarising, and the corpus keeps a week of context for search and the
+# knowledge graph. Re-fetching the same week each cycle costs nothing —
+# dedup is a content-hash lookup that happens before any model sees a
+# document.
 
 - name: Federal Reserve — all press
   url: https://www.federalreserve.gov/feeds/press_all.xml
@@ -40,15 +47,15 @@
 
 # Official bodies without a usable feed — proxied, so tier 2 not 1.
 - name: US Treasury (proxy)
-  url: https://news.google.com/rss/search?q=%22Treasury+Department%22+OR+%22Treasury+Secretary%22+OR+%22debt+issuance%22+OR+%22buyback%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  url: https://news.google.com/rss/search?q=%22Treasury+Department%22+OR+%22Treasury+Secretary%22+OR+%22debt+issuance%22+OR+%22buyback%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 - name: BLS / inflation data (proxy)
-  url: https://news.google.com/rss/search?q=%22CPI%22+OR+%22inflation+data%22+OR+%22payrolls%22+OR+%22jobs+report%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  url: https://news.google.com/rss/search?q=%22CPI%22+OR+%22inflation+data%22+OR+%22payrolls%22+OR+%22jobs+report%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 - name: IMF / global institutions (proxy)
-  url: https://news.google.com/rss/search?q=IMF+OR+%22Bank+for+International+Settlements%22+OR+%22World+Bank%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  url: https://news.google.com/rss/search?q=IMF+OR+%22Bank+for+International+Settlements%22+OR+%22World+Bank%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 
@@ -65,19 +72,19 @@
   url: https://finance.yahoo.com/news/rssindex
   tier: 2
 - name: Federal Reserve coverage (proxy)
-  url: https://news.google.com/rss/search?q=%22Federal+Reserve%22+OR+%22FOMC%22+OR+%22Powell%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  url: https://news.google.com/rss/search?q=%22Federal+Reserve%22+OR+%22FOMC%22+OR+%22Powell%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 - name: Gold market coverage (proxy)
-  url: https://news.google.com/rss/search?q=gold+price+OR+%22central+bank+gold%22+OR+bullion+when:2d&hl=en-US&gl=US&ceid=US:en
+  url: https://news.google.com/rss/search?q=gold+price+OR+%22central+bank+gold%22+OR+bullion+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 - name: Silver market coverage (proxy)
-  url: https://news.google.com/rss/search?q=silver+price+OR+%22silver+squeeze%22+OR+%22industrial+silver%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  url: https://news.google.com/rss/search?q=silver+price+OR+%22silver+squeeze%22+OR+%22industrial+silver%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 - name: Sovereign debt coverage (proxy)
-  url: https://news.google.com/rss/search?q=%22Treasury+yields%22+OR+%22sovereign+debt%22+OR+%22bond+auction%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  url: https://news.google.com/rss/search?q=%22Treasury+yields%22+OR+%22sovereign+debt%22+OR+%22bond+auction%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 - name: Currency / debasement coverage (proxy)
