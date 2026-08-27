@@ -1,0 +1,19 @@
+[Unit]
+Description=Alfred dashboard
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__APP_DIR__/.env
+ExecStart=__APP_DIR__/.venv/bin/uvicorn web.app:app --host 127.0.0.1 --port 8100
+Restart=always
+RestartSec=5
+# Bound to localhost on purpose: Caddy terminates TLS and proxies to it, so the
+# app is never exposed directly. Config is read once at startup, so a restart is
+# how .env changes take effect.
+
+[Install]
+WantedBy=multi-user.target

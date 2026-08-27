@@ -1,0 +1,6 @@
+# Replace __DOMAIN__ with your hostname, e.g. alfred.akshit.fyi
+# Caddy obtains and renews the certificate automatically.
+__DOMAIN__ {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8100
+}
