@@ -106,33 +106,47 @@ def job_daily_data() -> dict:
 
 
 # ─────────────────────────────── retention ──────────────────────────────────
-# What Alfred keeps, and for how long. Two principles decide these numbers.
+# What Alfred keeps, and for how long.
 #
-# Storage is the reason to delete. Analysis is the reason to keep. Where they
-# conflict, note that a stale document does not actually cause a wrong answer:
-# search already decays relevance on a three-week half-life, every document the
-# model reads carries its publication time, and a brief that cites an old item
-# alongside a new one is showing a sequence. What deleting history does cost is
-# the ability to recognise continuity — that this is the third time Treasury has
-# floated the same idea — which is exactly the kind of observation the system
-# exists to make.
+# The distinction that matters is not news versus numbers, it is record versus
+# perspective.
 #
-# So: routine churn goes quickly, anything that mattered stays for years, and
-# the series that feed quantitative work are never deleted at all.
-# (label, table, timestamp column, window, extra predicate). The timestamp
-# column is named rather than inferred: guessing "created_at" was wrong for
-# job_runs, which uses started_at, and that rule would have failed silently at
-# 03:00 every night while the rest of maintenance appeared to succeed.
+#   A record is dated fact: "the FOMC raised 25bp on 30 July", a CPI print, a
+#   price series. Records do not conflict with each other. A hike in July and a
+#   cut in September are a sequence, and the sequence is the analysis.
+#
+#   A perspective is commentary written before the fact was known: "Fed expected
+#   to cut", "traders position for a pause". These age badly. A month later the
+#   expectation and the outcome sit side by side in search results with nothing
+#   but a timestamp to separate them, and the stale one adds nothing because the
+#   thing it speculated about has already happened.
+#
+# Tier 1 is sources of record — central banks, statistical agencies — and is
+# kept for years at negligible cost (82 documents a month). Tiers 2-4 are
+# coverage and commentary, and expire quickly.
+#
+# Nothing is lost by expiring commentary, because the interpretation is already
+# preserved: the brief written that day says what the news meant, and briefs are
+# never deleted. Raw commentary is the working material; the brief is the
+# memory. Confirmed relationships in the graph survive their sources the same
+# way — an edge carries its confirm_count, not its citations.
 RETENTION = [
-    # -- news corpus, graded by how much each document turned out to matter ----
-    ("docs_churn", "documents", "fetched_at", "21 days",
-     "coalesce(urgency,'Low') = 'Low' AND source_tier >= 3"),
-    ("docs_routine", "documents", "fetched_at", "90 days",
-     "urgency = 'Medium' AND source_tier >= 3"),
-    # Tier 1-2 are sources of record and low volume; High/Critical is whatever
-    # the classifier thought mattered. Two years lets a brief compare a policy
-    # move against the same month last year.
-    ("docs_aged", "documents", "fetched_at", "730 days", "TRUE"),
+    # (label, table, timestamp column, window, extra predicate). The timestamp
+    # column is named rather than inferred: guessing "created_at" was wrong for
+    # job_runs, which uses started_at, and that rule would have failed silently
+    # at 03:00 every night while the rest of maintenance appeared to succeed.
+
+    # -- commentary and coverage: expires, because it is superseded by events --
+    ("news_churn", "documents", "fetched_at", "14 days",
+     "coalesce(urgency,'Low') = 'Low' AND source_tier >= 2"),
+    ("news_routine", "documents", "fetched_at", "45 days",
+     "urgency = 'Medium' AND source_tier >= 2"),
+    # Even news that mattered is commentary. Four months is long enough to trace
+    # a theme through a quarter and short enough that a superseded call is gone.
+    ("news_notable", "documents", "fetched_at", "120 days",
+     "urgency IN ('High','Critical') AND source_tier >= 2"),
+    # -- records: kept, because they are dated fact rather than opinion --------
+    ("records_aged", "documents", "fetched_at", "730 days", "source_tier = 1"),
 
     # -- operational history ---------------------------------------------------
     # Intraday bars exist to catch a same-session reversal. Weeks later the
@@ -150,10 +164,10 @@ RETENTION = [
 ]
 
 # Never deleted, and listed explicitly so the omission reads as a decision
-# rather than an oversight:
+# rather than an oversight. These are the numbers, not the narrative:
 #   prices (grain='1d')  the analogue engine reads twelve years
 #   fred_series          macro series are meaningless without decades
-#   analyses             the briefs are the product
+#   analyses             the briefs are the product, and the durable memory
 #   world_model          the standing view, and its history
 #   users, instruments   configuration
 

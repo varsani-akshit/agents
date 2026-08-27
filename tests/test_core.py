@@ -559,3 +559,20 @@ def test_retention_rules_are_valid_sql():
             f"WHERE {ts} < now() - interval '{window}' AND ({predicate})"
         )
         assert rows and "n" in rows[0], f"{label} produced no result"
+
+
+def test_every_document_falls_under_some_retention_rule():
+    """Commentary must expire. If a tier or urgency combination matches no rule,
+    those documents accumulate forever and quietly reintroduce the contradiction
+    the windows exist to prevent."""
+    import scheduler
+
+    doc_rules = [(p, w) for _l, t, _ts, w, p in scheduler.RETENTION if t == "documents"]
+    assert doc_rules, "no document retention at all"
+
+    import db
+
+    # Ask the database directly: is any document outside every rule's predicate?
+    combined = " OR ".join(f"({p})" for p, _w in doc_rules)
+    uncovered = db.one(f"SELECT count(*) AS n FROM documents WHERE NOT ({combined})")["n"]
+    assert uncovered == 0, f"{uncovered} documents match no retention rule"
