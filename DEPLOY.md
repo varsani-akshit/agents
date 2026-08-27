@@ -47,25 +47,28 @@ The backfill pulls roughly 150k price rows and takes about two minutes.
 |---|---|
 | `DATABASE_URL` | `postgresql://user:pass@host:5432/mia` — must have pgvector |
 | `MIA_SESSION_SECRET` | Signs the login cookie. `python -c "import secrets;print(secrets.token_hex(32))"`. **If unset, a random key is generated per boot and every deploy logs you out.** |
-| `OPENAI_API_KEY` | Writes the briefs (gpt-5.1) and computes embeddings |
-| `ANTHROPIC_API_KEY` | Powers `Ask` and the alert writer |
+| `GEMINI_API_KEY` | Everything: briefs, Ask, alerts, classification, extraction, and embeddings. This is the only model key the system needs. |
+| `MIA_EMBED_PROVIDER` | Set to `gemini`. Without it the provider chain may pick a different embedding model, and vectors from two models are not comparable. |
 
 **Recommended**
 
 | Variable | Notes |
 |---|---|
-| `GEMINI_API_KEY` | Classification and entity extraction route here — far cheaper than Claude for those. Without it they fall back to Anthropic and cost more. |
 | `FRED_API_KEY` | Free from the St. Louis Fed. Without it the 37 macro series stop updating and the liquidity, term-premium and credit analysis go stale. |
+
+**Optional model keys.** `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are no longer
+required. Setting one only widens the choice in Ask's model picker and lets you
+point `MIA_DIGEST_MODEL` at `gpt-5.1` or a Claude model for a one-off comparison.
 
 **Optional**
 
 | Variable | Default | Notes |
 |---|---|---|
 | `GROQ_API_KEY` | — | Another cheap routing target |
-| `VOYAGE_API_KEY` | — | Alternative embeddings. Do not switch providers on a populated database without re-embedding: vectors from different models are not comparable, and the code scopes queries by `embed_model` precisely to stop them being mixed. |
-| `MIA_DIGEST_MODEL` | `claude-sonnet-5` | Set to `gpt-5.1` for the current setup — roughly a third the cost per brief |
-| `MIA_DIGEST_EFFORT` | `medium` | `high` produces the deepest briefs at about $0.34 each |
-| `MIA_ASK_MODEL` | `claude-sonnet-5` | Kept on Anthropic deliberately: server-side web search only exists on that path |
+| `VOYAGE_API_KEY` | — | Alternative embeddings. Do not switch embedding providers on a populated database without re-embedding *and* re-calibrating: vectors from two models are not comparable, and the similarity floor in `memory/graph.py` is per model. On Gemini two unrelated documents already score ~0.72, where the OpenAI-era floor was 0.55 — carried over unchanged it links everything to everything. |
+| `MIA_DIGEST_MODEL` | `gemini-flash-latest` | Measured at $0.057 a brief against $0.371 for gpt-5.1 |
+| `MIA_DIGEST_EFFORT` | `medium` | Maps to Gemini's thinking budget: low 2k, medium 8k, high 24k tokens |
+| `MIA_ASK_MODEL` | `gemini-flash-latest` | Google Search grounding gives this path live web access |
 | `MIA_CLASSIFY_SPEC` | `gemini:gemini-flash-latest` | `provider:model` |
 | `MIA_EXTRACT_SPEC` | `gemini:gemini-flash-latest` | |
 | `MIA_DAILY_USD_CAP` | `0.60` | Rolling 24-hour Anthropic spend ceiling |

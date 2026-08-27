@@ -23,6 +23,19 @@
       {% endif %}
     </header>
     <article class="mbody">{{ body_html|safe }}</article>
+    {% if m.citations %}
+    {# Rendered from the citations the search tool actually returned, so the
+       reader always has real links even where the prose names a source without
+       one. #}
+    <section class="sources">
+      <h2>Sources consulted</h2>
+      <ol>
+        {% for c in m.citations %}
+        <li><a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.title or c.url }}</a></li>
+        {% endfor %}
+      </ol>
+    </section>
+    {% endif %}
     {% else %}
     <p class="empty">No brief yet. Alfred writes one at 09:05 and 21:05 UTC — evening and morning in Melbourne.</p>
     {% endif %}

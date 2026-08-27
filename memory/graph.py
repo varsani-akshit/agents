@@ -22,23 +22,43 @@ import db
 
 log = logging.getLogger("alfred.graph")
 
-# Calibrated against the corpus rather than by eye. At 0.62 nearly 40% of
-# documents had no edge at all, including a Bank of England rate decision whose
-# nearest neighbour — that month's Monetary Policy Report — sat at 0.619 and
-# missed by a thousandth. Below about 0.5 macro documents relate only in the
-# sense that both concern markets, and the layout becomes a hairball.
-MIN_SIMILARITY = 0.55
+# Cosine scales are NOT comparable across embedding models, so the threshold is
+# per model. On gemini-embedding-001 two entirely unrelated documents already
+# score ~0.72, and 99% of random pairs fall under 0.851 — carrying over the
+# OpenAI-era 0.55 would have linked every document to every other and turned the
+# graph into a single hairball.
+#
+# Each figure is measured on this corpus by comparing the random-pair
+# distribution against the top-5 nearest-neighbour distribution, then choosing
+# the point that keeps most genuine neighbours while admitting few random pairs.
+# gemini-embedding-001 at 0.82: keeps 81% of true neighbours, admits 2.7% of
+# random pairs. Re-measure if the embedding model changes again.
+_THRESHOLDS = {
+    "gemini-embedding-001": 0.82,
+    "text-embedding-3-small": 0.55,
+}
+DEFAULT_MIN_SIMILARITY = 0.75
 NEIGHBOURS_PER_DOC = 5
 
 
+def min_similarity_for_active(model: str | None = None) -> float:
+    """The similarity floor calibrated for the active embedding model."""
+    from memory import embed
+
+    name = model or embed.active_model()
+    return _THRESHOLDS.get(name, DEFAULT_MIN_SIMILARITY)
+
+
 def rebuild_links(days: int = 30, per_doc: int = NEIGHBOURS_PER_DOC,
-                  min_similarity: float = MIN_SIMILARITY) -> dict:
+                  min_similarity: float | None = None) -> dict:
     """Recompute semantic edges for recently-fetched documents.
 
     Embeddings from different models are not comparable, so neighbours are only
     ever drawn from documents sharing the source document's `embed_model` — the
     same rule the search path applies.
     """
+    if min_similarity is None:
+        min_similarity = min_similarity_for_active()
     rows = db.query(
         """
         WITH recent AS (

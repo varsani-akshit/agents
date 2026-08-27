@@ -71,13 +71,27 @@ Your standing world model (written by the most recent analysis cycle):
 Question: {question}"""
 
     chosen = model or config.ASK_MODEL
-    if chosen.startswith(("gpt-", "o3", "o4")):
+    flat_system = "\n\n---\n\n".join(
+        b["text"] if isinstance(b, dict) else str(b) for b in system
+    )
+    if chosen.startswith("gemini"):
+        from brain import agent_gemini
+
+        result = agent_gemini.run_agent(
+            system=flat_system,
+            user_message=user,
+            model=chosen,
+            purpose="ask",
+            max_turns=max_turns,
+            max_tokens=12000,
+            effort="high",
+            use_web_search=use_web_search,
+        )
+    elif chosen.startswith(("gpt-", "o3", "o4")):
         from brain import agent_openai
 
         result = agent_openai.run_agent(
-            system="\n\n---\n\n".join(
-                b["text"] if isinstance(b, dict) else str(b) for b in system
-            ),
+            system=flat_system,
             user_message=user,
             model=chosen,
             purpose="ask",

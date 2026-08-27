@@ -86,6 +86,14 @@ image syntax: `![title](charts/<key>.png)`.
 Tables render properly only at the top level with a blank line before and after
 — never indented inside a list item.
 
+Citations: link only to a URL that appeared verbatim in a tool result or search
+result, including its full path. Never assemble one from a publisher's name — a
+bare homepage like `https://apnews.com/` or `https://www.justice.gov/` looks
+like a citation and is not one, since it does not lead to the story you are
+citing. If you have no exact URL, name the source in plain text with no link.
+Every source found by search is listed under the brief automatically, so an
+unlinked mention still leads the reader somewhere.
+
 House style: no horizontal rules; em dashes sparingly; plain declaratives; bold
 only where a number or claim is genuinely load-bearing.
 
@@ -320,20 +328,41 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
         {"type": "text", "text": FORMAT},
     ]
 
-    provider = "openai" if (model or "").startswith(("gpt-", "o3", "o4")) else "anthropic"
+    name = model or config.DIGEST_MODEL
+    if name.startswith(("gpt-", "o3", "o4")):
+        provider = "openai"
+    elif name.startswith("gemini"):
+        provider = "gemini"
+    else:
+        provider = "anthropic"
     chosen_effort = effort or os.getenv("MIA_DIGEST_EFFORT", "low")
+
+    # Only the Anthropic path takes a block list with cache breakpoints; the
+    # others take one system string.
+    flat_system = "\n\n---\n\n".join(
+        b["text"] if isinstance(b, dict) else str(b) for b in system
+    )
 
     if provider == "openai":
         from brain import agent_openai
 
-        # The OpenAI loop takes a single system string, not Anthropic's block list.
-        flat_system = "\n\n---\n\n".join(
-            b["text"] if isinstance(b, dict) else str(b) for b in system
-        )
         result = agent_openai.run_agent(
             system=flat_system,
             user_message=user,
-            model=model,
+            model=name,
+            purpose="digest",
+            max_turns=8,
+            max_tokens=24000,
+            effort=chosen_effort,
+            use_web_search=True,
+        )
+    elif provider == "gemini":
+        from brain import agent_gemini
+
+        result = agent_gemini.run_agent(
+            system=flat_system,
+            user_message=user,
+            model=name,
             purpose="digest",
             max_turns=8,
             max_tokens=24000,
@@ -344,7 +373,7 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
         result = agent.run_agent(
             system=system,
             user_message=user,
-            model=model or config.DIGEST_MODEL,
+            model=name,
             purpose="digest",
             max_turns=8,
             max_tokens=24000,
@@ -373,6 +402,9 @@ def run(hours: int = 8, extract_edges: bool = True, model: str | None = None,
             "stopped": result.get("stopped"),
             "regime": regime,
             "citations": result.get("citations", []),
+            # Recorded so length drift is visible on Status rather than
+            # something noticed only when a brief feels long.
+            "words": len(body.split()),
             # Keys only. The series themselves go to chart_packs — meta is read
             # by every list query, and a pack is ~100KB.
             "charts": sorted(chart_manifest.keys()),

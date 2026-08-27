@@ -23,20 +23,20 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 VOYAGE_API_KEY = os.getenv("VOYAGE_API_KEY", "")
 
-DIGEST_MODEL = os.getenv("MIA_DIGEST_MODEL", os.getenv("DIGEST_MODEL", "claude-sonnet-5"))
-CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "claude-haiku-4-5")
+DIGEST_MODEL = os.getenv("MIA_DIGEST_MODEL", os.getenv("DIGEST_MODEL", "gemini-flash-latest"))
+CLASSIFY_MODEL = os.getenv("CLASSIFY_MODEL", "gemini-flash-latest")
 # `ask` stays on Claude independently of the digest model: server-side web
 # search exists only on the Anthropic path, and interactive questions are where
 # fresh-source lookup matters most. Decoupled deliberately — inheriting from
 # DIGEST_MODEL would silently hand a GPT id to the Anthropic loop.
-ASK_MODEL = os.getenv("MIA_ASK_MODEL", "claude-sonnet-5")
+ASK_MODEL = os.getenv("MIA_ASK_MODEL", "gemini-flash-latest")
 
 # Task routing. "provider:model"; a bare name means Anthropic. High-volume
 # schema-constrained work goes to a fast cheap model; deep reasoning stays on
 # Claude. See brain/llm.py.
 CLASSIFY_SPEC = os.getenv("MIA_CLASSIFY_SPEC", "gemini:gemini-flash-latest")
 EXTRACT_SPEC = os.getenv("MIA_EXTRACT_SPEC", "gemini:gemini-flash-latest")
-ALERT_SPEC = os.getenv("MIA_ALERT_SPEC", f"anthropic:{CLASSIFY_MODEL}")
+ALERT_SPEC = os.getenv("MIA_ALERT_SPEC", "gemini:gemini-flash-latest")
 
 # Hard spend guards (USD). The ledger refuses calls once these are reached.
 DAILY_USD_CAP = _f("MIA_DAILY_USD_CAP", 0.60)

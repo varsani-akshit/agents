@@ -55,6 +55,26 @@
 </div>
 
 <section class="block">
+  <h2>Recent briefs — length, cost and sources</h2>
+  <p class="hint" style="margin:-6px 0 14px">
+    The brief targets 1,400 words, a five-to-ten minute read. Length drift shows here.
+  </p>
+  <div class="tablewrap"><table class="data">
+    <tr><th>Written</th><th>Model</th><th class="num">Words</th>
+        <th class="num">Sources</th><th class="num">USD</th></tr>
+    {% for b in briefs %}
+    <tr>
+      <td><a href="/digest/{{ b.id }}">{{ b.created_at|utc('%d %b %H:%M') }}</a></td>
+      <td class="dim">{{ b.model or '—' }}</td>
+      <td class="num {{ 'bad' if b.words and b.words > 1700 else ('ok' if b.words else '') }}">{{ b.words or '—' }}</td>
+      <td class="num">{{ b.cites }}</td>
+      <td class="num">{% if b.usd %}${{ '%.3f'|format(b.usd) }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</section>
+
+<section class="block">
   <h2>Relationship graph — {{ graph.entities }} entities, {{ graph.edges }} edges</h2>
   <div class="tablewrap"><table class="data">
     <tr><th>From</th><th>Relation</th><th>To</th><th class="num">Strength</th><th class="num">Seen</th></tr>

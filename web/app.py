@@ -487,6 +487,14 @@ async def status(request: Request):
             """SELECT job, started_at, finished_at, ok, left(coalesce(error,''),160) AS error
                FROM job_runs ORDER BY started_at DESC LIMIT 30"""
         ),
+        "briefs": db.query(
+            """SELECT id, created_at, meta->>'model' AS model,
+                      (meta->>'words')::int AS words,
+                      (meta->>'usd')::numeric AS usd,
+                      jsonb_array_length(coalesce(meta->'citations','[]'::jsonb)) AS cites
+               FROM analyses WHERE kind='digest'
+               ORDER BY created_at DESC LIMIT 12"""
+        ),
         "spend": db.query(
             """SELECT provider, model,
                       regexp_replace(purpose,':turn[0-9]+','') AS purpose,
