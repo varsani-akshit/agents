@@ -3,9 +3,25 @@
 {# Inside the title block this script tag rendered into <title>, where browsers
    treat content as plain text — so share.js never executed and the Share
    button was wired to nothing. Scripts belong in the scripts block. #}
-{% block scripts %}<script src="{{ asset('share.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ asset('share.js') }}" defer></script>
+<script src="{{ asset('welcome.js') }}" defer></script>{% endblock %}
 {% block content %}
-<div class="cols">
+{% if digest %}
+{# A brief is a scheduled arrival, not a page you navigated to. The card marks
+   it as one, on every visit, with a beat long enough to read and settle before
+   the brief itself rises in behind it. A click skips it. #}
+<div class="welcome" id="welcome" data-brief="{{ digest.id }}">
+  <div class="welcome-in">
+    <span class="mark"></span>
+    <div class="wg">Good evening.</div>
+    <div class="wt">Your brief is ready.</div>
+    <div class="ws">Alfred · {{ digest.created_at|utc('%d %B %Y · %H:%M') }} UTC</div>
+    <div class="wrule"></div>
+    <div class="wskip">click anywhere to continue</div>
+  </div>
+</div>
+{% endif %}
+<div class="cols{% if digest %} brief-enter{% endif %}">
   <div>
     {% if digest %}
     {% set m = digest.meta or {} %}
@@ -17,8 +33,7 @@
       <div class="facts">
         <span>{{ digest.created_at|utc('%H:%M') }} UTC</span>
         <span>{{ digest.created_at|ago }}</span>
-        {% if m.model %}<span>{{ m.model }}</span>{% endif %}
-        {% if m.usd %}<span>${{ m.usd }}</span>{% endif %}
+        {% if m.words %}<span>{{ '{:,}'.format(m.words) }} words</span>{% endif %}
         {% if m.citations %}<span class="hi">{{ m.citations|length }} sources cited</span>{% endif %}
         {% if m.pipeline %}<span><a href="/digest/{{ digest.id }}/research">Behind the brief →</a></span>{% endif %}
       </div>

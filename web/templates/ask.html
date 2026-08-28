@@ -1,75 +1,107 @@
 {% extends "base.html" %}
 {% block title %}Ask — Alfred{% endblock %}
 {% block content %}
-<div class="cols">
-  <div>
-    <header class="ph">
-      <div class="eyebrow">Two-way</div>
-      <h1>Ask</h1>
-      <p class="sub">
-        Answers draw on the stored corpus, the computed statistics, the
-        relationship graph, and a live web search.
-      </p>
-    </header>
+<div class="chat">
+  {# ── conversation history ─────────────────────────────────────────── #}
+  <aside class="chat-rail" id="chatrail">
+    <div class="rail-head">
+      <a class="newchat" href="/ask">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.4" fill="none"/>
+        </svg>
+        New conversation
+      </a>
+    </div>
+    <div class="rail-list">
+      {% for c in conversations %}
+      <a href="{{ c.url }}"
+         class="rail-item{{ ' on' if answer and c.depth == 'quick' and c.id == answer.id }}">
+        <span class="what">{{ c.question|replace('Q: ','') }}</span>
+        <span class="meta">
+          <span class="depth {{ c.depth }}">{{ 'Deep' if c.depth == 'deep' else 'Quick' }}</span>
+          {{ c.created_at|ago }}
+        </span>
+      </a>
+      {% else %}
+      <p class="hint rail-empty">No conversations yet.</p>
+      {% endfor %}
+    </div>
+  </aside>
 
-    <form class="ask-form" method="post" action="/ask" onsubmit="return go()">
-      <textarea name="question" rows="2" required
-        placeholder="Why is silver lagging gold, and does our stored analysis agree?">{{ prefill or question or '' }}</textarea>
-      <div class="formrow">
-        <select name="depth" id="depth">
-          <option value="quick" {% if depth != 'deep' %}selected{% endif %}>Quick — one researcher, 30–90s</option>
-          <option value="deep" {% if depth == 'deep' %}selected{% endif %}>Deep research — a team investigates, 1–3 min, note kept</option>
-        </select>
-        <select name="model">
-          <option value="">Gemini Flash — default, live search</option>
-          <option value="gemini-pro-latest">Gemini Pro — deeper reasoning</option>
-        </select>
-        <button type="submit" id="go">Ask</button>
-        <span class="spinner" id="sp"><span class="spin"></span> working…</span>
+  {# ── the conversation ─────────────────────────────────────────────── #}
+  <section class="chat-main">
+    <div class="chat-scroll" id="chatscroll">
+      {% if answer %}
+      <div class="msg user"><div class="bubble">{{ question }}</div></div>
+      <div class="msg alfred">
+        <div class="who"><span class="mark"></span>Alfred
+          <span class="when">{{ answer.created_at|utc('%d %b, %H:%M') }} UTC</span></div>
+        <article class="mbody">{{ answer_html|safe }}</article>
+      </div>
+      {% else %}
+      <div class="chat-empty" id="chatempty">
+        <span class="mark big"></span>
+        <h1>At your service.</h1>
+        <p>Ask about anything Alfred tracks — the corpus, the measured
+          statistics, the relationship graph, and the live web.</p>
+        <div class="suggest">
+          <button type="button" class="sg">Is the silver–gold ratio stretched by historical standards?</button>
+          <button type="button" class="sg">What changed in central bank gold buying this quarter?</button>
+          <button type="button" class="sg">How exposed is the Australian dollar to a China slowdown?</button>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ── composer ───────────────────────────────────────────────────── #}
+    <form class="composer" id="composer" autocomplete="off">
+      <textarea id="q" rows="1" placeholder="Ask Alfred…"
+                required>{{ prefill or '' }}</textarea>
+      <div class="composer-foot">
+        <div class="picks">
+          <div class="pick" data-pick="depth" data-value="{{ depth or 'quick' }}">
+            <button type="button" class="pick-btn">
+              <span class="pick-label">{{ 'Deep research' if depth == 'deep' else 'Quick' }}</span>
+              <svg viewBox="0 0 10 6" width="9" height="6" aria-hidden="true">
+                <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" fill="none"/>
+              </svg>
+            </button>
+            <div class="pick-menu">
+              <button type="button" data-v="quick">
+                <span class="t">Quick</span>
+                <span class="d">One researcher, tools and live search · 30–90s</span>
+              </button>
+              <button type="button" data-v="deep">
+                <span class="t">Deep research</span>
+                <span class="d">A team investigates in parallel · 1–3 min · note kept</span>
+              </button>
+            </div>
+          </div>
+          <div class="pick" data-pick="model" data-value="standard">
+            <button type="button" class="pick-btn">
+              <span class="pick-label">Standard</span>
+              <svg viewBox="0 0 10 6" width="9" height="6" aria-hidden="true">
+                <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" fill="none"/>
+              </svg>
+            </button>
+            <div class="pick-menu">
+              <button type="button" data-v="standard"><span class="t">Standard</span>
+                <span class="d">Fast, with live search</span></button>
+              <button type="button" data-v="extended"><span class="t">Extended</span>
+                <span class="d">Deeper reasoning, slower</span></button>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="send" id="send" aria-label="Send">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" stroke="currentColor"
+                  stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </form>
-
-    {% if answer %}
-    <header class="ph">
-      <div class="eyebrow">{{ answer.created_at|utc }} UTC</div>
-      <h1>{{ question }}</h1>
-      <div class="facts">
-        {% set m = answer.meta or {} %}
-        {% if m.usd %}<span>${{ m.usd }}</span>{% endif %}
-        {% if m.tool_calls %}<span>{{ m.tool_calls|length }} tool calls</span>{% endif %}
-      </div>
-    </header>
-    <article class="mbody">{{ answer_html|safe }}</article>
-    {% endif %}
-  </div>
-
-  <aside class="side">
-    <section>
-      <h3>Quick answers</h3>
-      <div class="side-list">
-        {% for a in history %}
-        <a href="/answer/{{ a.id }}">
-          <span class="when">{{ a.created_at|utc('%d %b') }}</span>
-          <span class="what">{{ a.title|replace('Q: ','') }}</span>
-        </a>
-        {% else %}<p class="hint">None yet.</p>{% endfor %}
-      </div>
-    </section>
-    <section>
-      <h3>Deep investigations</h3>
-      <div class="side-list">
-        {% for n in notes %}
-        <a href="/research/{{ n.id }}">
-          <span class="when">{{ n.created_at|utc('%d %b') }}</span>
-          <span class="what">{{ n.question }}</span>
-        </a>
-        {% else %}<p class="hint">Choose "Deep research" above for a question that deserves a team.</p>{% endfor %}
-      </div>
-    </section>
-  </aside>
+    <p class="chat-note">Alfred reasons from measured data and cited sources. Verify before acting.</p>
+  </section>
 </div>
-<script>
-function go(){ document.getElementById('go').disabled = true;
-               document.getElementById('sp').classList.add('on'); return true; }
-</script>
 {% endblock %}
+{% block scripts %}<script src="{{ asset('ask.js') }}" defer></script>{% endblock %}

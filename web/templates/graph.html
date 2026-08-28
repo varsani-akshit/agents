@@ -7,8 +7,9 @@
   <p class="sub">
     Every stored document, linked to the documents it resembles and the concepts
     it mentions. {{ '{:,}'.format(counts.documents) }} documents and
-    {{ '{:,}'.format(counts.links) }} semantic links. Drag to explore, scroll to
-    zoom, click any node to read it.
+    {{ '{:,}'.format(counts.links) }} semantic links. Click a node to focus its
+    neighbourhood, drag nodes apart to read a dense patch, scroll to zoom;
+    Escape or a click on empty space clears the focus.
   </p>
 </header>
 
@@ -25,12 +26,15 @@
   </div>
   <div class="ctlrow">
     <input type="text" id="gsearch" placeholder="Filter by title or summary…" autocomplete="off">
+    <button class="opt" id="gclear">Clear focus</button>
+    <button class="opt" id="greset">Re-layout</button>
     <span class="hint" id="gstats"></span>
   </div>
 </div>
 
 <div class="graphwrap">
   <div id="graphcanvas"></div>
+  <div class="gnote" id="gnote"></div>
   <aside class="gpanel" id="gpanel">
     <p class="hint">Click a node to inspect it.</p>
   </aside>

@@ -6,16 +6,20 @@
   <h1>Behind the brief</h1>
   <p class="sub"><a href="/digest/{{ digest.id }}">{{ digest.title }}</a></p>
   <div class="facts">
-    <span>${{ '%.3f'|format(total_usd) }} research cost</span>
     {% if verifier and verifier.payload.checked_claims is defined %}
     <span>{{ verifier.payload.checked_claims }} claims audited</span>
     {% endif %}
   </div>
 </header>
 
+{% if quiet %}
+<p class="hint quiet-beats">Quiet this window, with nothing worth reporting:
+  {{ quiet|join(', ') }}.</p>
+{% endif %}
+
 {% if marshal %}
 <section class="rsec">
-  <h2>Marching orders <span class="mono">{{ marshal.model or '' }}</span></h2>
+  <h2>Marching orders</h2>
   <p>{{ marshal.payload.window_summary }}</p>
   <ul>
     {% for p in marshal.payload.priorities or [] %}
@@ -34,7 +38,7 @@
   <h2>{{ row.beat.section }}</h2>
 
   {% if row.analyst %}
-  <h3>Analyst findings <span class="mono">{{ row.analyst.model or '' }}</span></h3>
+  <h3>Analyst findings</h3>
   {% if row.analyst.payload.beat_summary %}
   <p class="sub">{{ row.analyst.payload.beat_summary }}</p>
   {% endif %}
@@ -52,7 +56,7 @@
   {% endfor %}
   {% endif %}
 
-  {% if row.scout %}
+  {% if row.scout and row.scout.payload.leads %}
   <h3>Scout leads</h3>
   {% for l in row.scout.payload.leads or [] %}
   <div class="lead">
@@ -77,13 +81,13 @@
 </section>
 {% endfor %}
 
-{% if verifier %}
+{% if verifier and verifier.payload.checked_claims %}
 <section class="rsec">
   <h2>Verification</h2>
   {% set audit = verifier.payload %}
-  <p class="sub">{{ audit.checked_claims or 0 }} numeric claims audited,
-    {{ audit.issues|length if audit.issues else 0 }} issues,
-    {{ audit.fixed or 0 }} corrected before publication.</p>
+  <p class="sub">{{ audit.checked_claims }} numeric claims audited against the
+    measured data{% if audit.issues %}, {{ audit.issues|length }} flagged,
+    {{ audit.fixed or 0 }} corrected before publication{% else %} — all matched{% endif %}.</p>
   {% for i in audit.issues or [] %}
   <div class="lead">
     <p><span class="mono">{{ i.severity }}</span> “{{ i.quote }}”</p>

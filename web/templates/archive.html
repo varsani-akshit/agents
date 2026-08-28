@@ -16,7 +16,7 @@
         <a class="row" href="/digest/{{ d.id }}">
           <span class="row-when">{{ d.created_at|utc('%d %b · %H:%M') }}</span>
           <span class="row-t">{{ d.regime or d.title }}</span>
-          <span class="row-note">{{ d.model or '' }}{% if d.usd %} · ${{ d.usd }}{% endif %}</span>
+          <span class="row-note">{{ d.regime or '' }}</span>
         </a>
         {% else %}<p class="empty">No briefs yet.</p>{% endfor %}
       </div>
@@ -29,7 +29,7 @@
         <a class="row" href="/answer/{{ a.id }}">
           <span class="row-when">{{ a.created_at|utc('%d %b · %H:%M') }}</span>
           <span class="row-t">{{ a.title|replace('Q: ','') }}</span>
-          <span class="row-note">{% if a.usd %}${{ a.usd }}{% endif %}</span>
+          <span class="row-note"></span>
         </a>
         {% else %}<p class="empty">Nothing asked yet.</p>{% endfor %}
       </div>

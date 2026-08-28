@@ -25,12 +25,4 @@
       <div class="kv"><dt>graph</dt><dd>{{ summary.counts.entities }}/{{ summary.counts.edges }}</dd></div>
     </dl>
   </section>
-  <section>
-    <h3>Spend</h3>
-    <dl>
-      {% for p in summary.providers %}
-      <div class="kv"><dt>{{ p.provider }}</dt><dd>${{ '%.2f'|format(p.usd) }}</dd></div>
-      {% endfor %}
-    </dl>
-  </section>
 </aside>

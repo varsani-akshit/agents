@@ -385,18 +385,27 @@ async def digest_research(request: Request, digest_id: int):
             singles[r["stage"]] = r
     from brain.pipeline import beats as beats_mod
 
+    # A beat that reported nothing is not a section — a heading over an empty
+    # box reads as a broken page rather than as a quiet beat. The row appears
+    # only when a scout found leads or an analyst produced findings.
     beat_rows = []
     for b in beats_mod.BEATS:
         s, a = stages["scout"].get(b["key"]), stages["analyst"].get(b["key"])
-        if s or a:
-            beat_rows.append({"beat": b, "scout": s, "analyst": a})
+        leads = (s or {}).get("payload", {}).get("leads") or []
+        findings = (a or {}).get("payload", {}).get("findings") or []
+        if leads or findings:
+            beat_rows.append({"beat": b, "scout": s if leads else None,
+                              "analyst": a if findings else None})
+    quiet = [b["section"] for b in beats_mod.BEATS
+             if b["key"] not in {r["beat"]["key"] for r in beat_rows}
+             and (stages["scout"].get(b["key"]) or stages["analyst"].get(b["key"]))]
     return page(request, "digest_research.html", {
         "digest": d,
         "beats": beat_rows,
         "marshal": singles.get("marshal"),
         "editor": singles.get("editor"),
         "verifier": singles.get("verifier"),
-        "total_usd": sum(float(r["usd"] or 0) for r in rows),
+        "quiet": quiet,
         "active": "latest",
     })
 
@@ -423,13 +432,26 @@ async def one_answer(request: Request, answer_id: int):
         "answer": a,
         "answer_html": render_markdown(a["body"], pack),
         "question": (a["meta"] or {}).get("question", a["title"]),
-        "history": db.query(
-            """SELECT id,title,created_at FROM analyses WHERE kind='answer'
-               ORDER BY created_at DESC LIMIT 25"""
-        ),
+        "conversations": conversation_list(),
         "charts_json": json.dumps(pack, default=str),
         "active": "ask",
     })
+
+
+def conversation_list() -> list[dict]:
+    """Every past exchange, quick and deep, newest first — the chat history."""
+    rows = db.query(
+        """SELECT id, coalesce(meta->>'question', title) AS question,
+                  created_at, 'quick' AS depth
+           FROM analyses WHERE kind='answer'
+         UNION ALL
+           SELECT id, question, created_at, 'deep' AS depth FROM research_notes
+           ORDER BY created_at DESC LIMIT 60"""
+    )
+    for r in rows:
+        r["url"] = (f"/research/{r['id']}" if r["depth"] == "deep"
+                    else f"/answer/{r['id']}")
+    return rows
 
 
 @app.get("/ask", response_class=HTMLResponse)
@@ -438,16 +460,55 @@ async def ask_form(request: Request, q: str = "", depth: str = "quick"):
         "answer": None,
         "prefill": q[:400],
         "depth": depth if depth in ("quick", "deep") else "quick",
-        "history": db.query(
-            """SELECT id,title,created_at FROM analyses WHERE kind='answer'
-               ORDER BY created_at DESC LIMIT 25"""
-        ),
-        "notes": db.query(
-            """SELECT id, question, created_at FROM research_notes
-               ORDER BY created_at DESC LIMIT 15"""
-        ),
+        "conversations": conversation_list(),
         "active": "ask",
     })
+
+
+@app.post("/api/ask")
+async def api_ask(request: Request):
+    """Answer a question and return rendered HTML.
+
+    The chat view posts here so it can show the question immediately and hold
+    a thinking state while the agent works — a full page round-trip would
+    leave the reader on a frozen form for a minute or more.
+    """
+    from brain import client
+
+    payload = await request.json()
+    q = (payload.get("question") or "").strip()
+    if not q:
+        return JSONResponse({"error": "empty question"}, 400)
+    depth = "deep" if payload.get("depth") == "deep" else "quick"
+    # The composer offers a tier, never a model id: no vendor name is ever
+    # shipped to the browser, and the routing can change without the UI lying.
+    model = {"extended": "gemini-pro-latest"}.get(payload.get("model") or "", "")
+    client.AUTONOMOUS = False  # interactive: may use the reserved budget
+
+    try:
+        if depth == "deep":
+            from brain import research as research_mod
+
+            result = await asyncio.to_thread(research_mod.run, q, trigger="ask")
+            if not result.get("note_id"):
+                return JSONResponse({"error": "research produced no note"}, 500)
+            return {"id": result["note_id"], "depth": "deep",
+                    "url": f"/research/{result['note_id']}",
+                    "html": render_markdown(result["body"], {})}
+
+        from brain import ask as ask_mod
+
+        result = await asyncio.to_thread(
+            lambda: ask_mod.ask(q, model=model or None))
+        if not result.get("analysis_id"):
+            return JSONResponse(
+                {"error": result.get("stopped") or "no answer produced"}, 500)
+        return {"id": result["analysis_id"], "depth": "quick",
+                "url": f"/answer/{result['analysis_id']}",
+                "html": render_markdown(result.get("text") or "", {})}
+    except Exception as exc:  # noqa: BLE001
+        log.exception("ask failed")
+        return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:300]}, 500)
 
 
 @app.post("/ask")
@@ -673,12 +734,13 @@ async def api_chart(key: str, days: str = ""):
 
 @app.get("/api/graph")
 async def api_graph(days: int = 7, limit: int = 220,
-                    urgency: str = "Medium", q: str = ""):
+                    urgency: str = "Medium", q: str = "", concept: str = ""):
     """The knowledge graph: documents, the concepts they mention, and the links."""
     from memory import graph as kg
 
     return await asyncio.to_thread(
-        kg.build, min(days, 120), min(limit, 600), urgency, q.strip())
+        kg.build, min(days, 120), min(limit, 600), urgency, q.strip(),
+        concept.strip())
 
 
 @app.get("/api/graph/document/{doc_id}")

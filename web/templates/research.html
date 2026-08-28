@@ -27,7 +27,6 @@
       <div class="eyebrow">Research note · {{ note.created_at|utc('%d %B %Y %H:%M') }} UTC</div>
       <h1>{{ note.question }}</h1>
       <div class="facts">
-        <span>${{ '%.3f'|format(note.usd) }}</span>
         <span>{{ (note.facets or [])|length }} research facets</span>
         <span><a href="/research">New investigation</a></span>
       </div>
@@ -62,7 +61,7 @@
         {% for h in history %}
         <li>
           <a href="/research/{{ h.id }}">{{ h.question }}</a>
-          <span class="hint">{{ h.created_at|ago }} · ${{ '%.2f'|format(h.usd) }}</span>
+          <span class="hint">{{ h.created_at|ago }}</span>
         </li>
         {% else %}
         <li class="hint">Nothing yet. Ask something worth digging into.</li>

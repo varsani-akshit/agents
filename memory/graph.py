@@ -16,6 +16,8 @@ is one indexed query rather than 1,762 comparisons in Python.
 """
 from __future__ import annotations
 
+import json
+
 import logging
 
 import db
@@ -98,7 +100,7 @@ def rebuild_links(days: int = 30, per_doc: int = NEIGHBOURS_PER_DOC,
 
 
 def build(days: int = 7, limit: int = 220, min_urgency: str = "Medium",
-          query: str = "") -> dict:
+          query: str = "", concept: str = "") -> dict:
     """Nodes and edges for the graph view.
 
     Scoped rather than exhaustive: 1,700 documents at once is a grey cloud, not
@@ -115,6 +117,17 @@ def build(days: int = 7, limit: int = 220, min_urgency: str = "Medium",
     if query:
         where_extra = " AND (d.title ILIKE %(q)s OR d.summary ILIKE %(q)s)"
         params["q"] = f"%{query}%"
+    if concept:
+        # A concept is matched against the extracted entity and theme arrays,
+        # not the prose. Filtering a concept by text search returned nothing
+        # whenever the entity was named differently in the copy than in the
+        # extraction — which blanked the graph on a click that should have
+        # focused it.
+        # entities/themes are jsonb arrays, so containment (@>) is the test —
+        # and it uses the GIN index rather than scanning every row.
+        where_extra += (" AND (d.entities @> %(concept)s::jsonb"
+                        " OR d.themes @> %(concept)s::jsonb)")
+        params["concept"] = json.dumps([concept])
 
     docs = db.query(
         f"""SELECT d.id, d.title, d.url, d.source, d.source_tier, d.urgency,
