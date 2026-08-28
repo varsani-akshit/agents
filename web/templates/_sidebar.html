@@ -6,7 +6,10 @@
       {% for d in recent %}
       <a href="/digest/{{ d.id }}">
         <span class="when">{{ d.created_at|utc('%d %b · %H:%M') }}</span>
-        <span class="what">{{ (d.regime or 'brief')[:60] }}</span>
+        {# The title is the headline — specific to the brief. The regime label
+           barely changes between briefs, so using it here made every entry
+           read identically. #}
+        <span class="what">{{ d.title[:80] }}</span>
       </a>
       {% endfor %}
     </div>

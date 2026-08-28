@@ -13,7 +13,7 @@
       <div class="eyebrow">Macro brief · {{ digest.created_at|utc('%d %B %Y') }}</div>
       <h1>{{ m.headline or digest.title }}</h1>
       {% if m.standfirst %}<p class="sub">{{ m.standfirst }}</p>{% endif %}
-      {% if m.regime %}<p class="sub">{{ digest.title }}</p>{% endif %}
+      {% if m.regime %}<p class="sub">{{ m.regime }}</p>{% endif %}
       <div class="facts">
         <span>{{ digest.created_at|utc('%H:%M') }} UTC</span>
         <span>{{ digest.created_at|ago }}</span>

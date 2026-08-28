@@ -198,6 +198,60 @@ def fetch_coingecko_spot(instruments: list[dict]) -> int:
     return _store(rows)
 
 
+# ────────────────────────────────── spot metals ─────────────────────────────
+# Gold and silver as actual spot rather than front-month futures. LBMA is the
+# official price (daily fixes back to 1968); gold-api.com provides the live
+# quote between fixes. Both are free and keyless.
+_LBMA = {
+    "XAU": "https://prices.lbma.org.uk/json/gold_pm.json",
+    "XAG": "https://prices.lbma.org.uk/json/silver.json",
+}
+_SPOT_API = "https://api.gold-api.com/price/{sid}"
+
+
+def fetch_lbma(instruments: list[dict], days: int | None = None) -> int:
+    """Daily history from the LBMA fixes. days=None loads everything (1968-)."""
+    total = 0
+    for inst in instruments:
+        url = _LBMA.get(str(inst["source_id"]))
+        if not url:
+            continue
+        try:
+            with httpx.Client(timeout=60) as client:
+                data = client.get(url).raise_for_status().json()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("lbma %s failed: %s", inst["symbol"], exc)
+            continue
+        if days:
+            data = data[-days:]
+        rows = []
+        for row in data:
+            usd = (row.get("v") or [None])[0]
+            if not usd:  # early-history gaps and unpriced dates are zeros
+                continue
+            ts = datetime.fromisoformat(row["d"]).replace(tzinfo=timezone.utc)
+            rows.append((inst["symbol"], ts, float(usd), None, None, None, None, "1d", "lbma"))
+        total += _store(rows)
+        log.info("lbma %s: %d rows", inst["symbol"], len(rows))
+    return total
+
+
+def fetch_spot_live(instruments: list[dict]) -> int:
+    """Live spot for the 15-minute tick."""
+    rows = []
+    ts = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    for inst in instruments:
+        try:
+            with httpx.Client(timeout=20) as client:
+                data = client.get(_SPOT_API.format(sid=inst["source_id"])).raise_for_status().json()
+            px = data.get("price")
+            if px:
+                rows.append((inst["symbol"], ts, float(px), None, None, None, None, "15m", "gold-api"))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("spot %s failed: %s", inst["symbol"], exc)
+    return _store(rows)
+
+
 # ─────────────────────────────────── entrypoints ────────────────────────────
 def backfill(days_daily: str = "2y") -> dict:
     """Historical load. Run once at setup; safe to re-run."""
@@ -205,11 +259,14 @@ def backfill(days_daily: str = "2y") -> dict:
     uni = load_universe()
     yf_inst = [i for i in uni if i["source"] == "yfinance"]
     cg_inst = [i for i in uni if i["source"] == "coingecko"]
+    spot_inst = [i for i in uni if i["source"] == "spot"]
     out = {
         "daily_rows": fetch_yfinance(yf_inst, period=days_daily, interval="1d"),
         "crypto_rows": fetch_coingecko(cg_inst),
         "crypto_history_rows": fetch_crypto_history(cg_inst, period=days_daily),
+        "spot_rows": fetch_lbma(spot_inst),
         "intraday_rows": fetch_yfinance(yf_inst, period="5d", interval="15m"),
+        "spot_live": fetch_spot_live(spot_inst),
     }
     return out
 
@@ -227,9 +284,11 @@ def tick() -> dict:
     uni = load_universe()
     yf_inst = [i for i in uni if i["source"] == "yfinance"]
     cg_inst = [i for i in uni if i["source"] == "coingecko"]
+    spot_inst = [i for i in uni if i["source"] == "spot"]
     return {
         "intraday_rows": fetch_yfinance(yf_inst, period="1d", interval="15m"),
         "crypto_rows": fetch_coingecko_spot(cg_inst),
+        "spot_rows": fetch_spot_live(spot_inst),
     }
 
 
@@ -237,7 +296,9 @@ def daily_refresh() -> dict:
     uni = load_universe()
     yf_inst = [i for i in uni if i["source"] == "yfinance"]
     cg_inst = [i for i in uni if i["source"] == "coingecko"]
+    spot_inst = [i for i in uni if i["source"] == "spot"]
     return {
         "daily_rows": fetch_yfinance(yf_inst, period="1mo", interval="1d"),
         "crypto_rows": fetch_coingecko(cg_inst, days=30),
+        "spot_rows": fetch_lbma(spot_inst, days=45),
     }

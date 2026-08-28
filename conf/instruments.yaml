@@ -1,22 +1,26 @@
 # Canonical instrument universe.
 instruments:
+  # Gold and silver are true spot: LBMA daily fixes (history to 1968) plus a
+  # live spot API intraday. They were COMEX front-month futures labelled
+  # "spot", which trade above spot in contango — the reader compares against
+  # spot, so quoting futures as spot read as stale or wrong data.
   - symbol: GOLD
-    name: Gold spot (COMEX front month)
+    name: Gold spot (XAU/USD)
     asset_class: metal
-    source: yfinance
-    source_id: "GC=F"
+    source: spot
+    source_id: "XAU"
   - symbol: SILVER
-    name: Silver spot (COMEX front month)
+    name: Silver spot (XAG/USD)
     asset_class: metal
-    source: yfinance
-    source_id: "SI=F"
+    source: spot
+    source_id: "XAG"
   - symbol: PLATINUM
-    name: Platinum
+    name: Platinum (NYMEX front-month futures)
     asset_class: metal
     source: yfinance
     source_id: "PL=F"
   - symbol: COPPER
-    name: Copper
+    name: Copper (COMEX front-month futures)
     asset_class: metal
     source: yfinance
     source_id: "HG=F"
@@ -65,7 +69,7 @@ instruments:
     source: yfinance
     source_id: "^GSPC"
   - symbol: OIL
-    name: WTI crude
+    name: WTI crude (NYMEX front-month futures)
     asset_class: energy
     source: yfinance
     source_id: "CL=F"
@@ -238,14 +242,14 @@ instruments:
     source: yfinance
     source_id: "SIL"
   - symbol: PALLADIUM
-    name: Palladium
+    name: Palladium (NYMEX front-month futures)
     asset_class: metal
     source: yfinance
     source_id: "PA=F"
 
   # ── Energy and agriculture ──────────────────────────────────────────────
   - symbol: NATGAS
-    name: US natural gas (Henry Hub)
+    name: US natural gas (Henry Hub front-month futures)
     asset_class: energy
     source: yfinance
     source_id: "NG=F"
