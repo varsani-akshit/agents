@@ -133,10 +133,17 @@ def wrap_tables(html_text: str) -> str:
         "</table>", "</table></div>")
 
 
+_DEV_TITLE = re.compile(r"<p><strong>((?:(?!</?strong>).)+)</strong></p>")
+
+
 def render_markdown(text: str, pack: dict | None = None) -> str:
     text, _ = mount_charts(text or "", pack or {})
     _MD.reset()
-    return wrap_tables(_MD.convert(normalise_list_indent(text)))
+    html_text = wrap_tables(_MD.convert(normalise_list_indent(text)))
+    # A bold line alone in its own paragraph is a development title — the
+    # brief format's convention. Tagged here, deterministically, so CSS can
+    # promote it without also catching paragraphs that merely open bold.
+    return _DEV_TITLE.sub(r'<p class="devtitle"><strong>\1</strong></p>', html_text)
 
 
 # ──────────────────────────────── formatting ────────────────────────────────

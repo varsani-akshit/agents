@@ -170,15 +170,35 @@ h1, h2, h3, p { text-wrap: pretty; }
 .mbody > table, .mbody > .tablewrap, .mbody > figure,
 .mbody > .chart, .mbody > h2 { max-width: 100%; }
 
+/* Three levels of heading, each unmistakably itself:
+   h2  the brief's parts (Bottom Line, What Happened, Signals) — large, ruled
+   h3  topic sections (Monetary Policy, Currencies) — mono caps kicker
+   dev titles (a bold line alone in a paragraph) — headline over its story
+   Before this, h3 and a development title were both 17px/500 — three levels
+   rendered as one, and the reader had to parse structure from the words. */
 .mbody h2 {
-  font: 500 20px/1.35 var(--sans); letter-spacing: -.01em;
-  margin: 52px 0 18px; padding-bottom: 10px;
-  border-bottom: .5px solid var(--border);
+  font: 500 22px/1.3 var(--sans); letter-spacing: -.015em;
+  margin: 56px 0 20px; padding-bottom: 12px;
+  border-bottom: .5px solid var(--t1);
 }
 .mbody h2:first-child { margin-top: 0; }
-.mbody h3 { font: 500 17px/1.4 var(--sans); margin: 32px 0 10px; }
+.mbody h3 {
+  font: 500 12px/1.4 var(--mono);
+  text-transform: uppercase; letter-spacing: .14em;
+  color: var(--accent);
+  margin: 44px 0 14px; padding-top: 12px;
+  border-top: .5px solid var(--border);
+}
 .mbody p { margin: 0 0 24px; }
 .mbody strong { font-weight: 500; color: var(--t1); }
+/* A development title: the model writes it as a bold line alone in its own
+   paragraph; render_markdown tags exactly those. Promoted to a headline —
+   larger, tight to the story below it. */
+.mbody p.devtitle { margin-bottom: 6px; }
+.mbody p.devtitle > strong {
+  display: block;
+  font-size: 18px; line-height: 1.45; letter-spacing: -.01em;
+}
 .mbody ul, .mbody ol { margin: 0 0 24px; padding-left: 22px; }
 .mbody li { margin-bottom: 9px; }
 .mbody li::marker { color: var(--t3); }
