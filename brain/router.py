@@ -90,16 +90,20 @@ def complete_json(role: str, *, system: str, user: str, schema: dict,
     """
     last: Exception | None = None
     for spec in chain_for(role, premium_site=premium_site):
-        try:
-            payload = llm.complete_json(
-                spec, system=system, user=user, schema=schema,
-                purpose=purpose, max_tokens=max_tokens, fallback=spec,
-            )
-            return payload, spec
-        except Exception as exc:  # noqa: BLE001
-            last = exc
-            log.warning("%s: role=%s escalating past %s (%s)",
-                        purpose, role, spec, str(exc)[:160])
+        # Two attempts per spec: a dropped connection is transient, and moving
+        # straight to a different (often weaker) model over a network blip
+        # trades answer quality for nothing.
+        for attempt in range(2):
+            try:
+                payload = llm.complete_json(
+                    spec, system=system, user=user, schema=schema,
+                    purpose=purpose, max_tokens=max_tokens, fallback=spec,
+                )
+                return payload, spec
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                log.warning("%s: role=%s %s attempt %d failed (%s)",
+                            purpose, role, spec, attempt + 1, str(exc)[:160])
     raise llm.ProviderError(f"{purpose}: role '{role}' exhausted its chain ({last})")
 
 
@@ -112,14 +116,15 @@ def complete_text(role: str, *, system: str, user: str, purpose: str,
     """
     last: Exception | None = None
     for spec in chain_for(role, premium_site=premium_site):
-        try:
-            text, usd = llm.complete_text(
-                spec, system=system, user=user, purpose=purpose,
-                max_tokens=max_tokens, fallback=spec, with_cost=True,
-            )
-            return text, spec, usd
-        except Exception as exc:  # noqa: BLE001
-            last = exc
-            log.warning("%s: role=%s escalating past %s (%s)",
-                        purpose, role, spec, str(exc)[:160])
+        for attempt in range(2):
+            try:
+                text, usd = llm.complete_text(
+                    spec, system=system, user=user, purpose=purpose,
+                    max_tokens=max_tokens, fallback=spec, with_cost=True,
+                )
+                return text, spec, usd
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                log.warning("%s: role=%s %s attempt %d failed (%s)",
+                            purpose, role, spec, attempt + 1, str(exc)[:160])
     raise llm.ProviderError(f"{purpose}: role '{role}' exhausted its chain ({last})")

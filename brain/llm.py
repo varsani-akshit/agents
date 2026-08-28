@@ -396,6 +396,10 @@ def _text_anthropic(model, system, user, max_tokens):
 
 
 def _text_gemini(model, system, user, max_tokens):
+    # Non-streaming: the API sends nothing until the whole completion exists,
+    # so the read timeout must cover full generation. Pro writing a long brief
+    # comfortably exceeds three minutes; 180s here made the premium fallback
+    # fail exactly when it was needed.
     r = httpx.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         params={"key": os.environ["GEMINI_API_KEY"]},
@@ -404,7 +408,7 @@ def _text_gemini(model, system, user, max_tokens):
             "contents": [{"parts": [{"text": user}]}],
             "generationConfig": {"maxOutputTokens": max_tokens},
         },
-        timeout=180,
+        timeout=httpx.Timeout(600, connect=20),
     )
     r.raise_for_status()
     d = r.json()
