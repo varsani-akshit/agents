@@ -49,9 +49,13 @@ def job_tick(harvest_news: bool = True) -> dict:
     the full tick every 30 minutes, a prices-only tick in between. News minutes
     old is indistinguishable from news half an hour old at a twice-daily brief.
 
-    Each stage is its own traced run (watchman / librarian / quant / sentinel):
-    they are independently triggered pieces of work with their own outcomes, so
-    they appear as separate runs rather than one undifferentiated tick.
+    One trigger, one dataflow, one trace: the watchman's new documents feed the
+    librarian, the quant's pack and the watchman's new doc ids feed the
+    sentinel. Because information passes straight through, the whole tick is a
+    single `watch` run with the four agents as sub-agent spans in sequence —
+    the run boundary follows the dataflow, not the agents' names. The brief,
+    research, ask and rewrite remain separate runs because they are genuinely
+    self-contained: nothing flows between them and the tick at execution time.
     """
     from brain import alert as alert_mod, observe
     from ingest import feeds, prices
@@ -60,52 +64,57 @@ def job_tick(harvest_news: bool = True) -> dict:
     detail: dict = {}
     harvest = {}
 
-    if harvest_news:
-        # Watchman: fresh corpus.
-        with observe.run("watchman") as rec:
-            harvest = feeds.harvest()
-            detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
-            rec.set_output(detail["feeds"])
-        # Librarian: organised corpus.
-        with observe.run("librarian") as rec:
-            from brain import classify
-            from memory import store
+    with observe.run("watch", meta={"harvest_news": harvest_news}) as rec:
+        if harvest_news:
+            # Watchman: fresh corpus.
+            with observe.stage("watchman", kind="generic") as sp:
+                harvest = feeds.harvest()
+                detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
+                sp.set_output(detail["feeds"])
+                sp.set_attribute("inserted", detail["feeds"].get("inserted", 0))
+            # Librarian: organised corpus.
+            with observe.stage("librarian", kind="generic") as sp:
+                from brain import classify
+                from memory import store
 
-            detail["embedded"] = store.embed_documents(limit=120)
-            detail["classified"] = classify.run(batch=20, max_batches=3, workers=3)
-            rec.set_output({"embedded": detail["embedded"],
-                            "classified": detail["classified"]})
+                detail["embedded"] = store.embed_documents(limit=120)
+                detail["classified"] = classify.run(batch=20, max_batches=3, workers=3)
+                sp.set_output({"embedded": detail["embedded"],
+                               "classified": detail["classified"]})
 
-    # Quant: the measured state of the world. No model, no cost.
-    with observe.run("quant") as rec:
-        with observe.stage("prices.tick", kind="tool") as sp:
-            detail["prices"] = prices.tick()
-            sp.set_output(detail["prices"])
-        with observe.stage("stats.build", kind="generic") as sp:
-            pack = stats.build(persist=True)
-            sp.set_output({"sections": sorted(pack.keys())})
-            sp.set_attribute("sections", len(pack))
-        rec.set_output({"prices": detail["prices"], "stats_sections": len(pack)})
+        # Quant: the measured state of the world. No model, no cost.
+        with observe.stage("quant", kind="generic") as sp:
+            with observe.stage("prices.tick", kind="tool") as p:
+                detail["prices"] = prices.tick()
+                p.set_output(detail["prices"])
+            with observe.stage("stats.build", kind="generic") as p:
+                pack = stats.build(persist=True)
+                p.set_output({"sections": sorted(pack.keys())})
+            sp.set_output({"prices": detail["prices"], "stats_sections": len(pack)})
 
-    # Sentinel: thresholds and alerts.
-    with observe.run("sentinel") as rec:
-        with observe.stage("triggers.evaluate", kind="generic") as sp:
-            fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
-            sp.set_output([{k: str(v) for k, v in ev.items()} for ev in fired])
-            sp.set_attribute("fired", len(fired))
-        detail["triggers_fired"] = len(fired)
-        triggers.suppress_stale(hours=6)
-        sent = []
-        for ev in triggers.pending_critical():
-            with observe.stage(f"alert:{ev.get('rule')}", kind="generic",
-                               input={k: str(v) for k, v in ev.items()}) as sp:
-                message = alert_mod.write(ev)
-                out.alert(message)
-                sp.set_output({"message": message})
-            sent.append(ev["id"])
-        triggers.mark_notified(sent)
-        detail["alerts_sent"] = len(sent)
-        rec.set_output({"fired": detail["triggers_fired"], "alerts": len(sent)})
+        # Sentinel: thresholds and alerts, fed by quant's pack and the
+        # watchman's new documents.
+        with observe.stage("sentinel", kind="generic",
+                           input={"new_docs": len(harvest.get("new_ids") or [])}) as sp:
+            with observe.stage("triggers.evaluate", kind="generic") as p:
+                fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
+                p.set_output([{k: str(v) for k, v in ev.items()} for ev in fired])
+            detail["triggers_fired"] = len(fired)
+            triggers.suppress_stale(hours=6)
+            sent = []
+            for ev in triggers.pending_critical():
+                with observe.stage(f"alert:{ev.get('rule')}", kind="generic",
+                                   input={k: str(v) for k, v in ev.items()}) as p:
+                    message = alert_mod.write(ev)
+                    out.alert(message)
+                    p.set_output({"message": message})
+                sent.append(ev["id"])
+            triggers.mark_notified(sent)
+            detail["alerts_sent"] = len(sent)
+            sp.set_output({"fired": detail["triggers_fired"], "alerts": len(sent)})
+
+        rec.set_output({k: v for k, v in detail.items() if k != "feeds"}
+                       | {"feeds": detail.get("feeds")})
 
     out.info(
         f"tick · {detail.get('feeds', {}).get('inserted', 0)} new docs · "
