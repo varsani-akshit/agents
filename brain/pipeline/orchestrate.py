@@ -173,6 +173,7 @@ def run(hours: int = 12) -> dict:
             rec.set_output({"ok": False, "error": "editor returned nothing"})
             return {"ok": False, "error": "editor returned nothing"}
 
+        text = tools.resolve_grounding_links(text, citations)
         body, wm_block, regime = digest._split_world_model(text)
         body, headline, standfirst = digest._split_headline(body)
         title = headline or f"Brief — {started.strftime('%Y-%m-%d %H:%M UTC')}"

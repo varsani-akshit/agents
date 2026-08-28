@@ -388,6 +388,58 @@ def _get_world_model() -> dict:
     }
 
 
+# ───────────────────────── grounding-link resolution ────────────────────────
+_GROUNDING_RE = None
+
+
+def resolve_grounding_links(text: str, citations: list[dict] | None = None) -> str:
+    """Replace Gemini grounding redirect URLs with the pages they lead to.
+
+    Grounded search returns every source as an opaque
+    vertexaisearch.cloud.google.com/grounding-api-redirect/… URL. Those links
+    work, but a reader cannot see what they are, and they die if Google retires
+    the redirector. Resolved once here, in parallel, after generation — a URL
+    that fails to resolve keeps its redirect form rather than breaking.
+    Mutates the url field of `citations` in place; returns the rewritten text.
+    """
+    import re
+    from concurrent.futures import ThreadPoolExecutor
+
+    import httpx
+
+    global _GROUNDING_RE
+    if _GROUNDING_RE is None:
+        _GROUNDING_RE = re.compile(
+            r"https://vertexaisearch\.cloud\.google\.com/grounding-api-redirect/[\w\-=]+")
+
+    urls = set(_GROUNDING_RE.findall(text))
+    for c in citations or []:
+        if c.get("url") and _GROUNDING_RE.fullmatch(c["url"]):
+            urls.add(c["url"])
+    if not urls:
+        return text
+
+    def _resolve(url: str) -> tuple[str, str | None]:
+        try:
+            with httpx.stream("GET", url, follow_redirects=True, timeout=12,
+                              headers={"User-Agent": "Mozilla/5.0 (AlfredResearch)"}) as r:
+                final = str(r.url)
+            return url, (final if final != url else None)
+        except Exception:  # noqa: BLE001
+            return url, None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        resolved = dict(ex.map(_resolve, urls))
+    for src, dst in resolved.items():
+        if dst:
+            text = text.replace(src, dst)
+    for c in citations or []:
+        dst = resolved.get(c.get("url"))
+        if dst:
+            c["url"] = dst
+    return text
+
+
 HANDLERS = {
     "query_prices": _query_prices,
     "get_stats_pack": _get_stats_pack,

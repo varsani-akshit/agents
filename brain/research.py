@@ -76,20 +76,36 @@ def run(question: str, *, trigger: str = "ask") -> dict:
         # ── Sub-researchers, parallel and context-isolated ───────────────────
         def _facet(idx_facet):
             idx, facet = idx_facet
+            user_msg = (
+                f"The larger question: {question}\n\n"
+                f"Your facet: {facet['facet']}\n"
+                f"Angle: {facet['angle']}\n"
+                f"Now: {datetime.now(timezone.utc).isoformat()}"
+            )
             with observe.stage(f"facet:{idx+1}", kind="generic", input=facet) as sp:
                 result = agent_gemini.run_agent(
                     system=_RESEARCHER_SYSTEM,
-                    user_message=(
-                        f"The larger question: {question}\n\n"
-                        f"Your facet: {facet['facet']}\n"
-                        f"Angle: {facet['angle']}\n"
-                        f"Now: {datetime.now(timezone.utc).isoformat()}"
-                    ),
+                    user_message=user_msg,
                     model="gemini-flash-latest",
                     purpose=f"research.facet{idx+1}",
                     max_turns=6, max_tokens=8000, effort="medium",
                     use_web_search=True,
                 )
+                if not (result.get("text") or "").strip():
+                    # A researcher can burn every turn on tool calls and run out
+                    # before writing. One tighter retry: fewer turns, an explicit
+                    # instruction to write from whatever it gathers.
+                    log.warning("facet %d returned no report; retrying once", idx + 1)
+                    result = agent_gemini.run_agent(
+                        system=_RESEARCHER_SYSTEM,
+                        user_message=user_msg + "\n\nYou have a strict budget: at "
+                        "most two tool calls, then WRITE THE REPORT from what you "
+                        "have. A partial report beats none.",
+                        model="gemini-flash-latest",
+                        purpose=f"research.facet{idx+1}.retry",
+                        max_turns=3, max_tokens=8000, effort="low",
+                        use_web_search=True,
+                    )
                 sp.set_output({"report": result.get("text", ""),
                                "citations": result.get("citations", [])})
                 return {"facet": facet["facet"], "report": result.get("text", ""),
@@ -131,6 +147,9 @@ def run(question: str, *, trigger: str = "ask") -> dict:
                 ),
                 purpose="research.synthesis", max_tokens=20000,
             )
+            from brain import tools
+
+            body = tools.resolve_grounding_links(body, citations)
             sp.set_output({"chars": len(body), "spec": spec})
 
         total = _spend(started)
