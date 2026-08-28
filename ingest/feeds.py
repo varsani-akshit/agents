@@ -125,10 +125,24 @@ def fetch_source(src: dict, max_age_hours: int | None = None) -> list[dict]:
 
 
 def fetch_all(max_age_hours: int | None = None, workers: int = 8) -> list[dict]:
+    from brain import observe
+
     sources = load_sources()
+
+    def _traced(src: dict) -> list[dict]:
+        # One retrieval span per feed: the watchman's actual work, source by
+        # source, with the count each one contributed and its silence visible.
+        with observe.stage(f"feed:{src['name']}", kind="retrieval",
+                           input={"url": src["url"]}) as sp:
+            docs = fetch_source(src, max_age_hours)
+            sp.set_output({"items": len(docs),
+                           "titles": [d["title"] for d in docs[:10]]})
+            sp.set_attribute("items", len(docs))
+            return docs
+
     docs: list[dict] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for result in pool.map(lambda s: fetch_source(s, max_age_hours), sources):
+        for result in observe.ctx_map(pool, _traced, sources):
             docs.extend(result)
     return docs
 
@@ -177,8 +191,14 @@ def store(docs: list[dict]) -> dict:
 
 
 def harvest(max_age_hours: int | None = None) -> dict:
+    from brain import observe
+
     docs = fetch_all(max_age_hours)
-    result = store(docs)
+    with observe.stage("dedupe_and_store", kind="generic",
+                       input={"fetched": len(docs)}) as sp:
+        result = store(docs)
+        sp.set_output({k: v for k, v in result.items() if k != "new_ids"})
+        sp.set_attribute("inserted", result["inserted"])
     log.info("feeds: %s seen, %s inserted", result["seen"], result["inserted"])
     return result
 

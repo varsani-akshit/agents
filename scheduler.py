@@ -78,18 +78,30 @@ def job_tick(harvest_news: bool = True) -> dict:
 
     # Quant: the measured state of the world. No model, no cost.
     with observe.run("quant") as rec:
-        detail["prices"] = prices.tick()
-        pack = stats.build(persist=True)
-        rec.set_output({"prices": detail["prices"]})
+        with observe.stage("prices.tick", kind="tool") as sp:
+            detail["prices"] = prices.tick()
+            sp.set_output(detail["prices"])
+        with observe.stage("stats.build", kind="generic") as sp:
+            pack = stats.build(persist=True)
+            sp.set_output({"sections": sorted(pack.keys())})
+            sp.set_attribute("sections", len(pack))
+        rec.set_output({"prices": detail["prices"], "stats_sections": len(pack)})
 
     # Sentinel: thresholds and alerts.
     with observe.run("sentinel") as rec:
-        fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
+        with observe.stage("triggers.evaluate", kind="generic") as sp:
+            fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
+            sp.set_output([{k: str(v) for k, v in ev.items()} for ev in fired])
+            sp.set_attribute("fired", len(fired))
         detail["triggers_fired"] = len(fired)
         triggers.suppress_stale(hours=6)
         sent = []
         for ev in triggers.pending_critical():
-            out.alert(alert_mod.write(ev))
+            with observe.stage(f"alert:{ev.get('rule')}", kind="generic",
+                               input={k: str(v) for k, v in ev.items()}) as sp:
+                message = alert_mod.write(ev)
+                out.alert(message)
+                sp.set_output({"message": message})
             sent.append(ev["id"])
         triggers.mark_notified(sent)
         detail["alerts_sent"] = len(sent)

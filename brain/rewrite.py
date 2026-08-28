@@ -57,13 +57,20 @@ It was written at {when}. Its regime label was: {meta.get('regime') or 'unrecord
     # the archive reads in one voice. The Verifier deliberately does NOT run
     # here: it audits against today's database, and "correcting" last month's
     # true prices to today's would falsify the record, not fix it.
-    text, spec, usd = router.complete_text(
-        "premium", premium_site="editor",
-        system=SYSTEM,
-        user=user,
-        purpose="rewrite",
-        max_tokens=24000,
-    )
+    from brain import observe
+
+    with observe.stage("compose", kind="generic",
+                       input={"analysis_id": row["id"], "written": when,
+                              "original_words": len(original.split())}) as sp:
+        text, spec, usd = router.complete_text(
+            "premium", premium_site="editor",
+            system=SYSTEM,
+            user=user,
+            purpose="rewrite",
+            max_tokens=24000,
+        )
+        sp.set_attribute("model", spec)
+        sp.set_output({"chars": len(text)})
 
     body, wm, regime = digest._split_world_model(text)
     body, headline, standfirst = digest._split_headline(body)

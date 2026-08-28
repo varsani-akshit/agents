@@ -45,11 +45,12 @@ def _trodo():
 def init(service: str) -> None:
     """Initialise tracing once per process. Safe to call when unconfigured.
 
-    httpx/requests instrumentation is disabled: the harvester makes hundreds of
-    feed fetches per tick, and our LLM calls are raw httpx recorded explicitly
-    via `llm_call`/`record_llm` — auto HTTP spans would bury the signal and
-    double-count the model traffic. The anthropic SDK instrumentor stays on;
-    it prices its own spans and `record_llm` skips that provider to match.
+    Auto-instrumentation is off entirely, on purpose: it depends on the OTel
+    SDK peer-dependency stack, and every model call in this codebase already
+    passes through a choke point (`llm.py`, the three agent loops, `embed.py`)
+    that records a span explicitly with real tokens and our own pricing. One
+    mechanism, complete coverage, no double-counting — and no path where a
+    call silently isn't traced because an instrumentor failed to load.
     """
     global _initialised
     t = _trodo()
@@ -58,7 +59,8 @@ def init(service: str) -> None:
     try:
         t.init(
             site_id=os.environ["TRODO_SITE_ID"],
-            disable_instrumentations=["httpx", "requests"],
+            auto_instrument=False,
+            debug=os.getenv("TRODO_DEBUG", "").lower() in {"1", "true"},
         )
         _initialised = True
         log.info("trodo tracing initialised (service=%s)", service)
@@ -198,13 +200,14 @@ class _NoopSpan:
 
 def record_llm(*, spec: str, purpose: str, input_tokens: int, output_tokens: int,
                usd: float, prompt: Any = None, completion: Any = None) -> None:
-    """Record one raw-HTTP model call as an llm span under the active run.
+    """Record one model call as an llm span under the active run.
 
-    No-op outside a run, when tracing is off, and for the anthropic provider
-    (its SDK auto-instruments; recording again would double-count tokens).
+    Every provider comes through here, anthropic included — auto-instrumentation
+    is disabled in init(), so manual recording is the single source of truth.
+    No-op outside a run or when tracing is off.
     """
     t = _trodo()
-    if not (t and _initialised) or spec.startswith("anthropic"):
+    if not (t and _initialised):
         return
     provider, _, model = spec.partition(":")
     try:
@@ -215,6 +218,26 @@ def record_llm(*, spec: str, purpose: str, input_tokens: int, output_tokens: int
         )
     except Exception as exc:  # noqa: BLE001
         log.debug("track_llm_call failed: %s", exc)
+
+
+def ctx_submit(pool, fn, /, *args, **kwargs):
+    """Submit to a ThreadPoolExecutor without losing the active run.
+
+    The run context lives in contextvars, which ThreadPoolExecutor does not
+    carry into workers — a span created in a bare worker thread has no run to
+    attach to and is silently dropped. This was why classification and feed
+    harvesting produced runs with zero spans: the work happened, the spans
+    fired, and every one of them was an orphan. All pool submissions that may
+    create spans go through here.
+    """
+    import contextvars
+
+    return pool.submit(contextvars.copy_context().run, fn, *args, **kwargs)
+
+
+def ctx_map(pool, fn, items) -> list:
+    """Context-preserving equivalent of pool.map (returns a list, in order)."""
+    return [f.result() for f in [ctx_submit(pool, fn, it) for it in items]]
 
 
 def flush() -> None:

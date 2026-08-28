@@ -36,11 +36,21 @@ def embed_documents(limit: int = 200) -> int:
     if not rows:
         return 0
     texts = [f"{r['title']}\n\n{(r['body'] or '')[:4000]}" for r in rows]
-    try:
-        vecs = embed.embed(texts, input_type="document")
-    except embed.EmbeddingUnavailable as exc:
-        log.warning("embedding unavailable: %s", exc)
-        return 0
+    from brain import observe
+
+    with observe.stage(f"embed({len(rows)} docs)", kind="llm",
+                       input={"doc_ids": [r["id"] for r in rows]}) as sp:
+        try:
+            vecs = embed.embed(texts, input_type="document")
+        except embed.EmbeddingUnavailable as exc:
+            log.warning("embedding unavailable: %s", exc)
+            sp.set_error(str(exc)[:300])
+            return 0
+        # Embedding APIs return vectors, not usage; chars/4 is the standard
+        # approximation and close enough for the volume picture.
+        sp.set_llm(model=model, provider="gemini",
+                   input_tokens=sum(len(t) for t in texts) // 4, output_tokens=0)
+        sp.set_output({"embedded": len(vecs), "model": model})
 
     ctx, conn = _vec_conn()
     try:

@@ -306,6 +306,13 @@ def run_agent(
             (usage.get("input_tokens_details") or {}).get("cached_tokens", 0),
             usage.get("output_tokens"), searches,
         )
+        from brain import observe
+
+        observe.record_llm(
+            spec=f"openai:{model}", purpose=f"{purpose}:turn{turn}",
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0), usd=usd,
+        )
 
         all_citations.extend(
             _citations(output, data.get("_streamed_annotations"))

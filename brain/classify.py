@@ -189,8 +189,18 @@ def run(batch: int = 20, max_batches: int = 8, workers: int = 3) -> dict:
     chunks = [docs[i : i + batch] for i in range(0, len(docs), batch)]
     total, done, stopped = 0, 0, None
 
+    from brain import observe
+
+    def _traced_batch(chunk):
+        with observe.stage(f"classify.batch({len(chunk)})", kind="generic",
+                           input={"doc_ids": [d["id"] for d in chunk]}) as sp:
+            items = _classify_batch(chunk)
+            sp.set_output(items)
+            sp.set_attribute("classified", len(items or []))
+            return items
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_classify_batch, c): c for c in chunks}
+        futures = {observe.ctx_submit(pool, _traced_batch, c): c for c in chunks}
         for fut in as_completed(futures):
             try:
                 items = fut.result()

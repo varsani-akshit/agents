@@ -108,6 +108,13 @@ def record(model: str, purpose: str, usage: Any, web_searches: int = 0) -> float
             usd,
         ),
     )
+    from brain import observe
+
+    observe.record_llm(
+        spec=f"anthropic:{model}", purpose=purpose,
+        input_tokens=getattr(usage, "input_tokens", 0) or 0,
+        output_tokens=getattr(usage, "output_tokens", 0) or 0, usd=usd,
+    )
     return usd
 
 
