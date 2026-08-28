@@ -75,7 +75,7 @@ def test_research_routes_render(client=None):
 
     c = TestClient(app)
     r = c.get("/research", follow_redirects=False)
-    assert r.status_code in (200, 303)  # 303 when no session
+    assert r.status_code in (200, 303, 307)  # redirects into Ask
 
 
 def test_correction_survives_markdown_drift():

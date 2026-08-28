@@ -426,60 +426,58 @@ async def one_answer(request: Request, answer_id: int):
 
 
 @app.get("/ask", response_class=HTMLResponse)
-async def ask_form(request: Request):
+async def ask_form(request: Request, q: str = "", depth: str = "quick"):
     return page(request, "ask.html", {
         "answer": None,
+        "prefill": q[:400],
+        "depth": depth if depth in ("quick", "deep") else "quick",
         "history": db.query(
             """SELECT id,title,created_at FROM analyses WHERE kind='answer'
                ORDER BY created_at DESC LIMIT 25"""
+        ),
+        "notes": db.query(
+            """SELECT id, question, created_at FROM research_notes
+               ORDER BY created_at DESC LIMIT 15"""
         ),
         "active": "ask",
     })
 
 
 @app.post("/ask")
-async def ask_submit(question: str = Form(...), model: str = Form("")):
-    """Run a question through the agent. Blocking calls go to a worker thread so
-    the event loop stays responsive while the model thinks."""
-    from brain import ask as ask_mod
+async def ask_submit(question: str = Form(...), model: str = Form(""),
+                     depth: str = Form("quick")):
+    """One question surface, two depths. Quick is a single tool loop; deep is
+    the same agent with the research machinery awake — parallel facet
+    researchers and a synthesis — producing a stored note."""
     from brain import client
 
     client.AUTONOMOUS = False  # interactive: may use the reserved budget
+    q = question.strip()
 
-    def _run():
-        return ask_mod.ask(question.strip(), model=model or None)
+    if depth == "deep":
+        from brain import research as research_mod
 
-    result = await asyncio.to_thread(_run)
+        result = await asyncio.to_thread(research_mod.run, q, trigger="ask")
+        if result.get("note_id"):
+            return RedirectResponse(f"/research/{result['note_id']}", status_code=303)
+        return JSONResponse({"error": "deep research produced no note"}, 500)
+
+    from brain import ask as ask_mod
+
+    result = await asyncio.to_thread(
+        lambda: ask_mod.ask(q, model=model or None))
     if result.get("analysis_id"):
         return RedirectResponse(f"/answer/{result['analysis_id']}", status_code=303)
     return JSONResponse({"error": result.get("stopped") or "no answer produced"}, 500)
 
 
 @app.get("/research", response_class=HTMLResponse)
-async def research_form(request: Request, q: str = ""):
-    return page(request, "research.html", {
-        "note": None,
-        "prefill": q[:400],
-        "history": db.query(
-            """SELECT id, question, created_at, usd FROM research_notes
-               ORDER BY created_at DESC LIMIT 25"""),
-        "active": "research",
-    })
+async def research_form(q: str = ""):
+    """Ask owns the question surface now; deep research is its second depth.
+    Old links (and the dig-deeper buttons) land on Ask with deep preselected."""
+    from urllib.parse import quote
 
-
-@app.post("/research")
-async def research_submit(question: str = Form(...)):
-    """Run a deep investigation: supervisor → parallel sub-researchers →
-    synthesis. Takes a minute or two; the work happens in a worker thread."""
-    from brain import research as research_mod
-
-    q = question.strip()
-    if not q:
-        return RedirectResponse("/research", status_code=303)
-    result = await asyncio.to_thread(research_mod.run, q, trigger="dashboard")
-    if result.get("note_id"):
-        return RedirectResponse(f"/research/{result['note_id']}", status_code=303)
-    return JSONResponse({"error": "research produced no note"}, 500)
+    return RedirectResponse(f"/ask?depth=deep&q={quote(q[:400])}", status_code=307)
 
 
 @app.get("/research/{note_id}", response_class=HTMLResponse)
@@ -493,7 +491,7 @@ async def research_note(request: Request, note_id: int):
         "history": db.query(
             """SELECT id, question, created_at, usd FROM research_notes
                ORDER BY created_at DESC LIMIT 25"""),
-        "active": "research",
+        "active": "ask",
     })
 
 

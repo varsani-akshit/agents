@@ -54,7 +54,7 @@ def ask(
     """Answer one question with full tool access. Returns text plus provenance."""
     from brain import observe
 
-    with observe.run("ask", trigger="dashboard") as rec:
+    with observe.run("ask", trigger="dashboard", meta={"depth": "quick"}) as rec:
         rec.set_input({"question": question, "model": model})
         result = _ask(question, max_turns=max_turns, save=save, model=model,
                       use_web_search=use_web_search)

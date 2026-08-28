@@ -14,15 +14,18 @@
 
     <form class="ask-form" method="post" action="/ask" onsubmit="return go()">
       <textarea name="question" rows="2" required
-        placeholder="Why is silver lagging gold, and does our stored analysis agree?">{{ question or '' }}</textarea>
+        placeholder="Why is silver lagging gold, and does our stored analysis agree?">{{ prefill or question or '' }}</textarea>
       <div class="formrow">
+        <select name="depth" id="depth">
+          <option value="quick" {% if depth != 'deep' %}selected{% endif %}>Quick — one researcher, 30–90s</option>
+          <option value="deep" {% if depth == 'deep' %}selected{% endif %}>Deep research — a team investigates, 1–3 min, note kept</option>
+        </select>
         <select name="model">
           <option value="">Gemini Flash — default, live search</option>
           <option value="gemini-pro-latest">Gemini Pro — deeper reasoning</option>
         </select>
-        <a class="opt" href="/research">Bigger question? Use Research →</a>
         <button type="submit" id="go">Ask</button>
-        <span class="spinner" id="sp"><span class="spin"></span> working — usually 30–90s</span>
+        <span class="spinner" id="sp"><span class="spin"></span> working…</span>
       </div>
     </form>
 
@@ -42,7 +45,7 @@
 
   <aside class="side">
     <section>
-      <h3>Previous</h3>
+      <h3>Quick answers</h3>
       <div class="side-list">
         {% for a in history %}
         <a href="/answer/{{ a.id }}">
@@ -50,6 +53,17 @@
           <span class="what">{{ a.title|replace('Q: ','') }}</span>
         </a>
         {% else %}<p class="hint">None yet.</p>{% endfor %}
+      </div>
+    </section>
+    <section>
+      <h3>Deep investigations</h3>
+      <div class="side-list">
+        {% for n in notes %}
+        <a href="/research/{{ n.id }}">
+          <span class="when">{{ n.created_at|utc('%d %b') }}</span>
+          <span class="what">{{ n.question }}</span>
+        </a>
+        {% else %}<p class="hint">Choose "Deep research" above for a question that deserves a team.</p>{% endfor %}
       </div>
     </section>
   </aside>

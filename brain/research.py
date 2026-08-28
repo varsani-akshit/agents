@@ -57,7 +57,10 @@ judgement). Under 500 words. Only cite URLs you actually saw."""
 def run(question: str, *, trigger: str = "ask") -> dict:
     """Investigate one question end to end. Returns the stored note."""
     started = datetime.now(timezone.utc)
-    with observe.run("deep-research", trigger=trigger) as rec:
+    # One agent, two depths: this is the deep mode of `ask`. Same question
+    # intent, more machinery — so it traces as the same agent, with depth as
+    # metadata, rather than pretending to be a different animal.
+    with observe.run("ask", trigger=trigger, meta={"depth": "deep"}) as rec:
         rec.set_input({"question": question})
 
         # ── Supervisor: decompose ────────────────────────────────────────────

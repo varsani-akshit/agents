@@ -38,7 +38,25 @@ spelling except for fixed proper nouns."""
 
 
 def rewrite_brief(row: dict, dry_run: bool = False) -> dict:
-    """Rewrite one stored brief. Returns headline, word count and cost."""
+    """Re-present one stored brief. Returns headline, word count and cost.
+
+    This is not a separate agent: it is the brief pipeline's editor stage,
+    re-triggered on stored content — so it traces as a `brief` run in
+    re-present mode, with only the compose sub-step underneath. The research
+    stages are absent because their inputs no longer exist, not because a
+    different agent ran.
+    """
+    from brain import observe
+
+    with observe.run("brief", trigger="manual",
+                     meta={"mode": "re-present", "analysis_id": row["id"]}) as rec:
+        rec.set_input({"analysis_id": row["id"], "old_title": row["title"]})
+        result = _rewrite(row, dry_run=dry_run)
+        rec.set_output({k: v for k, v in result.items() if k != "body"})
+        return result
+
+
+def _rewrite(row: dict, dry_run: bool = False) -> dict:
     original = row["body"]
     meta = row["meta"] or {}
     when = row["created_at"].strftime("%d %B %Y, %H:%M UTC")
