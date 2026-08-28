@@ -267,7 +267,7 @@ def _call_azure_json(model, system, user, schema, max_tokens):
     }
     if model.startswith("gpt-"):
         body["response_format"] = {"type": "json_object"}
-    r = httpx.post(f"{base}/chat/completions", headers=headers, json=body, timeout=180)
+    r = httpx.post(f"{base}/chat/completions", headers=headers, json=body, timeout=300)
     r.raise_for_status()
     d = r.json()
     u = d.get("usage", {})

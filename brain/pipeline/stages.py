@@ -356,8 +356,11 @@ def verifier(*, body: str, slim: dict) -> tuple[dict, int]:
         "reason",
         system="You audit numeric claims in a draft against measured data. "
         "Only figures the measured data can actually check: prices, changes, "
-        "yields, correlations. A figure attributed to an external source is "
-        "unverifiable, not wrong. Copy quotes EXACTLY as they appear.",
+        "yields, correlations. Report ONLY discrepancies: a claim that matches "
+        "the measured data is counted in checked_claims and NOT listed as an "
+        "issue; a figure only an external source could confirm is severity "
+        "'unverifiable' and listed only if it looks implausible. Copy quotes "
+        "EXACTLY as they appear.",
         user=f"""# Draft
 {body[:40000]}
 
