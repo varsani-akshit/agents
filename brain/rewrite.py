@@ -13,8 +13,7 @@ from __future__ import annotations
 
 import logging
 
-import config
-from brain import digest, llm
+from brain import digest, router
 
 log = logging.getLogger("alfred.rewrite")
 
@@ -54,13 +53,16 @@ It was written at {when}. Its regime label was: {meta.get('regime') or 'unrecord
 # The original brief
 {original}"""
 
-    text, usd = llm.complete_text(
-        config.DIGEST_MODEL if ":" in config.DIGEST_MODEL else f"gemini:{config.DIGEST_MODEL}",
+    # The same single writer that produces new briefs re-presents old ones, so
+    # the archive reads in one voice. The Verifier deliberately does NOT run
+    # here: it audits against today's database, and "correcting" last month's
+    # true prices to today's would falsify the record, not fix it.
+    text, spec, usd = router.complete_text(
+        "premium", premium_site="editor",
         system=SYSTEM,
         user=user,
         purpose="rewrite",
-        max_tokens=16000,
-        with_cost=True,
+        max_tokens=24000,
     )
 
     body, wm, regime = digest._split_world_model(text)
@@ -86,6 +88,7 @@ It was written at {when}. Its regime label was: {meta.get('regime') or 'unrecord
         # Recorded so it is always clear which briefs were re-presented rather
         # than originally written in this format.
         "rewritten": True,
+        "rewrite_model": spec,
         "regime": regime or meta.get("regime"),
     }
     import json as _json
