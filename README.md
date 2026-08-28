@@ -1,14 +1,23 @@
 # Alfred — Macro Intelligence Agent
 
-Continuous research on the gold / silver / fiat / sovereign-debt / crypto complex.
-Ingests prices, official releases, and news; computes statistics deterministically;
-uses Claude to interpret them against Dalio debt-cycle and debasement frameworks;
-alerts on material events and produces deep digests every 6 hours.
+Continuous research on the gold / silver / fiat / sovereign-debt / crypto complex,
+run by an army of specialised agents. Standing agents ingest prices, official
+releases and news around the clock; twice a day a staged pipeline — Marshal →
+beat Scouts → beat Analysts → a single Editor → a Verifier — produces the brief;
+a Deep Researcher investigates any question on demand. Everything is traced to
+Trodo and mirrored locally, and every sentence in a brief drills down to the
+evidence behind it.
 
 **Core design rule: numbers come from code, meaning comes from the model.**
-Every correlation, z-score, ratio, and threshold is computed in Python. The model
-never asserts a number it wasn't handed. This is what separates real correlation
-discovery from a plausible-sounding narrative.
+Every correlation, z-score, ratio, and threshold is computed in Python — or by
+an agent writing code into a locked-down sandbox. The model never asserts a
+number it wasn't handed. This is what separates real correlation discovery from
+a plausible-sounding narrative.
+
+**The second rule, borrowed from the deep-research literature: parallel
+context-isolated research, exactly one writer.** Scouts and Analysts work their
+beats independently so no beat drowns in another's context; the Editor alone
+holds the pen, so the brief reads as one argument rather than eight.
 
 ## Quick start
 
@@ -19,27 +28,40 @@ discovery from a plausible-sounding narrative.
 ./mia worldmodel          # current standing view of the macro regime
 ```
 
-## Architecture
+## Architecture — the army
 
 ```
-free data sources                    deterministic                 model
-─────────────────                    ─────────────                 ─────
-yfinance   ─┐                                                    
-CoinGecko  ─┼─> prices ──────> signals/stats.py ──> stats pack ──┐
-FRED       ─┘                  (correlations, z-scores,          │
-                                ratios, lead/lag, flips)         │
-                                        │                        ▼
-25 RSS feeds ─> documents ──────────────┼──────────────> brain/digest.py
-(tier 1 official                        │                 (Sonnet 5 + tools)
- → tier 4 noise)                        ▼                        │
-       │                        signals/triggers.py              │
-       │                        (thresholds → alerts)            │
-       ▼                                │                        ▼
-  pgvector embeddings                   ▼                  digest + world model
-  (OpenAI, 1024-dim)            brain/alert.py             + relationship edges
-       │                        (Haiku, no tools)                │
-       └────────────> memory/store.py <────────────────────────-─┘
-                      (semantic recall)
+TIER 1 · the watch (every 15-30 min, traced as separate runs)
+  watchman   RSS harvest + full-article fetch          → fresh corpus
+  librarian  embed (gemini-embedding) · classify (nano)
+             · extract entities (Maverick)             → organised corpus + graph
+  quant      prices, FRED, stats pack, regime score    → measured world, $0
+  sentinel   code thresholds → alerts (Flash prose)    → you hear in minutes
+
+TIER 2 · the brief (09:05 & 21:05 UTC, one traced run, ~$0.55)
+  marshal    the run's north star            gemini-pro
+  scouts ×8  grounded search per beat        gemini-flash   ─ parallel
+  analysts   leads + evidence → findings     gemini-pro     ─ parallel
+  editor     the single writer               gpt-5.4 (Azure Foundry)
+  verifier   every number vs the database    gpt-5.4-mini
+  → analyses row + brief_runs evidence trail + world model + graph edges
+  → /digest/{id}/research renders the working papers
+
+TIER 3 · the detachment (on demand)
+  deep researcher  supervisor → parallel facet researchers → gpt-5.4 synthesis
+                   /research · notes stored in research_notes
+  curator          nightly retention, graph hygiene, spend report
+
+shared armoury (brain/tools.py): grounded search · fetch_url · corpus search ·
+graph traversal · stats pack · python sandbox (no network, 12s, series injected)
+
+routing (brain/router.py): roles, not models — bulk/workhorse/reason/search/
+deep/premium, each an escalation chain across Gemini + Azure Foundry; the
+premium tier (gpt-5.4) is code-locked to the editor and research synthesis.
+
+observability: every run → Trodo (app.trodo.ai) AND Postgres agent_runs;
+the drill-down pages render from Postgres, so the product never depends on
+the tracing backend.
 ```
 
 ### Why these choices
@@ -72,20 +94,22 @@ FRED       ─┘                  (correlations, z-scores,          │
 
 ## Scheduler
 
-Installed as a launchd agent (`com.mia.scheduler`), restarts on crash and at login.
+Production runs on the Oracle VM as systemd services (`alfred-web`,
+`alfred-scheduler`); local development uses launchd (`com.mia.scheduler`).
 
 | Job | Cadence |
 |---|---|
-| tick | every 15 min |
-| digest | 00:05, 08:05, 16:05 UTC (3/day) |
+| tick — watchman, librarian, quant, sentinel | every 30 min (prices-only tick offset 15 min) |
+| brief pipeline | 09:05 & 21:05 UTC (2/day) |
 | daily data refresh | 02:00 UTC |
-| maintenance (graph hygiene, pruning) | 03:00 UTC |
+| maintenance — curator: graph hygiene, retention, spend | 03:00 UTC |
+
+`MIA_PIPELINE=off` reverts the brief to the old single-call digest path.
 
 ```bash
-launchctl list | grep mia                                     # is it running
-tail -f logs/scheduler.log                                    # what it's doing
-launchctl unload ~/Library/LaunchAgents/com.mia.scheduler.plist   # stop
-launchctl load   ~/Library/LaunchAgents/com.mia.scheduler.plist   # start
+sudo systemctl status alfred-scheduler        # server
+journalctl -u alfred-scheduler -f             # what it's doing
+tail -f logs/scheduler.log                    # local
 ```
 
 ## Cost control

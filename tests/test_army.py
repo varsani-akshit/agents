@@ -78,6 +78,31 @@ def test_research_routes_render(client=None):
     assert r.status_code in (200, 303)  # 303 when no session
 
 
+def test_correction_survives_markdown_drift():
+    """The verifier copies words faithfully but sheds ** around numbers —
+    exactly the passages most likely to be flagged."""
+    from brain.pipeline.stages import _apply_correction
+
+    body = "Gold closed at **4,679.9** on the session, its third high."
+    fixed, applied = _apply_correction(body, "Gold closed at 4,679.9 on the session",
+                                       "Gold closed at **4,681.2** on the session")
+    assert applied and "4,681.2" in fixed and "4,679.9" not in fixed
+
+    # Ambiguous (two occurrences) → left alone rather than half-fixed.
+    body2 = "gold rose 2% early; later gold rose 2% again"
+    fixed2, applied2 = _apply_correction(body2, "gold rose 2%", "gold rose 3%")
+    assert not applied2 and fixed2 == body2
+
+    # An exact unique byte match applies even when short — it is well anchored.
+    fixed3, applied3 = _apply_correction("the 10Y at 4.67%", "4.67%", "4.68%")
+    assert applied3 and "4.68%" in fixed3
+
+    # But a short quote that needs the elastic match is refused: too little
+    # text to anchor a rewrite safely.
+    _, applied4 = _apply_correction("the 10Y at **4.67%**", "at 4.67%", "at 4.68%")
+    assert not applied4
+
+
 def test_loose_json_parses_fenced_and_embedded():
     from brain.pipeline.stages import _loose_json
 

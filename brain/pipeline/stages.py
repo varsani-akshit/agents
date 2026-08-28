@@ -313,7 +313,12 @@ Timestamp: {datetime.now(timezone.utc).isoformat()}
 You are writing from completed research, not researching. Weave the findings
 into the required structure: developments keep their titled-finding form, and
 every cross-beat connection your Analysts flagged becomes an explicit
-cross-reference between sections. Cut anything that does not earn its place."""
+cross-reference between sections. Cut anything that does not earn its place.
+
+The word budget is a hard ceiling, not a target: with seven beats reporting you
+will have more findings than fit, and the discipline is to DROP the weakest
+developments entirely — never to compress everything until it all just fits.
+A brief of 2,400 sharp words beats 3,200 thorough ones."""
     text, spec, usd = router.complete_text(
         "premium", premium_site="editor",
         system=role + "\n\n---\n\n" + fmt,
@@ -374,9 +379,33 @@ relative or one basis point on yields. checked_claims = how many you audited."""
     fixed = 0
     for issue in payload.get("issues", []):
         q, c = issue.get("quote"), issue.get("corrected_quote")
-        if issue.get("severity") == "wrong" and q and c and q in body and q != c:
-            body = body.replace(q, c, 1)
-            issue["applied"] = True
-            fixed += 1
+        if issue.get("severity") == "wrong" and q and c and q != c:
+            body, applied = _apply_correction(body, q, c)
+            if applied:
+                issue["applied"] = True
+                fixed += 1
     payload["fixed"] = fixed
     return {"body": body, "audit": payload}, fixed
+
+
+def _apply_correction(body: str, quote: str, corrected: str) -> tuple[str, bool]:
+    """Replace one flagged passage, tolerating markdown drift in the quote.
+
+    Models copy the words faithfully but shed the `**` and backticks around
+    them, so a byte-exact match fails on precisely the passages most likely to
+    be flagged — the bold numbers. The match therefore treats emphasis marks
+    and whitespace as elastic, but still requires every word in order, and
+    applies only when the passage occurs exactly once: an ambiguous match is
+    left flagged rather than half-fixed.
+    """
+    if body.count(quote) == 1:
+        return body.replace(quote, corrected, 1), True
+    words = [w for w in re.split(r"\s+", re.sub(r"[*_`]", " ", quote)) if w]
+    if len(words) < 3:  # too short to match safely without exact bytes
+        return body, False
+    pattern = r"[*_`]*" + r"[\s*_`]+".join(re.escape(w) for w in words) + r"[*_`]*"
+    matches = list(re.finditer(pattern, body))
+    if len(matches) != 1:
+        return body, False
+    m = matches[0]
+    return body[: m.start()] + corrected + body[m.end():], True

@@ -46,6 +46,7 @@
       {% for n in f.numbers_used or [] %}<span class="mono">{{ n }}</span>{% endfor %}
       {% for c in f.chart_keys or [] %}<span><a href="/charts#{{ c }}">chart: {{ c }}</a></span>{% endfor %}
       {% if f.related_beats %}<span class="hi">connects: {{ f.related_beats|join(', ') }}</span>{% endif %}
+      <span><a href="/research?q={{ f.title|urlencode }}">Dig deeper →</a></span>
     </div>
   </div>
   {% endfor %}

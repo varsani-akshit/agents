@@ -456,9 +456,10 @@ async def ask_submit(question: str = Form(...), model: str = Form("")):
 
 
 @app.get("/research", response_class=HTMLResponse)
-async def research_form(request: Request):
+async def research_form(request: Request, q: str = ""):
     return page(request, "research.html", {
         "note": None,
+        "prefill": q[:400],
         "history": db.query(
             """SELECT id, question, created_at, usd FROM research_notes
                ORDER BY created_at DESC LIMIT 25"""),

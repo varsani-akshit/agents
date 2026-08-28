@@ -17,11 +17,10 @@
         placeholder="Why is silver lagging gold, and does our stored analysis agree?">{{ question or '' }}</textarea>
       <div class="formrow">
         <select name="model">
-          <option value="">Claude Sonnet 5 — default</option>
-          <option value="claude-opus-5">Claude Opus 5 — deepest, slower</option>
-          <option value="gpt-5.1">GPT-5.1 — cheapest</option>
-          <option value="gpt-5.4">GPT-5.4</option>
+          <option value="">Gemini Flash — default, live search</option>
+          <option value="gemini-pro-latest">Gemini Pro — deeper reasoning</option>
         </select>
+        <a class="opt" href="/research">Bigger question? Use Research →</a>
         <button type="submit" id="go">Ask</button>
         <span class="spinner" id="sp"><span class="spin"></span> working — usually 30–90s</span>
       </div>

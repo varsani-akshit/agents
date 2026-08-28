@@ -16,7 +16,7 @@
 
     <form class="ask-form" method="post" action="/research" onsubmit="return go()">
       <textarea name="question" rows="2" required
-        placeholder="Is central bank gold buying accelerating, and who is driving it?"></textarea>
+        placeholder="Is central bank gold buying accelerating, and who is driving it?">{{ prefill or '' }}</textarea>
       <div class="formrow">
         <button type="submit" id="go">Investigate</button>
         <span class="spinner" id="sp"><span class="spin"></span> researching — usually 1–3 minutes</span>

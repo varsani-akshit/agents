@@ -189,6 +189,11 @@ RETENTION = [
     # Spend analysis needs a couple of quarters, not forever.
     ("api_calls", "api_calls", "created_at", "180 days", "TRUE"),
     ("job_runs", "job_runs", "started_at", "90 days", "TRUE"),
+    # The trace mirror. Tier-1 agents run ~50 times a day; their operational
+    # record matters for weeks, not forever. The 'brief' runs themselves age
+    # out too — the brief's durable evidence lives in brief_runs, which is
+    # never expired here because it cascades with its analysis.
+    ("agent_runs", "agent_runs", "started_at", "60 days", "TRUE"),
 ]
 
 # Never deleted, and listed explicitly so the omission reads as a decision
@@ -196,6 +201,8 @@ RETENTION = [
 #   prices (grain='1d')  the analogue engine reads twelve years
 #   fred_series          macro series are meaningless without decades
 #   analyses             the briefs are the product, and the durable memory
+#   brief_runs           each brief's evidence trail; cascades with its analysis
+#   research_notes       investigations are assets, kept like briefs
 #   world_model          the standing view, and its history
 #   users, instruments   configuration
 
