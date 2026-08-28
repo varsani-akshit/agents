@@ -63,18 +63,16 @@ def run(question: str, *, trigger: str = "ask") -> dict:
     with observe.run("ask", trigger=trigger, meta={"depth": "deep"}) as rec:
         rec.set_input({"question": question})
 
-        # ── Supervisor: decompose ────────────────────────────────────────────
-        with observe.stage("plan", kind="generic") as sp:
-            plan, _ = router.complete_json(
-                "deep",
-                system="You direct a research team. Split the question into "
-                "2-4 genuinely independent facets a researcher can pursue "
-                "alone. Facets must not overlap.",
-                user=f"Question: {question}\nToday: {started.date().isoformat()}",
-                schema=_FACET_SCHEMA, purpose="research.plan", max_tokens=4000,
-            )
-            facets = plan.get("facets", [])[:MAX_FACETS]
-            sp.set_output(plan)
+        # ── Supervisor: decompose. One model call — the llm span is the step.
+        plan, _ = router.complete_json(
+            "deep",
+            system="You direct a research team. Split the question into "
+            "2-4 genuinely independent facets a researcher can pursue "
+            "alone. Facets must not overlap.",
+            user=f"Question: {question}\nToday: {started.date().isoformat()}",
+            schema=_FACET_SCHEMA, purpose="research.plan", max_tokens=4000,
+        )
+        facets = plan.get("facets", [])[:MAX_FACETS]
 
         # ── Sub-researchers, parallel and context-isolated ───────────────────
         def _facet(idx_facet):
@@ -85,7 +83,7 @@ def run(question: str, *, trigger: str = "ask") -> dict:
                 f"Angle: {facet['angle']}\n"
                 f"Now: {datetime.now(timezone.utc).isoformat()}"
             )
-            with observe.stage(f"facet:{idx+1}", kind="generic", input=facet) as sp:
+            with observe.stage(f"facet:{idx+1}", kind="agent", input=facet) as sp:
                 result = agent_gemini.run_agent(
                     system=_RESEARCHER_SYSTEM,
                     user_message=user_msg,
@@ -128,32 +126,32 @@ def run(question: str, *, trigger: str = "ask") -> dict:
                     seen.add(c["url"])
                     citations.append(c)
 
-        with observe.stage("synthesis", kind="generic") as sp:
-            body, spec, usd = router.complete_text(
-                "premium", premium_site="research_synthesis",
-                system=(
-                    "You are Alfred, writing a research note for your reader. "
-                    "British English, formal register, no American colloquialism. "
-                    "Structure: # headline stating the answer · *standfirst* · "
-                    "## The Answer (direct, first) · ## The Evidence (by theme, "
-                    "not by researcher, quotes and numbers inline with source "
-                    "links) · ## What Would Change This View. 600-1200 words. "
-                    "Numbers only from the reports; cite only URLs they contain. "
-                    "Where researchers disagree, say so rather than averaging."
-                ),
-                user=(
-                    f"Question: {question}\n\n"
-                    + "\n\n---\n\n".join(
-                        f"## Facet: {r['facet']}\n{r['report']}" for r in reports)
-                    + "\n\n# Source URLs seen\n"
-                    + json.dumps(citations, default=str)[:4000]
-                ),
-                purpose="research.synthesis", max_tokens=20000,
-            )
-            from brain import tools
+        # Synthesis: one model call — the llm span (research.synthesis) is the
+        # step; no wrapper around a single child.
+        body, spec, usd = router.complete_text(
+            "premium", premium_site="research_synthesis",
+            system=(
+                "You are Alfred, writing a research note for your reader. "
+                "British English, formal register, no American colloquialism. "
+                "Structure: # headline stating the answer · *standfirst* · "
+                "## The Answer (direct, first) · ## The Evidence (by theme, "
+                "not by researcher, quotes and numbers inline with source "
+                "links) · ## What Would Change This View. 600-1200 words. "
+                "Numbers only from the reports; cite only URLs they contain. "
+                "Where researchers disagree, say so rather than averaging."
+            ),
+            user=(
+                f"Question: {question}\n\n"
+                + "\n\n---\n\n".join(
+                    f"## Facet: {r['facet']}\n{r['report']}" for r in reports)
+                + "\n\n# Source URLs seen\n"
+                + json.dumps(citations, default=str)[:4000]
+            ),
+            purpose="research.synthesis", max_tokens=20000,
+        )
+        from brain import tools
 
-            body = tools.resolve_grounding_links(body, citations)
-            sp.set_output({"chars": len(body), "spec": spec})
+        body = tools.resolve_grounding_links(body, citations)
 
         total = _spend(started)
         row = db.one(

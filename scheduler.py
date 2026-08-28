@@ -67,13 +67,13 @@ def job_tick(harvest_news: bool = True) -> dict:
     with observe.run("watch", meta={"harvest_news": harvest_news}) as rec:
         if harvest_news:
             # Watchman: fresh corpus.
-            with observe.stage("watchman", kind="generic") as sp:
+            with observe.stage("watchman", kind="agent") as sp:
                 harvest = feeds.harvest()
                 detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
                 sp.set_output(detail["feeds"])
                 sp.set_attribute("inserted", detail["feeds"].get("inserted", 0))
             # Librarian: organised corpus.
-            with observe.stage("librarian", kind="generic") as sp:
+            with observe.stage("librarian", kind="agent") as sp:
                 from brain import classify
                 from memory import store
 
@@ -83,18 +83,18 @@ def job_tick(harvest_news: bool = True) -> dict:
                                "classified": detail["classified"]})
 
         # Quant: the measured state of the world. No model, no cost.
-        with observe.stage("quant", kind="generic") as sp:
+        with observe.stage("quant", kind="agent") as sp:
             with observe.stage("prices.tick", kind="tool") as p:
                 detail["prices"] = prices.tick()
                 p.set_output(detail["prices"])
-            with observe.stage("stats.build", kind="generic") as p:
+            with observe.stage("stats.build", kind="tool") as p:
                 pack = stats.build(persist=True)
                 p.set_output({"sections": sorted(pack.keys())})
             sp.set_output({"prices": detail["prices"], "stats_sections": len(pack)})
 
         # Sentinel: thresholds and alerts, fed by quant's pack and the
         # watchman's new documents.
-        with observe.stage("sentinel", kind="generic",
+        with observe.stage("sentinel", kind="agent",
                            input={"new_docs": len(harvest.get("new_ids") or [])}) as sp:
             with observe.stage("triggers.evaluate", kind="generic") as p:
                 fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))

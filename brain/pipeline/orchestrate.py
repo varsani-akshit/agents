@@ -60,40 +60,47 @@ def run(hours: int = 12) -> dict:
     with observe.run("brief", trigger="schedule", meta={"hours": hours}) as rec:
         rec.set_input({"hours": hours})
 
-        # ── Quant: everything measured, no model ─────────────────────────────
-        with observe.stage("quant", kind="generic") as sp:
-            pack = stats.build(persist=True)
-            try:
-                chart_manifest = chartdata.build_pack()
-            except Exception as exc:  # noqa: BLE001
-                log.warning("chart rendering failed: %s", exc)
-                chart_manifest = {}
+        # ── Quant: everything measured, no model. The computations are the
+        # steps, so each is its own tool/retrieval span — a sub-agent whose
+        # trace shows what it computed, not a box that says "computed things".
+        with observe.stage("quant", kind="agent") as sp:
+            with observe.stage("stats.build", kind="tool") as p:
+                pack = stats.build(persist=True)
+                p.set_output({"sections": sorted(pack.keys())})
+            with observe.stage("charts.build", kind="tool") as p:
+                try:
+                    chart_manifest = chartdata.build_pack()
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("chart rendering failed: %s", exc)
+                    chart_manifest = {}
+                p.set_output({"charts": sorted(chart_manifest.keys())})
+            with observe.stage("load_window", kind="retrieval",
+                              input={"hours": hours}) as p:
+                docs = store.recent_documents(hours=hours, limit=120)
+                triggers = db.query(
+                    """SELECT rule, severity, symbol, detail FROM trigger_events
+                       WHERE created_at > now() - make_interval(hours => %s)
+                       ORDER BY created_at DESC LIMIT 25""", (hours,))
+                prior_wm = world_model.current_body()
+                p.set_output({"documents": len(docs), "triggers": len(triggers)})
             slim = digest.slim_stats(pack)
             chart_lines = digest.chart_link_lines(chart_manifest)
-            docs = store.recent_documents(hours=hours, limit=120)
             dlines = digest.doc_lines(docs)
-            triggers = db.query(
-                """SELECT rule, severity, symbol, detail FROM trigger_events
-                   WHERE created_at > now() - make_interval(hours => %s)
-                   ORDER BY created_at DESC LIMIT 25""", (hours,))
-            prior_wm = world_model.current_body()
             sp.set_output({"docs": len(docs), "charts": len(chart_manifest),
                            "triggers": len(triggers)})
 
         last = db.one("SELECT title FROM analyses WHERE kind='digest' ORDER BY created_at DESC LIMIT 1")
 
-        # ── Marshal ──────────────────────────────────────────────────────────
-        with observe.stage("marshal", kind="generic") as sp:
-            marshal_out, marshal_spec = stages.marshal(
-                hours=hours, slim=slim, dlines=dlines, prior_wm=prior_wm,
-                triggers=triggers, last_headline=last["title"] if last else None)
-            north_star = stages.north_star_text(marshal_out)
-            sp.set_output(marshal_out)
-            sp.set_attribute("priorities", len(marshal_out.get("priorities", [])))
+        # ── Marshal: exactly one model call, so the llm span IS the stage —
+        # no wrapper around a single child.
+        marshal_out, marshal_spec = stages.marshal(
+            hours=hours, slim=slim, dlines=dlines, prior_wm=prior_wm,
+            triggers=triggers, last_headline=last["title"] if last else None)
+        north_star = stages.north_star_text(marshal_out)
 
         # ── Scouts, in parallel ──────────────────────────────────────────────
         def _scout(beat: dict):
-            with observe.stage(f"scout:{beat['key']}", kind="generic") as sp:
+            with observe.stage(f"scout:{beat['key']}", kind="agent") as sp:
                 payload, result = stages.scout(
                     beat=beat, north_star=north_star, hours=hours, dlines=dlines)
                 sp.set_output(payload)
@@ -122,13 +129,16 @@ def run(hours: int = 12) -> dict:
             leads = scout_out.get(beat["key"], {"leads": []})
             if not leads.get("leads"):
                 return beat["key"], None, None  # quiet beat: nothing to analyse
-            graph_ctx = {}
-            try:
-                graph_ctx = tools.HANDLERS["query_relationships"](
-                    beat["section"].split(" ")[0], depth=1, limit=10)
-            except Exception:  # noqa: BLE001
-                pass
-            with observe.stage(f"analyst:{beat['key']}", kind="generic") as sp:
+            with observe.stage(f"analyst:{beat['key']}", kind="agent") as sp:
+                graph_ctx = {}
+                with observe.stage("graph.neighbourhood", kind="retrieval",
+                                  input={"entity": beat["section"]}) as p:
+                    try:
+                        graph_ctx = tools.HANDLERS["query_relationships"](
+                            beat["section"].split(" ")[0], depth=1, limit=10)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    p.set_output({"edges": len(graph_ctx.get("edges", []))})
                 payload, spec = stages.analyst(
                     beat=beat, leads=leads, north_star=north_star, slim=slim,
                     graph_ctx=graph_ctx, prior_wm=prior_wm, chart_keys=chart_keys)
@@ -163,12 +173,11 @@ def run(hours: int = 12) -> dict:
                         seen.add(u)
                         citations.append({"url": u, "title": s.get("title")})
 
-        with observe.stage("editor", kind="generic") as sp:
-            text, editor_spec, editor_usd = stages.editor(
-                findings_by_beat=findings, north_star=north_star, slim=slim,
-                chart_lines=chart_lines, prior_wm=prior_wm, hours=hours,
-                citation_urls=citations[:60], role=digest.ROLE, fmt=digest.FORMAT)
-            sp.set_output({"chars": len(text), "spec": editor_spec, "usd": editor_usd})
+        # Editor: one model call — the llm span (brief.editor) is the stage.
+        text, editor_spec, editor_usd = stages.editor(
+            findings_by_beat=findings, north_star=north_star, slim=slim,
+            chart_lines=chart_lines, prior_wm=prior_wm, hours=hours,
+            citation_urls=citations[:60], role=digest.ROLE, fmt=digest.FORMAT)
         if not text.strip():
             rec.set_output({"ok": False, "error": "editor returned nothing"})
             return {"ok": False, "error": "editor returned nothing"}
@@ -178,8 +187,9 @@ def run(hours: int = 12) -> dict:
         body, headline, standfirst = digest._split_headline(body)
         title = headline or f"Brief — {started.strftime('%Y-%m-%d %H:%M UTC')}"
 
-        # ── Verifier ─────────────────────────────────────────────────────────
-        with observe.stage("verifier", kind="generic") as sp:
+        # ── Verifier: a sub-agent — its llm audit plus the code that applies
+        # corrections, with the audit as the span output. ────────────────────
+        with observe.stage("verifier", kind="agent") as sp:
             try:
                 verified, fixed = stages.verifier(body=body, slim=slim)
                 body = verified["body"]
