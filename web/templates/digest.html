@@ -1,6 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ digest.title if digest else 'Alfred' }}<script src="{{ asset('share.js') }}" defer></script>
-{% endblock %}
+{% block title %}{{ digest.title if digest else 'Alfred' }}{% endblock %}
+{# Inside the title block this script tag rendered into <title>, where browsers
+   treat content as plain text — so share.js never executed and the Share
+   button was wired to nothing. Scripts belong in the scripts block. #}
+{% block scripts %}<script src="{{ asset('share.js') }}" defer></script>{% endblock %}
 {% block content %}
 <div class="cols">
   <div>

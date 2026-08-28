@@ -109,3 +109,24 @@ def test_loose_json_parses_fenced_and_embedded():
     assert _loose_json('```json\n{"leads": []}\n```') == {"leads": []}
     assert _loose_json('noise before {"leads": [1]} noise after') == {"leads": [1]}
     assert _loose_json("no json here") is None
+
+
+def test_share_script_loads_outside_title():
+    """share.js was included inside <title>, where markup is inert text —
+    the Share button shipped wired to nothing."""
+    from web import auth
+    from starlette.testclient import TestClient
+    import web.app as W
+
+    orig = auth.is_public
+    auth.is_public = lambda path: True
+    try:
+        c = TestClient(W.app)
+        html = c.get("/").text
+    finally:
+        auth.is_public = orig
+    import re
+
+    title = re.search(r"<title>(.*?)</title>", html, re.S)
+    assert title and "share.js" not in title.group(1)
+    assert re.search(r"<script[^>]+share\.js", html)

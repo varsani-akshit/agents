@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {"name": "alfred-web", "runtimeExecutable": ".venv/bin/uvicorn", "runtimeArgs": ["web.app:app", "--port", "8321"], "port": 8321}
+  ]
+}
