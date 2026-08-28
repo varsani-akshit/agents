@@ -453,12 +453,16 @@ def test_daily_frame_has_no_weekend_rows():
 def test_session_is_rolling_and_long_lived():
     """A fixed max_age expires 60 days after sign-in no matter how often you
     visit. The gate touches the session on each request so the cookie is
-    re-issued, making the window roll forward with use."""
+    re-issued, making the window roll forward with use.
+
+    https:// base URL because production sets https_only=True, and Starlette
+    will not issue a Secure cookie over plain http — on the server this test
+    read as a login failure when it was actually testing the wrong scheme."""
     from fastapi.testclient import TestClient
 
     from web.app import app
 
-    with TestClient(app) as client:
+    with TestClient(app, base_url="https://testserver") as client:
         _sign_in(client)
         resp = client.get("/status")
         assert resp.status_code == 200
