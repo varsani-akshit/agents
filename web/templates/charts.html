@@ -5,8 +5,9 @@
   <div class="eyebrow">Figures · live</div>
   <h1>Charts</h1>
   <p class="sub">
-    Computed fresh from the database. Hover for values; change window and
-    currency where offered.
+    Computed fresh from the database. Click any asset in any figure to open it
+    in the explorer; drag horizontally on a line chart to zoom, double-click to
+    reset.
   </p>
 </header>
 
@@ -31,7 +32,13 @@
       <span class="ctllabel" style="margin-left:14px">Currency</span>
       {% for c in currencies %}<button class="opt{{ ' on' if c == 'USD' }}" data-k="ccy" data-v="{{ c }}">{{ c }}</button>{% endfor %}
     </div>
+    <div class="ctlrow">
+      <span class="ctllabel">Compare</span>
+      {% for s in priceable %}<button class="opt" data-k="compare" data-v="{{ s }}">{{ s }}</button>{% endfor %}
+      <span class="hint" style="margin-left:8px">up to three; overlays rebased %</span>
+    </div>
   </div>
+  <script>window.ALFRED_SYMBOLS = {{ priceable|tojson }};</script>
   <figure class="chart" id="pricechart">
     <figcaption class="chart-head"><div class="t">—</div><div class="s"></div></figcaption>
     <div class="chart-canvas"></div>

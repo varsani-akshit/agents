@@ -115,7 +115,15 @@
       });
     }
 
+    /* Drag horizontally (or pinch) to zoom into a window; double-click resets.
+       Real interrogation of a series, not just a hover tooltip. */
+    var zoom = (spec.x || []).length > 40
+      ? [{ type: "inside", xAxisIndex: 0, zoomOnMouseWheel: false,
+           moveOnMouseWheel: false, moveOnMouseMove: true }]
+      : [];
+
     return Object.assign(base(), {
+      dataZoom: zoom,
       tooltip: Object.assign(base().tooltip, {
         trigger: "axis",
         axisPointer: { type: "line", lineStyle: { color: T3, width: 1, type: "dashed" } },
@@ -347,11 +355,39 @@
     }
   }
 
+  /* Dive-in: clicking anything that names a tracked instrument — a series, a
+     heatmap row, a bar — opens it in the price explorer. The hook is provided
+     by charts-page.js; elsewhere (brief pages) clicks fall through to nothing. */
+  function symbolOf(params) {
+    var syms = window.ALFRED_SYMBOLS || [];
+    var cands = [params.seriesName, params.name];
+    for (var i = 0; i < cands.length; i++) {
+      var c = String(cands[i] || "").toUpperCase().trim();
+      if (syms.indexOf(c) !== -1) return c;
+    }
+    return null;
+  }
+
   function draw(node, spec) {
     var canvas = node.querySelector(".chart-canvas");
     canvas.style.height = heightFor(spec) + "px";
     var chart = echarts.init(canvas, null, { renderer: "canvas" });
     chart.setOption(BUILDERS[spec.type](spec));
+    chart.on("click", function (params) {
+      var hook = window.AlfredCharts && window.AlfredCharts.diveIn;
+      if (!hook) return;
+      var sym = symbolOf(params);
+      if (sym) hook(sym);
+    });
+    // Heatmaps carry the symbol on the y axis, outside series click params.
+    if (spec.type === "heatmap" && spec.yLabels) {
+      chart.on("click", function (params) {
+        var hook = window.AlfredCharts && window.AlfredCharts.diveIn;
+        if (!hook || !params.value || params.value.length !== 3) return;
+        var sym = String(spec.yLabels[params.value[1]] || "").toUpperCase();
+        if ((window.ALFRED_SYMBOLS || []).indexOf(sym) !== -1) hook(sym);
+      });
+    }
     var resize = function () {
       canvas.style.height = heightFor(spec) + "px";
       chart.resize();

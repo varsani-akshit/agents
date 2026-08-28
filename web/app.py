@@ -633,17 +633,20 @@ async def api_latest():
 
 # ─────────────────────────── live chart + graph APIs ────────────────────────
 @app.get("/api/chart/price")
-async def api_price_chart(symbol: str, days: str = "1y", ccy: str = "USD"):
+async def api_price_chart(symbol: str, days: str = "1y", ccy: str = "USD",
+                          compare: str = ""):
     """A single instrument, window and display currency, computed on request.
 
     The Charts tab is a live surface — unlike a brief's stored pack, these
     figures answer to the reader's controls, so they come fresh from Postgres
-    every call.
+    every call. `compare` overlays up to three further symbols, rebased.
     """
     n = chartdata.PERIODS.get(days)
     if not n:
         return JSONResponse({"error": f"period must be one of {list(chartdata.PERIODS)}"}, 400)
-    spec = await asyncio.to_thread(chartdata.price_history, symbol.upper(), n, ccy.upper())
+    others = [s.strip().upper() for s in compare.split(",") if s.strip()]
+    spec = await asyncio.to_thread(
+        chartdata.price_history, symbol.upper(), n, ccy.upper(), others)
     if not spec:
         return JSONResponse({"error": "no data for that combination"}, 404)
     return spec

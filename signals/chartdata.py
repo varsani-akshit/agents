@@ -505,29 +505,61 @@ def to_currency(series: pd.Series, wide: pd.DataFrame, ccy: str) -> pd.Series | 
     return out.dropna()
 
 
-def price_history(symbol: str, days: int = 252, ccy: str = "USD") -> dict | None:
-    """One instrument's daily closes over a chosen window, in a chosen currency."""
+def price_history(symbol: str, days: int = 252, ccy: str = "USD",
+                  compare: list[str] | None = None) -> dict | None:
+    """One instrument's daily closes over a chosen window, in a chosen currency.
+
+    With `compare`, every series is rebased to percent change from the window
+    start — the only honest way to overlay assets whose levels differ by
+    orders of magnitude.
+    """
     if symbol not in PRICEABLE or ccy not in CURRENCIES:
         return None
+    compare = [c for c in (compare or []) if c in PRICEABLE and c != symbol][:3]
     wide = stats.load_daily(lookback_days=min(days * 2 + 40, 8000))
     if symbol not in wide.columns:
         return None
-    s = wide[symbol].dropna().iloc[-days:]
-    if len(s) < 5:
+
+    def _one(sym: str) -> "pd.Series | None":
+        if sym not in wide.columns:
+            return None
+        s = wide[sym].dropna().iloc[-days:]
+        if len(s) < 5:
+            return None
+        c = to_currency(s, wide, ccy)
+        return _thin(c) if c is not None and len(c) >= 5 else None
+
+    main = _one(symbol)
+    if main is None:
         return None
-    converted = to_currency(s, wide, ccy)
-    if converted is None or len(converted) < 5:
-        return None
-    converted = _thin(converted)
-    chg = (converted.iloc[-1] / converted.iloc[0] - 1) * 100
     name = db.one("SELECT name FROM instruments WHERE symbol=%s", (symbol,))
+
+    if not compare:
+        chg = (main.iloc[-1] / main.iloc[0] - 1) * 100
+        return {
+            "key": f"price:{symbol}", "type": "line",
+            "title": (name or {}).get("name", symbol),
+            "subtitle": f"{ccy} · last {main.iloc[-1]:,.2f} · {chg:+.1f}% over the window",
+            "x": _dates(main.index), "yLabel": ccy,
+            "series": [{"name": symbol, "data": _clean(main),
+                        "color": SYMBOL_COLOR.get(symbol, ORANGE)}],
+        }
+
+    series = []
+    for sym in [symbol] + compare:
+        s = _one(sym)
+        if s is None:
+            continue
+        rebased = (s / s.iloc[0] - 1) * 100
+        series.append({"name": sym, "data": _clean(rebased),
+                       "color": SYMBOL_COLOR.get(sym, ORANGE),
+                       "width": 2.0 if sym == symbol else 1.4})
     return {
         "key": f"price:{symbol}", "type": "line",
-        "title": (name or {}).get("name", symbol),
-        "subtitle": f"{ccy} · last {converted.iloc[-1]:,.2f} · {chg:+.1f}% over the window",
-        "x": _dates(converted.index), "yLabel": ccy,
-        "series": [{"name": symbol, "data": _clean(converted),
-                    "color": SYMBOL_COLOR.get(symbol, ORANGE)}],
+        "title": f"{symbol} vs {', '.join(compare)}",
+        "subtitle": f"{ccy} · rebased to 0% at window start",
+        "x": _dates(main.index), "yLabel": "%", "markZero": True,
+        "series": series,
     }
 
 

@@ -87,12 +87,15 @@
   $("#chartsearch").addEventListener("input", function (e) { applySearch(e.target.value); });
 
   /* ── price explorer ── */
-  var state = { symbol: "GOLD", days: "1y", ccy: "USD" };
+  var state = { symbol: "GOLD", days: "1y", ccy: "USD", compare: [] };
 
   function fetchPrice() {
     var node = $("#pricechart");
     node.querySelector(".t").textContent = "Loading…";
-    fetch("/api/chart/price?symbol=" + state.symbol + "&days=" + state.days + "&ccy=" + state.ccy)
+    var url = "/api/chart/price?symbol=" + state.symbol + "&days=" + state.days +
+              "&ccy=" + state.ccy +
+              (state.compare.length ? "&compare=" + state.compare.join(",") : "");
+    fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (spec) {
         if (spec.error) { node.querySelector(".t").textContent = spec.error; return; }
@@ -103,16 +106,54 @@
       .catch(function () { node.querySelector(".t").textContent = "Fetch failed."; });
   }
 
+  function syncCompareButtons() {
+    $$('.opt[data-k="compare"]', $("#pricectl")).forEach(function (o) {
+      o.classList.toggle("on", state.compare.indexOf(o.dataset.v) !== -1);
+      // The primary asset cannot also be a comparison.
+      o.style.display = o.dataset.v === state.symbol ? "none" : "";
+    });
+  }
+
   $("#pricectl").addEventListener("click", function (e) {
     var b = e.target.closest(".opt");
     if (!b) return;
+    if (b.dataset.k === "compare") {
+      var i = state.compare.indexOf(b.dataset.v);
+      if (i !== -1) state.compare.splice(i, 1);
+      else if (state.compare.length < 3) state.compare.push(b.dataset.v);
+      syncCompareButtons();
+      fetchPrice();
+      return;
+    }
     state[b.dataset.k] = b.dataset.v;
+    if (b.dataset.k === "symbol") {
+      state.compare = state.compare.filter(function (s) { return s !== b.dataset.v; });
+      syncCompareButtons();
+    }
     $$('.opt[data-k="' + b.dataset.k + '"]', $("#pricectl")).forEach(function (o) {
       o.classList.toggle("on", o === b);
     });
     fetchPrice();
   });
+  syncCompareButtons();
   fetchPrice();
+
+  /* ── dive-in from any figure: charts.js calls this when the reader clicks
+     something that names a tracked instrument ── */
+  window.AlfredCharts = window.AlfredCharts || {};
+  window.AlfredCharts.diveIn = function (symbol) {
+    state.symbol = symbol;
+    state.compare = state.compare.filter(function (s) { return s !== symbol; });
+    $$('.opt[data-k="symbol"]', $("#pricectl")).forEach(function (o) {
+      o.classList.toggle("on", o.dataset.v === symbol);
+    });
+    syncCompareButtons();
+    $("#chartsearch").value = "";
+    applySearch("");
+    showTab("price");
+    fetchPrice();
+    $("#pricechart").scrollIntoView({ block: "center", behavior: "smooth" });
+  };
 
   /* ── period controls on rebuildable standing figures ── */
   $$(".chartperiods").forEach(function (row) {
