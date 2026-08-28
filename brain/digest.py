@@ -208,36 +208,24 @@ The world_model block replaces the previous one wholesale and is NOT part of the
 length budget. It is read by the next cycle as its starting point."""
 
 
-def _build_prompt(hours: int) -> tuple[str, dict, dict]:
-    pack = stats.build(persist=True)
-    # Charts are rendered deterministically from the same series the pack uses;
-    # the model places and interprets them but never invents one.
-    try:
-        chart_manifest = chartdata.build_pack()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("chart rendering failed: %s", exc)
-        chart_manifest = {}
-    # The model sees the catalogue, not the series: it places and interprets a
-    # figure by key, and the browser draws it from the same data the pack used.
-    chart_lines = "\n".join(
+def chart_link_lines(chart_manifest: dict) -> str:
+    """The chart catalogue as link instructions — shared with the pipeline."""
+    return "\n".join(
         f"- {spec.get('title', key)} — link as `[text](/charts#{key})`, "
         f"embed as `![{spec.get('title', key)}](charts/{key}.png)`. "
         f"{spec.get('subtitle', '')}"
         for key, spec in chart_manifest.items()
     )
-    prior = world_model.current_body()
-    docs = store.recent_documents(hours=hours, limit=120)
-    triggers = db.query(
-        """SELECT rule, severity, symbol, detail, created_at FROM trigger_events
-           WHERE created_at > now() - make_interval(hours => %s)
-           ORDER BY created_at DESC LIMIT 25""",
-        (hours,),
-    )
 
-    # Send a compact brief, not the whole pack. Everything omitted here is one
-    # get_stats_pack call away, and the full pack would otherwise be re-billed on
-    # every turn of the tool loop.
-    slim = {
+
+def slim_stats(pack: dict) -> dict:
+    """The compact statistics brief sent in prompts.
+
+    Send a compact brief, not the whole pack. Everything omitted here is one
+    get_stats_pack call away, and the full pack would otherwise be re-billed on
+    every turn of the tool loop.
+    """
+    return {
         "generated_at": pack.get("generated_at"),
         "performance": [
             {k: v for k, v in row.items()
@@ -284,20 +272,49 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
         ),
     }
 
-    doc_lines = []
+
+def doc_lines(docs: list[dict], include_low: bool = False) -> list[str]:
+    """Document lines for prompts, dated — shared with the pipeline.
+
+    The date is not decoration. Reading a week of coverage undated, the model
+    cannot tell Monday's expectation from Friday's outcome, and will cheerfully
+    present a superseded claim alongside the thing that superseded it.
+    """
+    out = []
     for d in docs:
-        if d.get("urgency") == "Low":
+        if not include_low and d.get("urgency") == "Low":
             continue
-        # The date is not decoration. Reading a week of coverage undated, the
-        # model cannot tell Monday's expectation from Friday's outcome, and will
-        # cheerfully present a superseded claim alongside the thing that
-        # superseded it.
         when = d.get("published_at") or d.get("fetched_at")
         stamp = when.strftime("%d %b %H:%M") if when else "undated"
-        doc_lines.append(
+        out.append(
             f"- [{stamp}] [{d.get('urgency') or '?'}|tier{d['source_tier']}] "
             f"{d['title']} — {d.get('summary') or ''} ({d['source']})"
         )
+    return out
+
+
+def _build_prompt(hours: int) -> tuple[str, dict, dict]:
+    pack = stats.build(persist=True)
+    # Charts are rendered deterministically from the same series the pack uses;
+    # the model places and interprets them but never invents one.
+    try:
+        chart_manifest = chartdata.build_pack()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("chart rendering failed: %s", exc)
+        chart_manifest = {}
+    # The model sees the catalogue, not the series: it places and interprets a
+    # figure by key, and the browser draws it from the same data the pack used.
+    chart_lines = chart_link_lines(chart_manifest)
+    prior = world_model.current_body()
+    docs = store.recent_documents(hours=hours, limit=120)
+    triggers = db.query(
+        """SELECT rule, severity, symbol, detail, created_at FROM trigger_events
+           WHERE created_at > now() - make_interval(hours => %s)
+           ORDER BY created_at DESC LIMIT 25""",
+        (hours,),
+    )
+    slim = slim_stats(pack)
+    dlines = doc_lines(docs)
 
     user = f"""Run the {hours}-hour deep analysis cycle. Timestamp: {datetime.now(timezone.utc).isoformat()}
 
@@ -311,8 +328,8 @@ def _build_prompt(hours: int) -> tuple[str, dict, dict]:
 {json.dumps([{k: v for k, v in t.items() if k != 'created_at'} for t in triggers], default=str)[:3000]}
 ```
 
-# New documents since last cycle ({len(doc_lines)} non-Low of {len(docs)} total)
-{chr(10).join(doc_lines[:100]) or "(nothing above Low urgency)"}
+# New documents since last cycle ({len(dlines)} non-Low of {len(docs)} total)
+{chr(10).join(dlines[:100]) or "(nothing above Low urgency)"}
 
 # Charts available — LINK these in prose using the link form shown.
 # Embedding is the rare exception, only for a figure that demonstrates a

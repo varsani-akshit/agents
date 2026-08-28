@@ -218,3 +218,47 @@ CREATE TABLE IF NOT EXISTS brief_shares (
   last_viewed TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS brief_shares_analysis_idx ON brief_shares (analysis_id);
+
+-- The agent army's trace mirror. Trodo (app.trodo.ai) is the operations view;
+-- this table is the product record that drill-down pages render from, so it
+-- must survive independently of any external service. One row per agent run.
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id         BIGSERIAL PRIMARY KEY,
+  agent      TEXT NOT NULL,
+  trigger    TEXT NOT NULL DEFAULT 'schedule',
+  status     TEXT NOT NULL DEFAULT 'running',   -- running | ok | error
+  input      JSONB,
+  output     JSONB,
+  meta       JSONB,
+  error      TEXT,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ended_at   TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS agent_runs_agent_idx ON agent_runs (agent, started_at DESC);
+
+-- Every stage of every brief, in full: the Marshal's north star, each Scout's
+-- sourced leads, each Analyst's findings, the Editor's draft, the Verifier's
+-- audit. This is what makes a sentence in a brief clickable down to its
+-- evidence. beat is NULL for whole-brief stages (marshal, editor, verifier).
+CREATE TABLE IF NOT EXISTS brief_runs (
+  id          BIGSERIAL PRIMARY KEY,
+  analysis_id BIGINT REFERENCES analyses(id) ON DELETE CASCADE,
+  stage       TEXT NOT NULL,                    -- marshal|scout|analyst|editor|verifier
+  beat        TEXT,                             -- monetary|fiscal|geopolitics|...
+  payload     JSONB NOT NULL,
+  usd         NUMERIC(10,5) NOT NULL DEFAULT 0,
+  model       TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS brief_runs_analysis_idx ON brief_runs (analysis_id, stage);
+
+-- Deep-research notes: standalone investigations triggered from the dashboard
+-- or chat, stored like analyses but with their sub-researcher material.
+CREATE TABLE IF NOT EXISTS research_notes (
+  id         BIGSERIAL PRIMARY KEY,
+  question   TEXT NOT NULL,
+  body       TEXT NOT NULL,
+  facets     JSONB,          -- per-sub-researcher findings
+  usd        NUMERIC(10,5) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

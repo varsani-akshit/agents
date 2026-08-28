@@ -130,6 +130,44 @@ DEFINITIONS = [
         },
     },
     {
+        "name": "fetch_url",
+        "description": (
+            "Fetch a web page and return its readable article text. Use after a "
+            "search surfaces a promising source: the search snippet is a "
+            "sentence, the article is the evidence. Returns title and text; "
+            "quote from it rather than paraphrasing from the snippet."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"url": {"type": "string"}},
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "run_python",
+        "description": (
+            "Execute short Python analysis code in a sandbox (pandas/numpy, no "
+            "network, 12s limit). Request the price/FRED series you need via "
+            "series_names, then access them in code with series('SYMBOL') — a "
+            "pandas Series of daily values. print() the result. Use this for "
+            "any number not already in the stats pack: custom-window "
+            "correlations, drawdowns, spreads, rebased comparisons. Never "
+            "state a computed figure without computing it here or reading it "
+            "from a tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string"},
+                "series_names": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "symbols/FRED ids to load, e.g. GOLD, DXY, WALCL",
+                },
+            },
+            "required": ["code"],
+        },
+    },
+    {
         "name": "get_world_model",
         "description": (
             "The current living world model — Alfred's standing view of the macro "
@@ -307,6 +345,37 @@ def _get_recent_news(hours: int = 6, min_urgency: str | None = None, limit: int 
     }
 
 
+def _fetch_url(url: str) -> dict:
+    import httpx
+    from bs4 import BeautifulSoup
+
+    if not url.startswith(("http://", "https://")):
+        return {"error": "only http(s) URLs"}
+    try:
+        r = httpx.get(url, timeout=25, follow_redirects=True, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; AlfredResearch/1.0)"})
+        r.raise_for_status()
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"fetch failed: {type(exc).__name__}: {exc}"}
+    soup = BeautifulSoup(r.text, "lxml")
+    for tag in soup(["script", "style", "nav", "header", "footer", "aside", "form"]):
+        tag.decompose()
+    node = soup.find("article") or soup.find("main") or soup.body or soup
+    text = " ".join(node.get_text(" ", strip=True).split())
+    return {
+        "url": str(r.url),
+        "title": (soup.title.get_text(strip=True) if soup.title else None),
+        "text": text[:18000],
+        "truncated": len(text) > 18000,
+    }
+
+
+def _run_python(code: str, series_names: list[str] | None = None) -> dict:
+    from brain import sandbox
+
+    return sandbox.run(code, series_names=series_names)
+
+
 def _get_world_model() -> dict:
     row = world_model.latest()
     if not row:
@@ -326,19 +395,40 @@ HANDLERS = {
     "query_relationships": _query_relationships,
     "get_recent_news": _get_recent_news,
     "get_world_model": _get_world_model,
+    "fetch_url": _fetch_url,
+    "run_python": _run_python,
+}
+
+# Span kinds for the trace tree: lookups that feed the model context are
+# retrieval, actions are tools.
+_SPAN_KIND = {
+    "search_memory": "retrieval",
+    "get_recent_news": "retrieval",
+    "query_relationships": "retrieval",
+    "get_world_model": "retrieval",
 }
 
 
 def dispatch(name: str, args: dict) -> str:
-    """Execute a client-side tool call, returning a JSON string for the model."""
+    """Execute a client-side tool call, returning a JSON string for the model.
+
+    Each dispatch emits one tool/retrieval span under whatever agent run is
+    active (a no-op outside a run), so the trace tree shows the real steps.
+    """
+    from brain import observe
+
     fn = HANDLERS.get(name)
     if fn is None:
         return json.dumps({"error": f"unknown tool '{name}'"})
-    try:
-        result = fn(**args)
-    except TypeError as exc:
-        return json.dumps({"error": f"bad arguments for {name}: {exc}"})
-    except Exception as exc:  # noqa: BLE001
-        log.exception("tool %s failed", name)
-        return json.dumps({"error": f"{name} failed: {type(exc).__name__}: {exc}"})
+    with observe.stage(name, kind=_SPAN_KIND.get(name, "tool"), input=args) as span:
+        try:
+            result = fn(**args)
+        except TypeError as exc:
+            result = {"error": f"bad arguments for {name}: {exc}"}
+        except Exception as exc:  # noqa: BLE001
+            log.exception("tool %s failed", name)
+            result = {"error": f"{name} failed: {type(exc).__name__}: {exc}"}
+        span.set_output(result)
+        if isinstance(result, dict) and result.get("error"):
+            span.set_error(str(result["error"])[:500])
     return json.dumps(result, default=str)[:60000]

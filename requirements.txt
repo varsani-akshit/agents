@@ -34,3 +34,4 @@ rich==15.0.0
 
 # Tests
 pytest==9.1.1
+trodo-python>=2.9.0

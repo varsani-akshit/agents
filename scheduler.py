@@ -41,41 +41,59 @@ def _guard(name: str, fn) -> None:
 
 # ─────────────────────────────────── jobs ───────────────────────────────────
 def job_tick(harvest_news: bool = True) -> dict:
-    """One ingestion cycle.
+    """One ingestion cycle, run as the army's standing agents.
 
     Prices and trigger evaluation are free — no model touches them — so they can
     run as often as we like. Harvest, embedding and classification are the only
     steps that spend AI credit, so the schedule runs them at half the cadence:
     the full tick every 30 minutes, a prices-only tick in between. News minutes
     old is indistinguishable from news half an hour old at a twice-daily brief.
+
+    Each stage is its own traced run (watchman / librarian / quant / sentinel):
+    they are independently triggered pieces of work with their own outcomes, so
+    they appear as separate runs rather than one undifferentiated tick.
     """
-    from brain import alert as alert_mod
+    from brain import alert as alert_mod, observe
     from ingest import feeds, prices
     from signals import stats, triggers
 
     detail: dict = {}
-    detail["prices"] = prices.tick()
     harvest = {}
+
     if harvest_news:
-        from brain import classify
-        from memory import store
+        # Watchman: fresh corpus.
+        with observe.run("watchman") as rec:
+            harvest = feeds.harvest()
+            detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
+            rec.set_output(detail["feeds"])
+        # Librarian: organised corpus.
+        with observe.run("librarian") as rec:
+            from brain import classify
+            from memory import store
 
-        harvest = feeds.harvest()
-        detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
-        detail["embedded"] = store.embed_documents(limit=120)
-        detail["classified"] = classify.run(batch=20, max_batches=3, workers=3)
+            detail["embedded"] = store.embed_documents(limit=120)
+            detail["classified"] = classify.run(batch=20, max_batches=3, workers=3)
+            rec.set_output({"embedded": detail["embedded"],
+                            "classified": detail["classified"]})
 
-    pack = stats.build(persist=True)
-    fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
-    detail["triggers_fired"] = len(fired)
+    # Quant: the measured state of the world. No model, no cost.
+    with observe.run("quant") as rec:
+        detail["prices"] = prices.tick()
+        pack = stats.build(persist=True)
+        rec.set_output({"prices": detail["prices"]})
 
-    triggers.suppress_stale(hours=6)
-    sent = []
-    for ev in triggers.pending_critical():
-        out.alert(alert_mod.write(ev))
-        sent.append(ev["id"])
-    triggers.mark_notified(sent)
-    detail["alerts_sent"] = len(sent)
+    # Sentinel: thresholds and alerts.
+    with observe.run("sentinel") as rec:
+        fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
+        detail["triggers_fired"] = len(fired)
+        triggers.suppress_stale(hours=6)
+        sent = []
+        for ev in triggers.pending_critical():
+            out.alert(alert_mod.write(ev))
+            sent.append(ev["id"])
+        triggers.mark_notified(sent)
+        detail["alerts_sent"] = len(sent)
+        rec.set_output({"fired": detail["triggers_fired"], "alerts": len(sent)})
 
     out.info(
         f"tick · {detail.get('feeds', {}).get('inserted', 0)} new docs · "
@@ -85,9 +103,19 @@ def job_tick(harvest_news: bool = True) -> dict:
 
 
 def job_digest() -> dict:
-    from brain import digest
+    # The staged pipeline (marshal → scouts → analysts → editor → verifier)
+    # replaced the single-call digest. brain/digest.py remains the library of
+    # shared prompt material and the fallback: MIA_PIPELINE=off reverts.
+    import os
 
-    result = digest.run(hours=12)
+    if os.getenv("MIA_PIPELINE", "on").lower() in {"off", "0", "false"}:
+        from brain import digest
+
+        result = digest.run(hours=12)
+    else:
+        from brain import pipeline
+
+        result = pipeline.run(hours=12)
     if not result.get("ok"):
         out.error(f"digest failed: {result.get('error')}")
         raise RuntimeError(f"digest produced no output: {result.get('error')}")
@@ -289,6 +317,9 @@ def main() -> None:
     for noisy in ("httpx", "httpcore", "apscheduler.executors", "yfinance"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
+    from brain import observe
+
+    observe.init("scheduler")
     sched = build_scheduler()
 
     def shutdown(signum, frame):  # noqa: ARG001

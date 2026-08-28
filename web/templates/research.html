@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Research — Alfred{% endblock %}
+{% block content %}
+<div class="cols">
+  <div>
+    {% if not note %}
+    <header class="ph">
+      <div class="eyebrow">Deep investigation</div>
+      <h1>Research</h1>
+      <p class="sub">
+        A question worth more than an answer: a supervisor splits it into
+        facets, parallel researchers work each with live search and the full
+        toolbox, and one synthesis writes the note. Notes are kept.
+      </p>
+    </header>
+
+    <form class="ask-form" method="post" action="/research" onsubmit="return go()">
+      <textarea name="question" rows="2" required
+        placeholder="Is central bank gold buying accelerating, and who is driving it?"></textarea>
+      <div class="formrow">
+        <button type="submit" id="go">Investigate</button>
+        <span class="spinner" id="sp"><span class="spin"></span> researching — usually 1–3 minutes</span>
+      </div>
+    </form>
+    {% else %}
+    <header class="ph">
+      <div class="eyebrow">Research note · {{ note.created_at|utc('%d %B %Y %H:%M') }} UTC</div>
+      <h1>{{ note.question }}</h1>
+      <div class="facts">
+        <span>${{ '%.3f'|format(note.usd) }}</span>
+        <span>{{ (note.facets or [])|length }} research facets</span>
+        <span><a href="/research">New investigation</a></span>
+      </div>
+    </header>
+    <article class="mbody">{{ body_html|safe }}</article>
+
+    {% if note.facets %}
+    <section class="rsec">
+      <h2>Working papers</h2>
+      {% for f in note.facets %}
+      <details class="lead">
+        <summary><strong>{{ f.facet }}</strong></summary>
+        <article class="mbody">{{ f.report }}</article>
+        {% if f.citations %}
+        <div class="facts">
+          {% for c in f.citations %}
+          <span><a href="{{ c.url }}" target="_blank" rel="noopener">{{ c.title or c.url }}</a></span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
+      {% endfor %}
+    </section>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  <aside class="side">
+    <section>
+      <h3>Past investigations</h3>
+      <ul class="list">
+        {% for h in history %}
+        <li>
+          <a href="/research/{{ h.id }}">{{ h.question }}</a>
+          <span class="hint">{{ h.created_at|ago }} · ${{ '%.2f'|format(h.usd) }}</span>
+        </li>
+        {% else %}
+        <li class="hint">Nothing yet. Ask something worth digging into.</li>
+        {% endfor %}
+      </ul>
+    </section>
+  </aside>
+</div>
+<script>
+function go() {
+  document.getElementById('go').disabled = true;
+  document.getElementById('sp').style.display = 'inline-flex';
+  return true;
+}
+</script>
+{% endblock %}

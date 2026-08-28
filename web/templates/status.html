@@ -7,6 +7,24 @@
   <p class="sub">What is running, what it costs, and where the data comes from.</p>
 </header>
 
+<section class="block" style="margin-bottom:8px">
+  <h2>The army</h2>
+  <table class="data">
+    <tr><th>Agent</th><th>Last run</th><th>Status</th><th>Runs 24h</th><th>Errors 24h</th></tr>
+    {% for a in army %}
+    <tr>
+      <td>{{ a.agent }}</td>
+      <td class="dim">{{ a.last_run|ago }}</td>
+      <td>{{ a.last_status }}</td>
+      <td>{{ a.runs_24h }}</td>
+      <td{% if a.errors_24h %} class="hi"{% endif %}>{{ a.errors_24h }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="dim">No runs recorded yet.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
 <div class="grid2" style="margin-bottom:8px">
   <section class="block">
     <h2>Model routing</h2>

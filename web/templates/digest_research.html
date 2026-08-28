@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Research — {{ digest.title }}{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">Working papers · {{ digest.created_at|utc('%d %B %Y %H:%M') }} UTC</div>
+  <h1>Behind the brief</h1>
+  <p class="sub"><a href="/digest/{{ digest.id }}">{{ digest.title }}</a></p>
+  <div class="facts">
+    <span>${{ '%.3f'|format(total_usd) }} research cost</span>
+    {% if verifier and verifier.payload.checked_claims is defined %}
+    <span>{{ verifier.payload.checked_claims }} claims audited</span>
+    {% endif %}
+  </div>
+</header>
+
+{% if marshal %}
+<section class="rsec">
+  <h2>Marching orders <span class="mono">{{ marshal.model or '' }}</span></h2>
+  <p>{{ marshal.payload.window_summary }}</p>
+  <ul>
+    {% for p in marshal.payload.priorities or [] %}
+    <li><strong>{{ p.focus }}</strong> — {{ p.why }}
+      {% if p.beats %}<span class="mono">({{ p.beats|join(', ') }})</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% if marshal.payload.carry_forward %}
+  <p class="hint">Carried forward: {{ marshal.payload.carry_forward }}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% for row in beats %}
+<section class="rsec">
+  <h2>{{ row.beat.section }}</h2>
+
+  {% if row.analyst %}
+  <h3>Analyst findings <span class="mono">{{ row.analyst.model or '' }}</span></h3>
+  {% if row.analyst.payload.beat_summary %}
+  <p class="sub">{{ row.analyst.payload.beat_summary }}</p>
+  {% endif %}
+  {% for f in row.analyst.payload.findings or [] %}
+  <div class="finding">
+    <p><strong>{{ f.title }}</strong></p>
+    <p>{{ f.analysis }}</p>
+    <div class="facts">
+      {% for n in f.numbers_used or [] %}<span class="mono">{{ n }}</span>{% endfor %}
+      {% for c in f.chart_keys or [] %}<span><a href="/charts#{{ c }}">chart: {{ c }}</a></span>{% endfor %}
+      {% if f.related_beats %}<span class="hi">connects: {{ f.related_beats|join(', ') }}</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if row.scout %}
+  <h3>Scout leads</h3>
+  {% for l in row.scout.payload.leads or [] %}
+  <div class="lead">
+    <p><strong>{{ l.title }}</strong>
+      {% if l.novelty %}<span class="mono">{{ l.novelty }}</span>{% endif %}</p>
+    <p>{{ l.what_happened }}</p>
+    {% for q in l.quotes or [] %}
+    <blockquote>“{{ q.text }}” — {{ q.who }}
+      {% if q.source_url %}<a href="{{ q.source_url }}" target="_blank" rel="noopener">source</a>{% endif %}
+    </blockquote>
+    {% endfor %}
+    {% if l.sources %}
+    <div class="facts">
+      {% for s in l.sources %}
+      <span><a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title or s.url }}</a></span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</section>
+{% endfor %}
+
+{% if verifier %}
+<section class="rsec">
+  <h2>Verification</h2>
+  {% set audit = verifier.payload %}
+  <p class="sub">{{ audit.checked_claims or 0 }} numeric claims audited,
+    {{ audit.issues|length if audit.issues else 0 }} issues,
+    {{ audit.fixed or 0 }} corrected before publication.</p>
+  {% for i in audit.issues or [] %}
+  <div class="lead">
+    <p><span class="mono">{{ i.severity }}</span> “{{ i.quote }}”</p>
+    <p class="hint">{{ i.why }}{% if i.applied %} — corrected.{% endif %}</p>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

@@ -226,6 +226,17 @@ def run_agent(
                  purpose, turn, model, usd,
                  data["usage"].get("promptTokenCount"),
                  data["usage"].get("candidatesTokenCount"), searches)
+        from brain import observe
+
+        observe.record_llm(
+            spec=f"gemini:{model}", purpose=f"{purpose}:turn{turn}",
+            input_tokens=data["usage"].get("promptTokenCount", 0),
+            output_tokens=data["usage"].get("candidatesTokenCount", 0)
+            + data["usage"].get("thoughtsTokenCount", 0),
+            usd=usd,
+            completion="".join(p.get("text", "") for p in data["parts"] if "text" in p)[:8000]
+            or None,
+        )
 
         all_citations.extend(_citations(data["grounding"]))
 

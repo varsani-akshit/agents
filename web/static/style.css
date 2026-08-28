@@ -582,3 +582,16 @@ button:disabled { opacity: .45; cursor: progress; }
   margin-top: 56px; padding-top: 20px; border-top: .5px solid var(--border);
   font: 400 12px/1.7 var(--mono); color: var(--t3);
 }
+
+/* ── Research drill-down (working papers) ─────────────────────────────── */
+.rsec { margin: 34px 0; padding-top: 18px; border-top: 0.5px solid var(--border); }
+.rsec h2 { display: flex; align-items: baseline; gap: 10px; }
+.rsec h3 { margin-top: 20px; font-size: 0.8rem; text-transform: uppercase;
+           letter-spacing: 0.06em; color: var(--subtle); }
+.finding, .lead { margin: 14px 0 18px; padding-left: 14px;
+                  border-left: 2px solid var(--accent); }
+.lead { border-left-color: var(--border); }
+.finding p, .lead p { margin: 4px 0; }
+.lead blockquote { margin: 8px 0; padding: 6px 10px; font-style: italic;
+                   background: var(--surface); border-left: 2px solid var(--accent); }
+.rsec .mono { font-family: var(--mono); font-size: 0.72rem; color: var(--subtle); }

@@ -39,8 +39,16 @@ PRICING: dict[str, tuple[float, float]] = {
     "anthropic:claude-haiku-4-5": (1.0, 5.0),
     "gemini:gemini-flash-latest": (0.30, 2.50),
     "gemini:gemini-flash-lite-latest": (0.10, 0.40),
+    "gemini:gemini-pro-latest": (1.25, 10.0),
     "groq:openai/gpt-oss-20b": (0.10, 0.50),
     "openai:gpt-4o-mini": (0.15, 0.60),
+    # Azure Foundry deployments. Estimates on the conservative side — the
+    # ledger treats these as guardrails; Azure's invoice is the accounting.
+    "azure:gpt-5.4": (2.50, 20.0),
+    "azure:gpt-5.4-mini": (0.45, 3.60),
+    "azure:gpt-4.1-nano": (0.10, 0.40),
+    "azure:Llama-4-Maverick-17B-128E-Instruct-FP8": (0.35, 1.40),
+    "azure:gpt-oss-120b": (0.15, 0.60),
 }
 
 
@@ -72,8 +80,20 @@ def available(spec: str) -> bool:
             "gemini": os.getenv("GEMINI_API_KEY"),
             "groq": os.getenv("GROQ_API_KEY"),
             "openai": os.getenv("OPENAI_API_KEY"),
+            "azure": os.getenv("AZURE_FOUNDRY_ENDPOINT") and os.getenv("AZURE_FOUNDRY_API_KEY"),
         }.get(provider)
     )
+
+
+def _azure_base() -> tuple[str, dict]:
+    """Azure Foundry's unified v1 route: one endpoint, model = deployment name.
+
+    The `api-key` header is the auth that works across every deployment on the
+    resource; the older per-deployment `?api-version=` route rejects the newer
+    model families ("API version not supported"), so it is not used.
+    """
+    ep = os.environ["AZURE_FOUNDRY_ENDPOINT"].rstrip("/")
+    return f"{ep}/openai/v1", {"api-key": os.environ["AZURE_FOUNDRY_API_KEY"]}
 
 
 # ───────────────────────────── schema translation ───────────────────────────
@@ -157,27 +177,29 @@ def _call_anthropic(model, system, user, schema, max_tokens) -> tuple[Any, int, 
 
 
 def _call_gemini(model, system, user, schema, max_tokens) -> tuple[Any, int, int]:
+    generation: dict[str, Any] = {
+        "responseMimeType": "application/json",
+        "responseSchema": _to_gemini_schema(schema),
+        "maxOutputTokens": max_tokens,
+        "temperature": 0,
+    }
+    # Thinking tokens are billed against maxOutputTokens, so a model that
+    # reasons for 2,000 tokens leaves only 1,000 for the JSON and the object
+    # arrives truncated mid-string. Flash models take thinkingBudget: 0 for
+    # mechanical schema work; the Pro family rejects a zero budget outright
+    # (400), so Pro requests leave the default and get a larger output budget
+    # from their callers instead.
+    if "pro" not in model:
+        generation["thinkingConfig"] = {"thinkingBudget": 0}
     r = httpx.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         params={"key": os.environ["GEMINI_API_KEY"]},
         json={
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"parts": [{"text": user}]}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseSchema": _to_gemini_schema(schema),
-                "maxOutputTokens": max_tokens,
-                "temperature": 0,
-                # Thinking tokens are billed against maxOutputTokens, so a model
-                # that reasons for 2,000 tokens leaves only 1,000 for the JSON
-                # and the object arrives truncated mid-string. These are
-                # mechanical, schema-constrained tasks — classification and
-                # entity extraction — where reasoning buys nothing and silently
-                # costs the answer.
-                "thinkingConfig": {"thinkingBudget": 0},
-            },
+            "generationConfig": generation,
         },
-        timeout=120,
+        timeout=180,
     )
     r.raise_for_status()
     data = r.json()
@@ -221,6 +243,40 @@ def _call_openai_compatible(base: str, key: str, model, system, user, schema, ma
     )
 
 
+def _call_azure_json(model, system, user, schema, max_tokens):
+    """Azure Foundry chat completion returning schema-shaped JSON.
+
+    `response_format: json_object` is honoured by the GPT deployments but not
+    reliably by the open-weight ones (Maverick, gpt-oss), which instead get the
+    schema spelled out in the system prompt. Either way the reply is parsed and
+    coerced, and a malformed reply raises — which is what lets the role router
+    escalate a tier instead of accepting a silently broken answer.
+    The GPT-5 family rejects both `max_tokens` and non-default temperature, so
+    the request uses `max_completion_tokens` and sets no temperature at all.
+    """
+    base, headers = _azure_base()
+    body: dict[str, Any] = {
+        "model": model,
+        "max_completion_tokens": max_tokens,
+        "messages": [
+            {"role": "system",
+             "content": system + "\n\nReturn ONLY valid JSON matching this schema, "
+                        "no prose, no code fences:\n" + json.dumps(schema)},
+            {"role": "user", "content": user},
+        ],
+    }
+    if model.startswith("gpt-"):
+        body["response_format"] = {"type": "json_object"}
+    r = httpx.post(f"{base}/chat/completions", headers=headers, json=body, timeout=180)
+    r.raise_for_status()
+    d = r.json()
+    u = d.get("usage", {})
+    text = (d["choices"][0]["message"].get("content") or "").strip()
+    if not text:
+        raise ProviderError("empty completion (reasoning may have consumed the budget)")
+    return _extract_json(text), u.get("prompt_tokens", 0), u.get("completion_tokens", 0)
+
+
 # ───────────────────────────────── public API ───────────────────────────────
 def complete_json(
     spec: str,
@@ -261,6 +317,8 @@ def complete_json(
                     "https://api.openai.com/v1", os.environ["OPENAI_API_KEY"],
                     model, system, user, schema, max_tokens,
                 )
+            elif provider == "azure":
+                payload, itok, otok = _call_azure_json(model, system, user, schema, max_tokens)
             else:
                 raise ProviderError(f"unknown provider '{provider}'")
 
@@ -271,6 +329,12 @@ def complete_json(
                    VALUES (%s,%s,%s,%s,%s,%s)""",
                 (provider, model, purpose, itok, otok, usd),
             )
+            from brain import observe
+
+            observe.record_llm(spec=attempt, purpose=purpose, input_tokens=itok,
+                               output_tokens=otok, usd=usd,
+                               prompt={"system_instruction": system, "query": user},
+                               completion=payload)
             if attempt != spec:
                 log.warning("%s fell back to %s", spec, attempt)
             log.info("%s via %s: $%.5f (in=%s out=%s)", purpose, attempt, usd, itok, otok)
@@ -300,15 +364,24 @@ def _qualify(model: str) -> str:
 
 def routing_table() -> list[dict]:
     """What each task is currently routed to — surfaced by `mia status`."""
-    return [
+    from brain import router
+
+    rows = [
         {"task": "classify", "spec": config.CLASSIFY_SPEC, "why": "high volume, narrow schema"},
         {"task": "extract_edges", "spec": config.EXTRACT_SPEC, "why": "high volume, narrow schema"},
         {"task": "alert", "spec": _qualify(config.ALERT_SPEC), "why": "user-facing prose"},
-        {"task": "digest", "spec": _qualify(config.DIGEST_MODEL),
-         "why": "scheduled; cheapest adequate reasoning"},
-        {"task": "ask", "spec": _qualify(config.ASK_MODEL),
-         "why": "deep reasoning + web search"},
+        {"task": "ask", "spec": _qualify(config.ASK_MODEL), "why": "interactive tool loop"},
     ]
+    try:
+        for role in ("bulk", "workhorse", "reason", "search", "deep"):
+            rows.append({"task": f"role:{role}", "spec": " → ".join(router.chain_for(role)),
+                         "why": "escalation chain"})
+        rows.append({"task": "role:premium", "spec": " → ".join(
+            router.chain_for("premium", premium_site="editor")),
+            "why": "editor + research synthesis only"})
+    except Exception:  # noqa: BLE001 — status must render even if a key is missing
+        pass
+    return rows
 
 
 # ───────────────────────────── plain-text completion ────────────────────────
@@ -392,6 +465,20 @@ def complete_text(
                              else ("https://api.openai.com/v1", "OPENAI_API_KEY"))
                 text, itok, otok = _text_openai_compatible(
                     base, os.environ[key], model, system, user, max_tokens)
+            elif provider == "azure":
+                base, headers = _azure_base()
+                r = httpx.post(
+                    f"{base}/chat/completions", headers=headers,
+                    json={"model": model, "max_completion_tokens": max_tokens,
+                          "messages": [{"role": "system", "content": system},
+                                       {"role": "user", "content": user}]},
+                    timeout=300,
+                )
+                r.raise_for_status()
+                d = r.json()
+                text = (d["choices"][0]["message"].get("content") or "").strip()
+                u = d.get("usage", {})
+                itok, otok = u.get("prompt_tokens", 0), u.get("completion_tokens", 0)
             else:
                 raise ProviderError(f"unknown provider '{provider}'")
             if not text:
@@ -402,6 +489,12 @@ def complete_text(
                    VALUES (%s,%s,%s,%s,%s,%s)""",
                 (provider, model, purpose, itok, otok, price(attempt, itok, otok)),
             )
+            from brain import observe
+
+            observe.record_llm(spec=attempt, purpose=purpose, input_tokens=itok,
+                               output_tokens=otok, usd=price(attempt, itok, otok),
+                               prompt={"system_instruction": system, "query": user},
+                               completion=text)
             # Callers that report cost had to query api_calls afterwards, and
             # the one that did not simply reported zero.
             return (text, price(attempt, itok, otok)) if with_cost else text

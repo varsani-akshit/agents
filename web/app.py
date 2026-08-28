@@ -44,6 +44,9 @@ async def lifespan(_: FastAPI):
     owns the scheduler, starting a second copy here would double every tick and
     write duplicate briefs.
     """
+    from brain import observe
+
+    observe.init("web")
     sched = None
     if os.getenv("MIA_EMBEDDED_SCHEDULER", "").lower() in ("1", "true", "yes"):
         from scheduler import build_background_scheduler
@@ -347,6 +350,50 @@ async def one_digest(request: Request, digest_id: int):
     return _digest_page(request, d)
 
 
+@app.get("/digest/{digest_id}/research", response_class=HTMLResponse)
+async def digest_research(request: Request, digest_id: int):
+    """The brief's working papers: every pipeline stage, in full.
+
+    What the Marshal prioritised, what each Scout found (with its quotes and
+    sources), what each Analyst concluded, and what the Verifier checked —
+    the evidence trail behind every sentence on the brief page.
+    """
+    d = db.one(
+        "SELECT id,title,meta,created_at FROM analyses WHERE id=%s AND kind='digest'",
+        (digest_id,),
+    )
+    if not d:
+        return RedirectResponse("/")
+    rows = db.query(
+        """SELECT stage, beat, payload, usd, model, created_at
+           FROM brief_runs WHERE analysis_id=%s ORDER BY id""",
+        (digest_id,),
+    )
+    stages: dict = {"scout": {}, "analyst": {}}
+    singles: dict = {}
+    for r in rows:
+        if r["stage"] in ("scout", "analyst"):
+            stages[r["stage"]][r["beat"]] = r
+        else:
+            singles[r["stage"]] = r
+    from brain.pipeline import beats as beats_mod
+
+    beat_rows = []
+    for b in beats_mod.BEATS:
+        s, a = stages["scout"].get(b["key"]), stages["analyst"].get(b["key"])
+        if s or a:
+            beat_rows.append({"beat": b, "scout": s, "analyst": a})
+    return page(request, "digest_research.html", {
+        "digest": d,
+        "beats": beat_rows,
+        "marshal": singles.get("marshal"),
+        "editor": singles.get("editor"),
+        "verifier": singles.get("verifier"),
+        "total_usd": sum(float(r["usd"] or 0) for r in rows),
+        "active": "latest",
+    })
+
+
 @app.get("/archive", response_class=HTMLResponse)
 async def archive(request: Request):
     return page(request, "archive.html", {
@@ -406,6 +453,47 @@ async def ask_submit(question: str = Form(...), model: str = Form("")):
     if result.get("analysis_id"):
         return RedirectResponse(f"/answer/{result['analysis_id']}", status_code=303)
     return JSONResponse({"error": result.get("stopped") or "no answer produced"}, 500)
+
+
+@app.get("/research", response_class=HTMLResponse)
+async def research_form(request: Request):
+    return page(request, "research.html", {
+        "note": None,
+        "history": db.query(
+            """SELECT id, question, created_at, usd FROM research_notes
+               ORDER BY created_at DESC LIMIT 25"""),
+        "active": "research",
+    })
+
+
+@app.post("/research")
+async def research_submit(question: str = Form(...)):
+    """Run a deep investigation: supervisor → parallel sub-researchers →
+    synthesis. Takes a minute or two; the work happens in a worker thread."""
+    from brain import research as research_mod
+
+    q = question.strip()
+    if not q:
+        return RedirectResponse("/research", status_code=303)
+    result = await asyncio.to_thread(research_mod.run, q, trigger="dashboard")
+    if result.get("note_id"):
+        return RedirectResponse(f"/research/{result['note_id']}", status_code=303)
+    return JSONResponse({"error": "research produced no note"}, 500)
+
+
+@app.get("/research/{note_id}", response_class=HTMLResponse)
+async def research_note(request: Request, note_id: int):
+    note = db.one("SELECT * FROM research_notes WHERE id=%s", (note_id,))
+    if not note:
+        return RedirectResponse("/research")
+    return page(request, "research.html", {
+        "note": note,
+        "body_html": render_markdown(note["body"], {}),
+        "history": db.query(
+            """SELECT id, question, created_at, usd FROM research_notes
+               ORDER BY created_at DESC LIMIT 25"""),
+        "active": "research",
+    })
 
 
 # The charts page groups its figures under tabs; a 15-figure scroll is not a
@@ -511,6 +599,16 @@ async def status(request: Request):
                       regexp_replace(purpose,':turn[0-9]+','') AS purpose,
                       count(*) AS calls, round(sum(usd)::numeric,4) AS usd
                FROM api_calls GROUP BY 1,2,3 ORDER BY sum(usd) DESC LIMIT 20"""
+        ),
+        # The army at a glance: each agent's most recent run and 24h record.
+        "army": db.query(
+            """SELECT agent,
+                      max(started_at) AS last_run,
+                      count(*) FILTER (WHERE started_at > now() - interval '24 hours') AS runs_24h,
+                      count(*) FILTER (WHERE status='error'
+                                       AND started_at > now() - interval '24 hours') AS errors_24h,
+                      (array_agg(status ORDER BY started_at DESC))[1] AS last_status
+               FROM agent_runs GROUP BY agent ORDER BY max(started_at) DESC"""
         ),
         "active": "status",
     })
