@@ -79,12 +79,41 @@ _MARSHAL_SCHEMA = {
 }
 
 
+def recent_coverage(limit: int = 3) -> str:
+    """What the last briefs already told the reader.
+
+    Without this the desk re-reports standing stories — the same central bank,
+    the same war — because they are permanently in the news. A brief is a
+    despatch, not a summary of the world: it earns its place by what has
+    changed since the last one.
+    """
+    rows = db.query(
+        """SELECT title, body, created_at FROM analyses WHERE kind='digest'
+           ORDER BY created_at DESC LIMIT %s""", (limit,))
+    out = []
+    for r in rows:
+        titles = re.findall(r"^\*\*(.+?)\*\*\s*$", r["body"] or "", re.M)[:14]
+        out.append(f"— {r['created_at'].strftime('%d %b %H:%M')} · {r['title']}\n  "
+                   + "\n  ".join("· " + t for t in titles))
+    return "\n".join(out) or "(no previous briefs)"
+
+
 def marshal(*, hours: int, slim: dict, dlines: list[str], prior_wm: str,
             triggers: list[dict], last_headline: str | None) -> tuple[dict, str]:
     """The run brief: the north star every downstream agent is steered by."""
     user = f"""You are the Marshal of a macro research team. A brief covering the last
 {hours} hours is about to be produced by beat Scouts and Analysts. Write their
 marching orders.
+
+# Already reported in recent briefs — do NOT commission these again
+{recent_coverage()}
+
+A story listed above returns only if it MOVED in this window: a decision taken,
+a number printed, a threshold crossed. "Still tense", "continues to weigh",
+"remains a risk" is not movement — it is the same despatch with a new date, and
+the reader has read it. Prefer a development nobody has filed yet over a fuller
+account of one they have. If a standing story genuinely advanced, the priority
+must name the advance, not the story.
 
 Previous brief headline: {last_headline or '(none)'}
 
@@ -136,6 +165,14 @@ Method, in order:
    not evidence.
 4. Check search_memory for whether a story is genuinely new or a continuation.
 
+Novelty is the bar. The desk has already reported the stories listed in your
+orders; a lead that restates one of them is worthless however well sourced.
+Return a lead only if something happened in this window: a decision, a print, a
+filing, a strike, a level broken. Ongoing situations qualify ONLY through their
+new development, and the lead must lead with that development. If the beat
+produced nothing new, return fewer leads — an empty beat is an honest report and
+costs the desk nothing.
+
 Then return ONLY a JSON object, no prose around it:
 {"leads": [{
   "title": "finding stated as a sentence with its key number",
@@ -154,6 +191,9 @@ def scout(*, beat: dict, north_star: str, hours: int, dlines: list[str]) -> tupl
     """One beat's gathering pass. Returns (leads_payload, agent_result)."""
     user = f"""Marching orders from the Marshal:
 {north_star}
+
+# Already reported — a lead restating any of these is rejected
+{recent_coverage(2)}
 
 Your beat: {beat['section']}
 Charter: {beat['charter']}
@@ -314,6 +354,13 @@ You are writing from completed research, not researching. Weave the findings
 into the required structure: developments keep their titled-finding form, and
 every cross-beat connection your Analysts flagged becomes an explicit
 cross-reference between sections. Cut anything that does not earn its place.
+
+Every development you file must rest on something that happened INSIDE this
+window and be datable to it. A paragraph whose substance would have been equally
+true last week does not belong in this brief, no matter how important the
+subject: that is background, and the reader has it. Where a standing story
+returns, the title states what advanced ("Bank of Japan lifts the policy rate to
+0.75%"), never the standing condition ("Bank of Japan remains under pressure").
 
 The word budget is a hard ceiling, not a target: with seven beats reporting you
 will have more findings than fit, and the discipline is to DROP the weakest

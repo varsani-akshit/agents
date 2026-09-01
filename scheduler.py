@@ -64,38 +64,70 @@ def job_tick(harvest_news: bool = True) -> dict:
     detail: dict = {}
     harvest = {}
 
+    def _stage(name: str, fn):
+        """Run one sub-agent; a failure is recorded, not propagated.
+
+        The stages share a dataflow but not a fate: harvesting is the step most
+        exposed to the outside world, and when one malformed feed URL aborted
+        it the whole tick died with it — taking prices and trigger evaluation,
+        which need no network beyond their own, down 48 times in a day. Each
+        stage now fails alone, and the ones that can still run, run.
+        """
+        try:
+            with observe.stage(name, kind="agent") as sp:
+                out_val = fn()
+                sp.set_output(out_val if isinstance(out_val, dict) else {"ok": True})
+                return out_val
+        except Exception as exc:  # noqa: BLE001
+            log.exception("watch stage %s failed", name)
+            out.error(f"watch/{name}: {type(exc).__name__}: {exc}")
+            detail.setdefault("stage_errors", []).append(name)
+            return None
+
     with observe.run("watch", meta={"harvest_news": harvest_news}) as rec:
         if harvest_news:
             # Watchman: fresh corpus.
-            with observe.stage("watchman", kind="agent") as sp:
+            def _watchman():
+                nonlocal harvest
                 harvest = feeds.harvest()
                 detail["feeds"] = {k: v for k, v in harvest.items() if k != "new_ids"}
-                sp.set_output(detail["feeds"])
-                sp.set_attribute("inserted", detail["feeds"].get("inserted", 0))
+                return detail["feeds"]
+
+            _stage("watchman", _watchman)
+
             # Librarian: organised corpus.
-            with observe.stage("librarian", kind="agent") as sp:
+            def _librarian():
                 from brain import classify
                 from memory import store
 
                 detail["embedded"] = store.embed_documents(limit=120)
                 detail["classified"] = classify.run(batch=20, max_batches=3, workers=3)
-                sp.set_output({"embedded": detail["embedded"],
-                               "classified": detail["classified"]})
+                return {"embedded": detail["embedded"],
+                        "classified": detail["classified"]}
+
+            _stage("librarian", _librarian)
 
         # Quant: the measured state of the world. No model, no cost.
-        with observe.stage("quant", kind="agent") as sp:
+        pack = {}
+
+        def _quant():
+            nonlocal pack
             with observe.stage("prices.tick", kind="tool") as p:
                 detail["prices"] = prices.tick()
                 p.set_output(detail["prices"])
             with observe.stage("stats.build", kind="tool") as p:
                 pack = stats.build(persist=True)
                 p.set_output({"sections": sorted(pack.keys())})
-            sp.set_output({"prices": detail["prices"], "stats_sections": len(pack)})
+            return {"prices": detail["prices"], "stats_sections": len(pack)}
+
+        _stage("quant", _quant)
 
         # Sentinel: thresholds and alerts, fed by quant's pack and the
         # watchman's new documents.
-        with observe.stage("sentinel", kind="agent",
-                           input={"new_docs": len(harvest.get("new_ids") or [])}) as sp:
+        detail.setdefault("triggers_fired", 0)
+        detail.setdefault("alerts_sent", 0)
+
+        def _sentinel():
             with observe.stage("triggers.evaluate", kind="generic") as p:
                 fired = triggers.evaluate(pack, doc_ids=harvest.get("new_ids"))
                 p.set_output([{k: str(v) for k, v in ev.items()} for ev in fired])
@@ -111,7 +143,10 @@ def job_tick(harvest_news: bool = True) -> dict:
                 sent.append(ev["id"])
             triggers.mark_notified(sent)
             detail["alerts_sent"] = len(sent)
-            sp.set_output({"fired": detail["triggers_fired"], "alerts": len(sent)})
+            return {"fired": detail["triggers_fired"], "alerts": len(sent)}
+
+        if pack:
+            _stage("sentinel", _sentinel)
 
         rec.set_output({k: v for k, v in detail.items() if k != "feeds"}
                        | {"feeds": detail.get("feeds")})

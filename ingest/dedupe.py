@@ -35,7 +35,18 @@ def canonical_url(url: str) -> str:
     if netloc.startswith("www."):
         netloc = netloc[4:]
     path = parsed.path.rstrip("/") or "/"
-    return urlunparse((parsed.scheme.lower() or "https", netloc, path, "", query, ""))
+    url = urlunparse((parsed.scheme.lower() or "https", netloc, path, "", query, ""))
+
+    # Postgres cannot index a btree row past ~2704 bytes, and some feeds emit
+    # URLs carrying an entire encoded payload in the query string. One such
+    # link aborted the whole ingestion transaction — and with it the tick that
+    # also refreshes prices and evaluates triggers — 48 times in a day. A link
+    # this long has a unusable query anyway, so it is cut back to its path.
+    if len(url.encode("utf-8")) > 1800:
+        url = urlunparse((parsed.scheme.lower() or "https", netloc, path, "", "", ""))
+        if len(url.encode("utf-8")) > 1800:
+            url = url.encode("utf-8")[:1800].decode("utf-8", "ignore")
+    return url
 
 
 def normalise_text(text: str) -> str:

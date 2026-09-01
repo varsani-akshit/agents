@@ -74,6 +74,26 @@ def load_daily(symbols: list[str] | None = None, lookback_days: int = 800) -> pd
     wide = df.pivot_table(index="d", columns="symbol", values="price", aggfunc="last")
     wide.index = pd.to_datetime(wide.index)
     wide = wide.sort_index().ffill()
+
+    # Carry the live price into today's row. Daily bars arrive on their source's
+    # schedule — the LBMA fix publishes once a day at 15:00 London, and over a
+    # bank-holiday weekend the newest fix can be four days old. Forward-filling
+    # that stale figure onto today's date told every reader gold was 4,562 while
+    # it traded at 4,371: a 4% lie, printed under today's date. The 15-minute
+    # grain already holds the current price, so the last row is the live one.
+    live = db.query(
+        """SELECT DISTINCT ON (symbol) symbol, ts, price FROM prices
+           WHERE grain='15m' AND ts > now() - interval '2 days'
+           ORDER BY symbol, ts DESC"""
+    )
+    if live:
+        today = pd.Timestamp(datetime.now(timezone.utc).date())
+        if today not in wide.index:
+            wide.loc[today] = wide.iloc[-1] if len(wide) else None
+            wide = wide.sort_index().ffill()
+        for r in live:
+            if r["symbol"] in wide.columns:
+                wide.loc[today, r["symbol"]] = float(r["price"])
     # Business-day grid. Crypto trades weekends, so the union index carries
     # Saturday and Sunday rows that every other market forward-fills across.
     # Left in, "252 rows" is 8.3 months rather than a year — every row-counted

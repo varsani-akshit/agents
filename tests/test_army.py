@@ -130,3 +130,32 @@ def test_share_script_loads_outside_title():
     title = re.search(r"<title>(.*?)</title>", html, re.S)
     assert title and "share.js" not in title.group(1)
     assert re.search(r"<script[^>]+share\.js", html)
+
+
+def test_long_urls_cannot_break_ingestion():
+    """A feed URL carrying a full encoded payload exceeded Postgres's btree
+    limit and aborted the whole tick — prices and triggers included."""
+    from ingest.dedupe import canonical_url
+
+    out = canonical_url("https://example.com/a?d=" + "x" * 4000)
+    assert len(out.encode("utf-8")) <= 1800
+    # Ordinary links keep their meaning.
+    assert canonical_url("https://www.reuters.com/x/?utm_source=n&id=7") == \
+        "https://reuters.com/x?id=7"
+
+
+def test_daily_frame_carries_the_live_price():
+    """Daily bars arrive on their source's schedule; the LBMA fix can be days
+    old. Today's row must hold the live price, not a forward-filled fix."""
+    import db
+    from signals import stats
+
+    live = db.one(
+        """SELECT symbol, price FROM prices WHERE grain='15m'
+           AND ts > now() - interval '2 days' ORDER BY ts DESC LIMIT 1""")
+    if not live:
+        return  # no intraday data in this environment
+    wide = stats.load_daily([live["symbol"]], 30)
+    if wide.empty:
+        return
+    assert abs(float(wide[live["symbol"]].iloc[-1]) - float(live["price"])) < 0.01
