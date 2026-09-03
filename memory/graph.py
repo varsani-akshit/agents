@@ -17,6 +17,7 @@ is one indexed query rather than 1,762 comparisons in Python.
 from __future__ import annotations
 
 import json
+import re
 
 import logging
 
@@ -194,6 +195,44 @@ def build(days: int = 7, limit: int = 220, min_urgency: str = "Medium",
             edges.append({"source": f"{kind[0]}:{name}", "target": f"d{doc_id}",
                           "kind": "mentions", "weight": 0.35})
 
+    # Securities: the reader's investable ground joined to the news that moves
+    # it. A company earns a node when this window's coverage names it — by
+    # ticker or by company name — so the map runs from a macro development
+    # through the concepts it touches to the listed names that carry it.
+    secs = db.query(
+        """SELECT symbol, name, exchange, sector, market_cap
+           FROM securities WHERE name IS NOT NULL""")
+    # Cased text, because a ticker is only a ticker in capitals: lowercasing
+    # first made "A" (Agilent) match the article "a" in every document, and
+    # first-word matching made "Australian Foundation Investment" claim every
+    # story containing "Australian". A company is matched by its full name, or
+    # by a ticker of three characters or more appearing in capitals.
+    doc_text = [(d["id"], f"{d['title']} {d.get('summary') or ''}") for d in docs]
+    for sec in secs:
+        name = (sec["name"] or "").strip()
+        if len(name) < 4:
+            continue
+        base = sec["symbol"].split(".")[0]
+        needle = name.lower()
+        ticker_re = (re.compile(rf"\b{re.escape(base)}\b")
+                     if len(base) >= 3 else None)
+        hits = [
+            doc_id for doc_id, text in doc_text
+            if needle in text.lower() or (ticker_re and ticker_re.search(text))
+        ]
+        if not hits:
+            continue
+        nodes.append({
+            "id": f"s:{sec['symbol']}", "kind": "security",
+            "label": f"{name} ({sec['symbol']})",
+            "symbol": sec["symbol"], "exchange": sec["exchange"],
+            "sector": sec["sector"],
+            "weight": 1.6 + len(hits) / 3, "mentions": len(hits),
+        })
+        for doc_id in hits[:12]:
+            edges.append({"source": f"s:{sec['symbol']}", "target": f"d{doc_id}",
+                          "kind": "covers", "weight": 0.5})
+
     present = {n["id"] for n in nodes}
     for e in db.query(
         """SELECT source_entity, target_entity, relation, direction, strength
@@ -212,7 +251,8 @@ def build(days: int = 7, limit: int = 220, min_urgency: str = "Medium",
         "edges": edges,
         "stats": {
             "documents": len(docs),
-            "concepts": len(nodes) - len(docs),
+            "concepts": sum(1 for n in nodes if n["kind"] in ("entity", "theme")),
+            "securities": sum(1 for n in nodes if n["kind"] == "security"),
             "links": len(edges),
             "window_days": days,
         },

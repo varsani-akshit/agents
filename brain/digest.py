@@ -121,6 +121,13 @@ wherever a genuine connection exists:
   using the exact link form from `# Charts available`.
 - Where something continues a story from a previous cycle, say so and say what
   has changed since.
+- Where a development turns on an entity the corpus tracks — an institution, a
+  country, a commodity, a company — link it into the map on first mention:
+  `[Bank of Japan](/graph?concept=Bank%20of%20Japan)`. The reader can then see
+  every document that touches it and what else it connects to. Link a listed
+  company to its own page instead: `[BHP](/markets/BHP.AX)`. Two or three of
+  each per brief, on the entities the argument actually rests on — not every
+  proper noun.
 
 Cover the world, not one country. American policy is usually the largest single
 input, but a brief that is entirely about the Federal Reserve has failed. Europe,

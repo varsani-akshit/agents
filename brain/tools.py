@@ -71,10 +71,11 @@ DEFINITIONS = [
     {
         "name": "search_memory",
         "description": (
-            "Semantic search over stored news documents and Alfred's own past "
-            "analyses. Use to recall what was reported or concluded previously — "
-            "this is the system's long-term memory. Results are ranked by "
-            "similarity, recency, and source credibility (tier 1 = official)."
+            "Semantic search over stored news documents, Alfred's own past "
+            "analyses, and the per-company news files of the 750 covered "
+            "listed names. Use to recall what was reported or concluded "
+            "previously — this is the system's long-term memory. Results are "
+            "ranked by similarity, recency, and source credibility."
         ),
         "input_schema": {
             "type": "object",
@@ -325,6 +326,30 @@ def _search_memory(query: str, scope: str = "both", days: int | None = None,
             }
             for d in docs
         ]
+    # Company coverage is part of the memory, not a separate silo: a question
+    # about a macro theme should surface the listed names whose own news file
+    # touches it, which is where a stock-level insight usually starts.
+    if scope in ("documents", "both"):
+        # Full-text rather than ILIKE: '%gold%' matches "Goldman Sachs", which
+        # is precisely the wrong company to surface for a question about gold.
+        # to_tsquery stems and respects word boundaries, and ranks the hits.
+        sec_rows = db.query(
+            """SELECT n.symbol, s.name, s.exchange, n.title, n.publisher,
+                      n.url, n.published_at
+               FROM security_news n JOIN securities s ON s.symbol = n.symbol
+               WHERE to_tsvector('english', n.title || ' ' || coalesce(n.summary, ''))
+                     @@ plainto_tsquery('english', %s)
+               ORDER BY n.published_at DESC NULLS LAST LIMIT %s""",
+            (query, max(4, limit // 2)))
+        if sec_rows:
+            out["company_coverage"] = [
+                {"symbol": r["symbol"], "company": r["name"],
+                 "exchange": r["exchange"], "title": r["title"],
+                 "publisher": r["publisher"], "url": r["url"],
+                 "published": r["published_at"].isoformat() if r["published_at"] else None}
+                for r in sec_rows
+            ]
+
     if scope in ("analyses", "both"):
         past = store.search_analyses(query, limit=max(3, limit // 2))
         out["past_analyses"] = [

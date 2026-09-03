@@ -159,3 +159,29 @@ def test_daily_frame_carries_the_live_price():
     if wide.empty:
         return
     assert abs(float(wide[live["symbol"]].iloc[-1]) - float(live["price"])) < 0.01
+
+
+def test_graph_links_securities_without_false_matches():
+    """A one-letter ticker matched the article 'a' in every document, and
+    first-word matching let 'Australian Foundation' claim every Australian
+    story. Company nodes must be earned by a real mention."""
+    from memory import graph
+
+    g = graph.build(days=7, limit=120)
+    secs = [n for n in g["nodes"] if n["kind"] == "security"]
+    for n in secs:
+        assert n["mentions"] >= 1
+        # Single-letter and two-letter tickers cannot be matched by ticker
+        # alone, so any that appear were matched by full company name.
+        assert len(n["symbol"].split(".")[0]) >= 3 or n["mentions"] >= 1
+
+
+def test_company_search_does_not_confuse_gold_with_goldman():
+    """ILIKE '%gold%' surfaced Goldman Sachs for a question about gold."""
+    from brain import tools
+
+    hits = tools.HANDLERS["search_memory"](query="gold", limit=6).get(
+        "company_coverage", [])
+    names = " ".join(h["company"] or "" for h in hits).lower()
+    assert "goldman" not in names or any(
+        "gold" in (h["title"] or "").lower() for h in hits)

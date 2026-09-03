@@ -834,13 +834,18 @@ async def api_graph_document(doc_id: int):
 
 
 @app.get("/graph", response_class=HTMLResponse)
-async def graph_page(request: Request):
+async def graph_page(request: Request, concept: str = "", q: str = ""):
+    """The map. `concept` deep-links from a brief straight into the
+    neighbourhood of one idea."""
     counts = db.one(
         """SELECT (SELECT count(*) FROM documents) AS documents,
                   (SELECT count(*) FROM doc_links) AS links,
-                  (SELECT count(*) FROM entities) AS entities"""
+                  (SELECT count(*) FROM entities) AS entities,
+                  (SELECT count(*) FROM securities) AS securities"""
     )
-    return page(request, "graph.html", {"counts": counts, "active": "graph"})
+    return page(request, "graph.html", {
+        "counts": counts, "concept": concept[:120], "q": q[:120],
+        "active": "graph"})
 
 
 # ───────────────────────────── knowledge library ────────────────────────────

@@ -127,7 +127,11 @@ def run(hours: int = 12) -> dict:
 
         def _analyst(beat: dict):
             leads = scout_out.get(beat["key"], {"leads": []})
-            if not leads.get("leads"):
+            # A market beat is never silent: even with no news lead, the screens
+            # measure what its exchange did — breadth, the movers, the
+            # valuations. Skipping it because no story broke is how a whole
+            # market vanished from the brief while its index moved.
+            if not leads.get("leads") and not beat.get("exchange"):
                 return beat["key"], None, None  # quiet beat: nothing to analyse
             with observe.stage(f"analyst:{beat['key']}", kind="agent") as sp:
                 graph_ctx = {}

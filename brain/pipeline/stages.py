@@ -314,6 +314,12 @@ def analyst(*, beat: dict, leads: dict, north_star: str, slim: dict,
         "anomalies": slim.get("anomalies"),
     }
     mkt = market_evidence(beat)
+    if beat.get("exchange") and not (leads.get("leads") or []):
+        leads = dict(leads)
+        leads["note"] = ("No news lead cleared the novelty bar this window. "
+                         "Write from the measured screens below: what the market "
+                         "actually did, which names moved and why, where the "
+                         "valuation sits. Two or three findings is right.")
     market_block = ("\n# Measured state of your market — screens run just now.\n"
                     "Every stock you name must appear here or in your leads,\n"
                     "with its figure taken from this data.\n"

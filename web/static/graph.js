@@ -9,8 +9,10 @@
 (function () {
   "use strict";
 
-  var COLOR = { document: "#EA580C", entity: "#111111", theme: "#0F766E" };
-  var EDGE = { similar: "#F0A87C", mentions: "#D8DCE2", relation: "#111111" };
+  var COLOR = { document: "#EA580C", entity: "#111111", theme: "#0F766E",
+                security: "#1D4ED8" };
+  var EDGE = { similar: "#F0A87C", mentions: "#D8DCE2", relation: "#111111",
+               covers: "#93B4F5" };
   var DIM = "#E8E8E8";
 
   var el = document.getElementById("graphcanvas");
@@ -206,6 +208,26 @@
       .catch(function () { panel.innerHTML = '<p class="hint">Could not load that document.</p>'; });
   }
 
+  function showSecurity(n) {
+    var docs = (current ? current.nodes : []).filter(function (x) {
+      return x.kind === "document" && (adjacency[n.id] || new Set()).has(x.id);
+    });
+    panel.innerHTML =
+      '<div class="gp-meta">' + esc(n.exchange || "") +
+        (n.sector ? " · " + esc(n.sector) : "") + "</div>" +
+      "<h4>" + esc(n.label) + "</h4>" +
+      "<p>Named in " + n.mentions + " document" + (n.mentions === 1 ? "" : "s") +
+        " in this window.</p>" +
+      '<p><a class="gp-act" href="/markets/' + esc(n.symbol) +
+        '">Open the company →</a></p>' +
+      (docs.length
+        ? "<h5>Coverage on the map</h5>" + docs.slice(0, 12).map(function (x) {
+            return '<a class="gp-rel" href="#" data-id="' + x.id.slice(1) + '">' +
+                   esc(x.label) + "</a>";
+          }).join("")
+        : "");
+  }
+
   function showConcept(n) {
     var docs = (current ? current.nodes : []).filter(function (x) {
       return x.kind === "document" && (adjacency[n.id] || new Set()).has(x.id);
@@ -240,6 +262,7 @@
     var n = p.data.raw;
     select(n.id);
     if (n.kind === "document") showDocument(n.id.slice(1));
+    else if (n.kind === "security") showSecurity(n);
     else showConcept(n);
   });
 
