@@ -185,3 +185,40 @@ def test_company_search_does_not_confuse_gold_with_goldman():
     names = " ".join(h["company"] or "" for h in hits).lower()
     assert "goldman" not in names or any(
         "gold" in (h["title"] or "").lower() for h in hits)
+
+
+def test_verifier_discards_confirmations_filed_as_errors(monkeypatch):
+    """Twice the verifier filed a matching figure under severity 'wrong' with
+    a rationale saying it matched. An audit that cries wolf is worse than
+    none, so a 'match' reasoning is discarded rather than applied."""
+    from brain.pipeline import stages
+
+    def fake(role, **kwargs):
+        return {
+            "checked": [
+                {"claim": "gold 4,371", "verdict": "matches"},
+                {"claim": "10Y 4.79%", "verdict": "matches"},
+                {"claim": "silver 70", "verdict": "differs",
+                 "claimed_value": "70", "measured_value": "64.8"},
+            ],
+            "issues": [
+                # A confirmation mislabelled as an error — must be dropped.
+                {"quote": "gold at 4,371", "corrected_quote": "gold at 4,371",
+                 "why": "the measured data confirm this claim matches",
+                 "severity": "wrong"},
+                # A real discrepancy — must be applied.
+                {"quote": "silver traded at 70.00 on the session",
+                 "corrected_quote": "silver traded at 64.80 on the session",
+                 "claimed_value": "70.00", "measured_value": "64.80",
+                 "why": "measured 64.80", "severity": "wrong"},
+            ],
+        }, "azure:gpt-5.4-mini"
+
+    monkeypatch.setattr(stages.router, "complete_json", fake)
+    out, fixed = stages.verifier(
+        body="Overnight, silver traded at 70.00 on the session and gold at 4,371.",
+        slim={})
+    audit = out["audit"]
+    assert audit["checked_claims"] == 3 and audit["matched"] == 2
+    assert len(audit["issues"]) == 1        # the confirmation was discarded
+    assert fixed == 1 and "64.80" in out["body"]

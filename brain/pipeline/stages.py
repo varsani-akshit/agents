@@ -424,22 +424,44 @@ A brief of 2,400 sharp words beats 3,200 thorough ones."""
 _VERIFY_SCHEMA = {
     "type": "object",
     "properties": {
+        # Every claim examined is listed, matches included. Asking only for
+        # problems produced an audit of one claim in a 3,400-word brief and
+        # filed two confirmations as errors — the model has to enumerate what
+        # it checked before it can be trusted about what it found.
+        "checked": {
+            "type": "array",
+            "description": "every numeric claim examined, whether or not it matched",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "claim": {"type": "string", "description": "the figure as written, e.g. 'gold at 4,371'"},
+                    "claimed_value": {"type": "string"},
+                    "measured_value": {"type": "string",
+                                       "description": "the figure in the measured data, or 'not in data'"},
+                    "verdict": {"type": "string",
+                                "enum": ["matches", "differs", "not_in_data"]},
+                },
+                "required": ["claim", "verdict"],
+            },
+        },
         "issues": {
             "type": "array",
+            "description": "ONLY claims whose verdict is 'differs'",
             "items": {
                 "type": "object",
                 "properties": {
                     "quote": {"type": "string", "description": "exact text from the draft containing the wrong figure"},
                     "corrected_quote": {"type": "string", "description": "the same text with the figure corrected"},
                     "why": {"type": "string"},
+                    "claimed_value": {"type": "string"},
+                    "measured_value": {"type": "string"},
                     "severity": {"type": "string", "enum": ["wrong", "imprecise", "unverifiable"]},
                 },
                 "required": ["quote", "why", "severity"],
             },
         },
-        "checked_claims": {"type": "integer"},
     },
-    "required": ["issues", "checked_claims"],
+    "required": ["checked", "issues"],
 }
 
 
@@ -452,25 +474,51 @@ def verifier(*, body: str, slim: dict) -> tuple[dict, int]:
     """
     payload, _ = router.complete_json(
         "reason",
-        system="You audit numeric claims in a draft against measured data. "
-        "Only figures the measured data can actually check: prices, changes, "
-        "yields, correlations. Report ONLY discrepancies: a claim that matches "
-        "the measured data is counted in checked_claims and NOT listed as an "
-        "issue; a figure only an external source could confirm is severity "
-        "'unverifiable' and listed only if it looks implausible. Copy quotes "
-        "EXACTLY as they appear.",
+        system="You audit numeric claims in a draft against measured data.\n\n"
+        "Work in two passes and report both.\n"
+        "1. `checked`: walk the draft top to bottom and list EVERY figure the "
+        "measured data can test — prices, levels, percentage moves, yields, "
+        "correlations. For each, give the claimed value, the measured value, "
+        "and a verdict: matches, differs, or not_in_data. A long brief contains "
+        "dozens; listing three means you did not read it.\n"
+        "2. `issues`: ONLY the entries whose verdict is 'differs'. A claim that "
+        "matches belongs in `checked` and nowhere else — filing a match as an "
+        "issue is itself an error. A figure attributed to an external source "
+        "(an IMF projection, a company filing) is not_in_data, not wrong.\n\n"
+        "Copy quotes EXACTLY as they appear in the draft, including markdown.",
         user=f"""# Draft
 {body[:40000]}
 
 # Measured data (authoritative)
 {json.dumps({k: slim.get(k) for k in ('performance', 'intraday_moves', 'yield_curve', 'regime_score', 'net_liquidity', 'ratios')}, default=str)[:25000]}
 
-List every numeric claim that contradicts the measured data. Tolerance: 2%
-relative or one basis point on yields. checked_claims = how many you audited.""",
+Audit every numeric claim in the draft. Tolerance: 2% relative, or one basis
+point on yields. Report `checked` in full and `issues` only for genuine
+contradictions.""",
         schema=_VERIFY_SCHEMA, purpose="brief.verifier", max_tokens=6000,
     )
-    fixed = 0
+    checked = payload.get("checked") or []
+    payload["checked_claims"] = len(checked)
+    payload["matched"] = sum(1 for c in checked if c.get("verdict") == "matches")
+
+    # Discard "issues" that are really confirmations. The model has twice
+    # filed a matching figure under severity 'wrong' with a rationale saying
+    # it matched; an audit that cries wolf is worse than none.
+    real = []
     for issue in payload.get("issues", []):
+        q, c = issue.get("quote"), issue.get("corrected_quote")
+        why = (issue.get("why") or "").lower()
+        confirms = ("match" in why or "confirm" in why or "is not an issue" in why)
+        if q and c and q == c:
+            continue
+        if confirms and not (issue.get("claimed_value") and issue.get("measured_value")
+                             and issue["claimed_value"] != issue["measured_value"]):
+            continue
+        real.append(issue)
+    payload["issues"] = real
+
+    fixed = 0
+    for issue in real:
         q, c = issue.get("quote"), issue.get("corrected_quote")
         if issue.get("severity") == "wrong" and q and c and q != c:
             body, applied = _apply_correction(body, q, c)
