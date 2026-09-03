@@ -111,3 +111,22 @@
 - name: ZeroHedge
   url: https://feeds.feedburner.com/zerohedge/feed
   tier: 4
+
+# Business and market press for the three covered exchanges. The market beats
+# need domestic coverage: an ASX earnings story rarely reaches a global wire,
+# and Indian market structure almost never does.
+- name: ABC Business (AU)
+  url: https://www.abc.net.au/news/feed/51892/rss.xml
+  tier: 2
+- name: Economic Times Markets (IN)
+  url: https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms
+  tier: 2
+- name: Livemint Markets (IN)
+  url: https://www.livemint.com/rss/markets
+  tier: 2
+- name: Moneycontrol Markets (IN)
+  url: https://www.moneycontrol.com/rss/marketreports.xml
+  tier: 2
+- name: MarketWatch Top Stories (US)
+  url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+  tier: 2

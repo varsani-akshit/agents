@@ -271,6 +271,35 @@ _ANALYST_SCHEMA = {
 }
 
 
+def market_evidence(beat: dict) -> dict:
+    """For a market beat, the measured state of its exchange.
+
+    The analyst is asked to name specific stocks, so it must be handed
+    measured ones: the breadth and sector medians that say what kind of tape
+    this is, plus the movers and the cheap end of the market. Recalling which
+    names are interesting is precisely the failure mode this prevents.
+    """
+    from brain import tools
+
+    ex = beat.get("exchange")
+    if not ex:
+        return {}
+    out: dict = {}
+    try:
+        out["snapshot"] = tools.HANDLERS["market_snapshot"](exchange=ex, days=5)
+        out["month_movers"] = tools.HANDLERS["screen_stocks"](
+            exchange=ex, days=30, sort_by="change_pct", limit=12)
+        out["month_laggards"] = tools.HANDLERS["screen_stocks"](
+            exchange=ex, days=30, sort_by="change_pct", direction="asc", limit=12)
+        out["value_end"] = tools.HANDLERS["screen_stocks"](
+            exchange=ex, days=30, sort_by="trailing_pe", direction="asc",
+            max_pe=25, limit=10)
+        out["stock_news"] = tools.HANDLERS["stock_news"](exchange=ex, days=7, limit=25)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("market evidence for %s failed: %s", ex, exc)
+    return out
+
+
 def analyst(*, beat: dict, leads: dict, north_star: str, slim: dict,
             graph_ctx: dict, prior_wm: str, chart_keys: list[str]) -> tuple[dict, str]:
     """One beat's interpretation pass: leads + measured evidence → findings."""
@@ -284,6 +313,12 @@ def analyst(*, beat: dict, leads: dict, north_star: str, slim: dict,
         "correlation_flips": slim.get("correlation_flips"),
         "anomalies": slim.get("anomalies"),
     }
+    mkt = market_evidence(beat)
+    market_block = ("\n# Measured state of your market — screens run just now.\n"
+                    "Every stock you name must appear here or in your leads,\n"
+                    "with its figure taken from this data.\n"
+                    + json.dumps(mkt, default=str)[:14000]) if mkt else ""
+
     user = f"""Marching orders:
 {north_star}
 
@@ -294,6 +329,7 @@ Your beat: {beat['section']}
 
 # Measured evidence for your beat (authoritative for every number)
 {json.dumps(beat_stats, default=str)[:9000]}
+{market_block}
 
 # Knowledge-graph neighbourhood (relationships already established)
 {json.dumps(graph_ctx, default=str)[:4000]}
@@ -305,7 +341,11 @@ Your beat: {beat['section']}
 {', '.join(chart_keys)}
 
 Turn the leads into findings. Each title states the conclusion with its
-number. Analysis gives the mechanism and the implication that is not obvious
+number. On a market beat, name the specific stocks the argument rests on with
+their measured figures — the level, the move, the multiple — and state the
+mechanism that connects a macro development to that company. Write the case,
+not an instruction: "the argument for BHP strengthened, copper realisations at
+a record against 17.8x forward", never "buy BHP". Analysis gives the mechanism and the implication that is not obvious
 from the headline — and where the connection runs through ANOTHER beat, name
 that beat in related_beats and state the connection. Discard leads that turned
 out to be noise. British English, no American colloquialism."""

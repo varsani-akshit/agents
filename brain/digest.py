@@ -41,7 +41,7 @@ rule that every quantitative claim comes from a tool result, never from memory."
 
 FORMAT = """Write the brief in this structure, in markdown.
 
-LENGTH: 2,000-2,800 words. Long enough to cover the world properly, short enough
+LENGTH: 2,400-3,400 words. Long enough to cover the world properly, short enough
 to read in fifteen minutes. Depth comes from covering every domain that moved,
 not from more words on the same subject.
 
@@ -90,6 +90,9 @@ write "no material developments".
     ### Equities and Credit
     ### Digital Assets
     ### Currencies
+    ### United States: Equities and ETFs
+    ### Australia: ASX
+    ### India: NSE
     ### Real Assets and Property
 
 Within each section, every development gets its own bold title on its own line,
@@ -100,6 +103,15 @@ rather than "Japan update".
 For each: what happened, who reported it and how credible they are, and the
 implication that is not obvious from the headline. Link the source inline where
 you have a real URL.
+
+The three market sections — United States, Australia, India — are the reader's
+own investable ground. Each names specific listed companies with their measured
+figures (level, move over a stated window, multiple where it carries the
+argument) and the mechanism connecting a development above to that company: an
+oil disruption is an Indian import-cost story and an Australian energy-earnings
+story, and the section should say which names it reaches. Write the case, never
+the instruction — "the argument for X strengthened, on this evidence", not "buy
+X". A market with nothing new is omitted like any other section.
 
 CROSS-LINKING is what makes this analysis rather than a list, and is required
 wherever a genuine connection exists:

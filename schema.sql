@@ -262,3 +262,54 @@ CREATE TABLE IF NOT EXISTS research_notes (
   usd        NUMERIC(10,5) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── Public equities: US, Australia, India ─────────────────────────────────
+-- Kept apart from `instruments`/`prices` on purpose. Those drive the macro
+-- statistics — correlations, the analogue engine, the regime score — and
+-- folding 750 single names into that frame would turn a cross-asset matrix
+-- into noise and slow every pack build. Securities are a parallel universe
+-- with their own cadence, read by the market beats and the chatbot's screens.
+CREATE TABLE IF NOT EXISTS securities (
+  symbol           TEXT PRIMARY KEY,        -- yfinance ticker: BHP.AX, RELIANCE.NS
+  name             TEXT,
+  exchange         TEXT NOT NULL,           -- US | ASX | NSE
+  index_member     TEXT,                    -- SP500 | ASX200 | NIFTY50
+  currency         TEXT,
+  sector           TEXT,
+  industry         TEXT,
+  market_cap       NUMERIC,
+  trailing_pe      NUMERIC,
+  forward_pe       NUMERIC,
+  dividend_yield   NUMERIC,
+  week52_high      NUMERIC,
+  week52_low       NUMERIC,
+  beta             NUMERIC,
+  fundamentals_at  TIMESTAMPTZ,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS securities_exchange_idx ON securities (exchange);
+CREATE INDEX IF NOT EXISTS securities_sector_idx ON securities (sector);
+
+CREATE TABLE IF NOT EXISTS security_prices (
+  symbol TEXT NOT NULL REFERENCES securities(symbol) ON DELETE CASCADE,
+  d      DATE NOT NULL,
+  close  NUMERIC NOT NULL,
+  volume NUMERIC,
+  PRIMARY KEY (symbol, d)
+);
+CREATE INDEX IF NOT EXISTS security_prices_d_idx ON security_prices (d DESC);
+
+-- The per-stock context layer: what has been said about each name, kept so a
+-- question about a stock reaches its history rather than only today's tape.
+CREATE TABLE IF NOT EXISTS security_news (
+  id           BIGSERIAL PRIMARY KEY,
+  symbol       TEXT NOT NULL REFERENCES securities(symbol) ON DELETE CASCADE,
+  title        TEXT NOT NULL,
+  publisher    TEXT,
+  url          TEXT,
+  summary      TEXT,
+  published_at TIMESTAMPTZ,
+  fetched_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (symbol, title)
+);
+CREATE INDEX IF NOT EXISTS security_news_sym_idx ON security_news (symbol, published_at DESC);

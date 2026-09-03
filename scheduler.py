@@ -180,9 +180,14 @@ def job_digest() -> dict:
 
 
 def job_daily_data() -> dict:
-    from ingest import fred, prices
+    from ingest import equities, fred, prices
 
     detail = {"prices": prices.daily_refresh()}
+    try:
+        detail["equities"] = equities.daily_refresh()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("equities refresh failed")
+        detail["equities"] = {"error": str(exc)[:200]}
     f = fred.sync(120)
     detail["fred"] = {k: v for k, v in f.items() if k != "per_series"}
     out.info(f"daily data refresh · {detail}")
@@ -250,6 +255,10 @@ RETENTION = [
     # out too — the brief's durable evidence lives in brief_runs, which is
     # never expired here because it cascades with its analysis.
     ("agent_runs", "agent_runs", "started_at", "60 days", "TRUE"),
+    # Per-stock coverage: long enough to trace a name through two earnings
+    # cycles, short enough that the file stays about the company rather than
+    # becoming an archive of every headline that ever mentioned it.
+    ("security_news", "security_news", "fetched_at", "240 days", "TRUE"),
 ]
 
 # Never deleted, and listed explicitly so the omission reads as a decision

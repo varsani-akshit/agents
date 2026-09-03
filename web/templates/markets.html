@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Markets — Alfred{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">Public equities · live from the database</div>
+  <h1>Markets</h1>
+  <p class="sub">
+    S&amp;P 500, S&amp;P/ASX 200 and NIFTY 50 — screened on measured figures.
+    Click any name for its profile and news file.
+  </p>
+</header>
+
+<div class="ctl mkt-ctl">
+  <div class="ctlrow">
+    <span class="ctllabel">Market</span>
+    {% for k, label in markets.items() %}
+    <a class="opt{{ ' on' if ex == k }}" href="/markets?ex={{ k }}&sort={{ sort }}&days={{ days }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <div class="ctlrow">
+    <span class="ctllabel">Window</span>
+    {% for d in [5, 30, 90, 365] %}
+    <a class="opt{{ ' on' if days == d }}" href="/markets?ex={{ ex }}&sort={{ sort }}&days={{ d }}&sector={{ sector }}">{{ d }}d</a>
+    {% endfor %}
+    <span class="ctllabel" style="margin-left:14px">Sort</span>
+    {% for k, label in [('change_pct','Move'), ('market_cap','Size'), ('trailing_pe','P/E'), ('dividend_yield','Yield'), ('from_52w_high','From high')] %}
+    <a class="opt{{ ' on' if sort == k }}" href="/markets?ex={{ ex }}&sort={{ k }}&days={{ days }}&sector={{ sector }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if snapshot %}
+<section class="mkt-snap">
+  <div class="snap-kv">
+    <span class="k">Breadth</span>
+    <span class="v">{{ snapshot.advancing }}/{{ snapshot.covered }} advancing
+      <em>{{ snapshot.breadth_pct }}%</em></span>
+  </div>
+  <div class="snap-kv">
+    <span class="k">Strongest</span>
+    <span class="v">
+      {% for s in snapshot.sectors_strongest[:3] %}{{ s.sector }}
+        <em class="{{ 'up' if s.median_pct >= 0 else 'down' }}">{{ '%+.1f'|format(s.median_pct) }}%</em>{% if not loop.last %} · {% endif %}{% endfor %}
+    </span>
+  </div>
+  <div class="snap-kv">
+    <span class="k">Weakest</span>
+    <span class="v">
+      {% for s in snapshot.sectors_weakest[:3] %}{{ s.sector }}
+        <em class="{{ 'up' if s.median_pct >= 0 else 'down' }}">{{ '%+.1f'|format(s.median_pct) }}%</em>{% if not loop.last %} · {% endif %}{% endfor %}
+    </span>
+  </div>
+</section>
+{% endif %}
+
+<div class="tablewrap">
+  <table class="data mkt-table">
+    <tr>
+      <th>Company</th><th class="num">Last</th><th class="num">{{ days }}d</th>
+      <th>Sector</th><th class="num">P/E</th><th class="num">Yield</th>
+      <th class="num">From high</th>
+    </tr>
+    {% for r in rows %}
+    <tr>
+      <td><a href="/markets/{{ r.symbol }}"><strong>{{ r.name or r.symbol }}</strong>
+        <span class="tick">{{ r.symbol }}</span></a></td>
+      <td class="num mono">{{ '{:,.2f}'.format(r.last) }}</td>
+      <td class="num mono {{ 'up' if r.change_pct and r.change_pct >= 0 else 'down' }}">
+        {{ '%+.2f'|format(r.change_pct) }}%</td>
+      <td class="dim">{{ r.sector or '—' }}</td>
+      <td class="num mono">{{ r.trailing_pe or '—' }}</td>
+      <td class="num mono">{{ ('%.2f'|format(r.dividend_yield)) if r.dividend_yield else '—' }}</td>
+      <td class="num mono">{{ ('%.1f'|format(r.from_52w_high) + '%') if r.from_52w_high is not none else '—' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="dim">No stored prices for this market yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+{% if news %}
+<section class="block" style="margin-top:34px">
+  <h2>Company news, last 7 days</h2>
+  <div class="side-list">
+    {% for n in news %}
+    <a href="/markets/{{ n.symbol }}">
+      <span class="when">{{ n.symbol }}</span>
+      <span class="what">{{ n.title }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -102,6 +102,53 @@ BEATS: list[dict] = [
         "series": ["DXY", "USDJPY", "AUDUSD", "USDINR", "USDKES"],
     },
     {
+        "key": "us_equities",
+        "section": "United States: Equities and ETFs",
+        "charter": (
+            "The US listed market as an opportunity set, not an index level: "
+            "S&P 500 constituents and the major ETFs. Hunt for: earnings and "
+            "guidance that reprice a name, sector rotation with a mechanism "
+            "behind it, valuation dislocations against the macro backdrop, "
+            "flows into and out of large ETFs, and companies whose exposure "
+            "to this window's macro developments is mispriced. Name specific "
+            "stocks with their measured evidence — the level, the move, the "
+            "multiple. Screen before you write: use screen_stocks and "
+            "market_snapshot rather than recalling what is cheap."
+        ),
+        "series": ["SPX", "NASDAQ", "TECH", "FINANCIALS"],
+        "exchange": "US",
+    },
+    {
+        "key": "australia",
+        "section": "Australia: ASX",
+        "charter": (
+            "The ASX 200 as the reader's home market. Hunt for: resources and "
+            "energy names transmitting the commodity tape, the banks against "
+            "RBA policy and housing credit, earnings and guidance, and any "
+            "name whose China or commodity exposure this window has repriced. "
+            "The Australian dollar is part of every story here — a mining "
+            "profit in USD is an AUD earnings story. Name specific stocks with "
+            "measured evidence; screen before writing."
+        ),
+        "series": ["AUDUSD", "COPPER", "GOLD"],
+        "exchange": "ASX",
+    },
+    {
+        "key": "india",
+        "section": "India: NSE",
+        "charter": (
+            "The NIFTY 50 and the Indian market's own drivers. Hunt for: RBI "
+            "policy and rupee transmission, energy import costs against oil "
+            "(India imports most of its crude, so a Gulf disruption is an "
+            "Indian earnings story), banks and credit growth, IT services "
+            "against the dollar and global tech demand, and domestic flows. "
+            "Name specific stocks with measured evidence; screen before "
+            "writing."
+        ),
+        "series": ["INDIA", "USDINR", "OIL"],
+        "exchange": "NSE",
+    },
+    {
         "key": "real_assets",
         "section": "Real Assets and Property",
         "charter": (

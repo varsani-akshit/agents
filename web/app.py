@@ -575,6 +575,75 @@ CHART_TABS: list[tuple[str, list[str]]] = [
 ]
 
 
+@app.get("/markets", response_class=HTMLResponse)
+async def markets_page(request: Request, ex: str = "US", sort: str = "change_pct",
+                       days: int = 30, sector: str = ""):
+    """The three covered exchanges, screenable. Live from the database on every
+    request — this is a working surface, not a stored snapshot."""
+    from brain import tools
+
+    ex = ex.upper() if ex.upper() in ("US", "ASX", "NSE") else "US"
+    snapshot = await asyncio.to_thread(
+        tools.HANDLERS["market_snapshot"], exchange=ex, days=min(days, 90))
+    screen = await asyncio.to_thread(
+        tools.HANDLERS["screen_stocks"], exchange=ex, sector=sector or None,
+        sort_by=sort, days=min(days, 365), limit=40)
+    news = await asyncio.to_thread(
+        tools.HANDLERS["stock_news"], exchange=ex, days=7, limit=14)
+    sectors = db.query(
+        """SELECT DISTINCT sector FROM securities
+           WHERE exchange=%s AND sector IS NOT NULL ORDER BY sector""", (ex,))
+    return page(request, "markets.html", {
+        "ex": ex, "days": days, "sort": sort, "sector": sector,
+        "snapshot": snapshot if "error" not in snapshot else None,
+        "rows": screen.get("results", []),
+        "news": news.get("items", []),
+        "sectors": [r["sector"] for r in sectors],
+        "markets": {"US": "United States", "ASX": "Australia", "NSE": "India"},
+        "active": "markets",
+    })
+
+
+@app.get("/markets/{symbol}", response_class=HTMLResponse)
+async def stock_page(request: Request, symbol: str):
+    """One company: the measured profile, its price path, and its news file."""
+    from brain import tools
+
+    prof = await asyncio.to_thread(tools.HANDLERS["stock_profile"],
+                                   symbol=symbol, days=365)
+    if prof.get("error"):
+        return RedirectResponse("/markets")
+    sym = prof["security"]["symbol"]
+    news = await asyncio.to_thread(tools.HANDLERS["stock_news"],
+                                   symbol=sym, days=180, limit=30)
+    return page(request, "stock.html", {
+        "p": prof, "s": prof["security"], "news": news.get("items", []),
+        "active": "markets",
+    })
+
+
+@app.get("/api/chart/stock/{symbol}")
+async def api_stock_chart(symbol: str, days: int = 365):
+    """Price path for one security, drawn by the same chart machinery."""
+    from brain import tools
+
+    prof = await asyncio.to_thread(tools.HANDLERS["stock_profile"],
+                                   symbol=symbol, days=min(days, 2000))
+    if prof.get("error") or not prof.get("series"):
+        return JSONResponse({"error": "no data"}, 404)
+    s = prof["security"]
+    return {
+        "key": f"stock:{s['symbol']}", "type": "line",
+        "title": f"{s['name']} ({s['symbol']})",
+        "subtitle": f"{s.get('currency') or ''} · last {prof['last']:,.2f} · "
+                    f"{prof['change_pct']:+.1f}% over the window",
+        "x": [p["d"] for p in prof["series"]],
+        "yLabel": s.get("currency") or "",
+        "series": [{"name": s["symbol"],
+                    "data": [p["c"] for p in prof["series"]], "color": "#EA580C"}],
+    }
+
+
 @app.get("/charts", response_class=HTMLResponse)
 async def charts_page(request: Request):
     """Every standing figure, tabbed, searchable, and live to the controls."""

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name or s.symbol }} — Alfred{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">
+    <a href="/markets?ex={{ s.exchange }}">{{ s.exchange }}</a> ·
+    {{ s.index_member }}{% if s.sector %} · {{ s.sector }}{% endif %}
+  </div>
+  <h1>{{ s.name or s.symbol }}</h1>
+  <div class="facts">
+    <span class="mono">{{ s.symbol }}</span>
+    <span>{{ s.currency }} {{ '{:,.2f}'.format(p.last) }}</span>
+    <span class="{{ 'hi' if p.change_pct >= 0 }}">{{ '%+.2f'|format(p.change_pct) }}% over {{ p.window_days }}d</span>
+    {% if p.from_52w_high is not none %}<span>{{ '%.1f'|format(p.from_52w_high) }}% from 52w high</span>{% endif %}
+  </div>
+</header>
+
+<figure class="chart" id="stockchart">
+  <figcaption class="chart-head"><div class="t">{{ s.name or s.symbol }}</div>
+    <div class="s">{{ s.currency }} · one year</div></figcaption>
+  <div class="chart-canvas"></div>
+</figure>
+
+<section class="block">
+  <h2>Measured profile</h2>
+  <table class="data">
+    <tr><td>Market capitalisation</td><td class="num mono">
+      {{ '{:,.0f}'.format(s.market_cap) if s.market_cap else '—' }}</td></tr>
+    <tr><td>Trailing P/E</td><td class="num mono">{{ s.trailing_pe or '—' }}</td></tr>
+    <tr><td>Forward P/E</td><td class="num mono">{{ s.forward_pe or '—' }}</td></tr>
+    <tr><td>Dividend yield</td><td class="num mono">{{ s.dividend_yield or '—' }}</td></tr>
+    <tr><td>52-week range</td><td class="num mono">
+      {{ s.week52_low or '—' }} – {{ s.week52_high or '—' }}</td></tr>
+    <tr><td>Window high / low</td><td class="num mono">{{ p.low }} – {{ p.high }}</td></tr>
+    <tr><td>Industry</td><td class="dim">{{ s.industry or '—' }}</td></tr>
+  </table>
+</section>
+
+{% if p.sector_peers %}
+<section class="block">
+  <h2>Sector peers</h2>
+  <div class="ctlrow">
+    {% for x in p.sector_peers %}<a class="opt" href="/markets/{{ x.symbol }}">{{ x.name or x.symbol }}</a>{% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="block">
+  <h2>News file</h2>
+  {% for n in news %}
+  <div class="lead">
+    <p><strong>{% if n.url %}<a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}</strong></p>
+    <div class="facts">
+      <span>{{ n.publisher or '—' }}</span>
+      {% if n.published_at %}<span>{{ n.published_at|ago }}</span>{% endif %}
+    </div>
+    {% if n.summary %}<p class="hint">{{ n.summary[:320] }}</p>{% endif %}
+  </div>
+  {% else %}
+  <p class="hint">No stored coverage for this name yet.</p>
+  {% endfor %}
+</section>
+
+<p class="hint" style="margin-top:26px">
+  <a href="/ask?depth=deep&q=Analyse%20{{ (s.name or s.symbol)|urlencode }}%20({{ s.symbol }}):%20what%20has%20changed%20and%20what%20is%20the%20case%20now%3F">Investigate this company →</a>
+</p>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var node = document.getElementById("stockchart");
+  if (!node || !window.AlfredCharts) return;
+  fetch("/api/chart/stock/{{ s.symbol }}?days=365")
+    .then(function (r) { return r.json(); })
+    .then(function (spec) { if (!spec.error) window.AlfredCharts.draw(node, spec); });
+})();
+</script>
+{% endblock %}

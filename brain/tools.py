@@ -168,6 +168,86 @@ DEFINITIONS = [
         },
     },
     {
+        "name": "screen_stocks",
+        "description": (
+            "Screen the covered equity universe — S&P 500, S&P/ASX 200 and "
+            "NIFTY 50 — on measured criteria. Filter by exchange (US, ASX, "
+            "NSE), sector, valuation and momentum; sort by any of them. Use "
+            "this to find candidates rather than recalling names: it returns "
+            "live figures with the move over the chosen window."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "exchange": {"type": "string", "enum": ["US", "ASX", "NSE"]},
+                "sector": {"type": "string", "description": "e.g. Energy, Financial Services"},
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["change_pct", "market_cap", "trailing_pe",
+                             "dividend_yield", "from_52w_high"],
+                    "description": "default change_pct",
+                },
+                "direction": {"type": "string", "enum": ["desc", "asc"]},
+                "days": {"type": "integer", "description": "move window, default 30"},
+                "max_pe": {"type": "number"},
+                "min_market_cap": {"type": "number"},
+                "limit": {"type": "integer", "description": "default 20, max 60"},
+            },
+        },
+    },
+    {
+        "name": "stock_profile",
+        "description": (
+            "One company in full: profile, valuation, the price path over a "
+            "window, distance from its 52-week range, and how it has moved "
+            "against its own index. Accepts a ticker (BHP.AX, RELIANCE.NS, "
+            "AAPL) or a company name."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string"},
+                "days": {"type": "integer", "description": "default 180"},
+            },
+            "required": ["symbol"],
+        },
+    },
+    {
+        "name": "stock_news",
+        "description": (
+            "The accumulated news file for one company, or the most recent "
+            "coverage across a whole market. This is Alfred's per-stock "
+            "context layer: it reaches back through stored coverage rather "
+            "than only today's tape."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "omit to see the whole market"},
+                "exchange": {"type": "string", "enum": ["US", "ASX", "NSE"]},
+                "days": {"type": "integer", "description": "default 14"},
+                "limit": {"type": "integer", "description": "default 25"},
+            },
+        },
+    },
+    {
+        "name": "market_snapshot",
+        "description": (
+            "The state of one market at a glance: index level and move, "
+            "breadth (how many names are up), the strongest and weakest "
+            "sectors by median move, and the biggest movers. Use this before "
+            "screening, to know what kind of tape you are reading."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "exchange": {"type": "string", "enum": ["US", "ASX", "NSE"]},
+                "days": {"type": "integer", "description": "default 5"},
+            },
+            "required": ["exchange"],
+        },
+    },
+    {
         "name": "get_world_model",
         "description": (
             "The current living world model — Alfred's standing view of the macro "
@@ -376,6 +456,184 @@ def _run_python(code: str, series_names: list[str] | None = None) -> dict:
     return sandbox.run(code, series_names=series_names)
 
 
+# ───────────────────────────── public equities ──────────────────────────────
+def _resolve_symbol(symbol: str) -> str | None:
+    """Accept a ticker in any of the three markets, or a company name."""
+    s = (symbol or "").strip()
+    if not s:
+        return None
+    row = db.one("SELECT symbol FROM securities WHERE upper(symbol) = upper(%s)", (s,))
+    if row:
+        return row["symbol"]
+    # Bare ticker without its exchange suffix, then name match.
+    for suffix in (".AX", ".NS"):
+        row = db.one("SELECT symbol FROM securities WHERE upper(symbol) = upper(%s)",
+                     (s + suffix,))
+        if row:
+            return row["symbol"]
+    row = db.one(
+        """SELECT symbol FROM securities WHERE name ILIKE %s
+           ORDER BY market_cap DESC NULLS LAST LIMIT 1""", (f"%{s}%",))
+    return row["symbol"] if row else None
+
+
+_MOVE_CTE = """
+    WITH win AS (
+      SELECT symbol,
+             (array_agg(close ORDER BY d DESC))[1] AS last_close,
+             (array_agg(close ORDER BY d ASC))[1]  AS first_close,
+             max(d) AS last_day
+      FROM security_prices
+      WHERE d >= current_date - %(days)s
+      GROUP BY symbol
+    )
+"""
+
+
+def _screen_stocks(exchange: str | None = None, sector: str | None = None,
+                   sort_by: str = "change_pct", direction: str = "desc",
+                   days: int = 30, max_pe: float | None = None,
+                   min_market_cap: float | None = None, limit: int = 20) -> dict:
+    limit = max(1, min(int(limit or 20), 60))
+    sort_col = {
+        "change_pct": "change_pct", "market_cap": "s.market_cap",
+        "trailing_pe": "s.trailing_pe", "dividend_yield": "s.dividend_yield",
+        "from_52w_high": "from_52w_high",
+    }.get(sort_by, "change_pct")
+    order = "ASC" if str(direction).lower() == "asc" else "DESC"
+
+    where = ["w.first_close > 0"]
+    params: dict = {"days": int(days or 30)}
+    if exchange:
+        where.append("s.exchange = %(exchange)s")
+        params["exchange"] = exchange.upper()
+    if sector:
+        where.append("s.sector ILIKE %(sector)s")
+        params["sector"] = f"%{sector}%"
+    if max_pe is not None:
+        where.append("s.trailing_pe IS NOT NULL AND s.trailing_pe <= %(max_pe)s")
+        params["max_pe"] = float(max_pe)
+    if min_market_cap is not None:
+        where.append("s.market_cap >= %(min_mcap)s")
+        params["min_mcap"] = float(min_market_cap)
+
+    rows = db.query(
+        _MOVE_CTE + f"""
+        SELECT s.symbol, s.name, s.exchange, s.sector, s.currency,
+               round(w.last_close, 2) AS last,
+               round(((w.last_close / w.first_close) - 1) * 100, 2) AS change_pct,
+               s.market_cap, round(s.trailing_pe, 1) AS trailing_pe,
+               round(s.dividend_yield, 2) AS dividend_yield,
+               CASE WHEN s.week52_high > 0
+                    THEN round(((w.last_close / s.week52_high) - 1) * 100, 1) END
+                 AS from_52w_high,
+               w.last_day
+        FROM win w JOIN securities s ON s.symbol = w.symbol
+        WHERE {' AND '.join(where)}
+        ORDER BY {sort_col} {order} NULLS LAST
+        LIMIT {limit}""",
+        params,
+    )
+    return {"window_days": int(days or 30), "sorted_by": sort_by,
+            "count": len(rows), "results": rows}
+
+
+def _stock_profile(symbol: str, days: int = 180) -> dict:
+    sym = _resolve_symbol(symbol)
+    if not sym:
+        return {"error": f"'{symbol}' is not in the covered universe "
+                         "(S&P 500, ASX 200, NIFTY 50)"}
+    sec = db.one("SELECT * FROM securities WHERE symbol = %s", (sym,))
+    prices = db.query(
+        """SELECT d, close FROM security_prices WHERE symbol = %s
+           AND d >= current_date - %s ORDER BY d""", (sym, int(days or 180)))
+    if not prices:
+        return {"security": sec, "note": "no stored price history yet"}
+    first, last = float(prices[0]["close"]), float(prices[-1]["close"])
+    series = [{"d": str(p["d"]), "c": round(float(p["close"]), 2)} for p in prices]
+    if len(series) > 80:  # thin for the context window, keep the endpoints
+        step = len(series) // 80 + 1
+        series = series[::step] + [series[-1]]
+    peers = db.query(
+        """SELECT symbol, name FROM securities
+           WHERE sector = %s AND exchange = %s AND symbol <> %s
+           ORDER BY market_cap DESC NULLS LAST LIMIT 6""",
+        (sec.get("sector"), sec.get("exchange"), sym))
+    return {
+        "security": {k: v for k, v in sec.items() if k != "created_at"},
+        "window_days": int(days or 180),
+        "last": round(last, 2), "change_pct": round((last / first - 1) * 100, 2),
+        "high": round(max(float(p["close"]) for p in prices), 2),
+        "low": round(min(float(p["close"]) for p in prices), 2),
+        "from_52w_high": (round((last / float(sec["week52_high"]) - 1) * 100, 1)
+                          if sec.get("week52_high") else None),
+        "sector_peers": peers,
+        "series": series,
+    }
+
+
+def _stock_news(symbol: str | None = None, exchange: str | None = None,
+                days: int = 14, limit: int = 25) -> dict:
+    limit = max(1, min(int(limit or 25), 80))
+    where, params = ["n.published_at > now() - make_interval(days => %(days)s)"], \
+        {"days": int(days or 14)}
+    if symbol:
+        sym = _resolve_symbol(symbol)
+        if not sym:
+            return {"error": f"'{symbol}' is not in the covered universe"}
+        where.append("n.symbol = %(sym)s")
+        params["sym"] = sym
+    if exchange:
+        where.append("s.exchange = %(ex)s")
+        params["ex"] = exchange.upper()
+    rows = db.query(
+        f"""SELECT n.symbol, s.name, s.exchange, n.title, n.publisher, n.url,
+                   n.summary, n.published_at
+            FROM security_news n JOIN securities s ON s.symbol = n.symbol
+            WHERE {' AND '.join(where)}
+            ORDER BY n.published_at DESC NULLS LAST
+            LIMIT {limit}""", params)
+    return {"count": len(rows), "window_days": int(days or 14), "items": rows}
+
+
+def _market_snapshot(exchange: str, days: int = 5) -> dict:
+    ex = (exchange or "").upper()
+    days = int(days or 5)
+    index = {"US": "SPX", "ASX": None, "NSE": "INDIA"}.get(ex)
+    rows = db.query(
+        _MOVE_CTE + """
+        SELECT s.symbol, s.name, s.sector,
+               round(((w.last_close / w.first_close) - 1) * 100, 2) AS change_pct
+        FROM win w JOIN securities s ON s.symbol = w.symbol
+        WHERE s.exchange = %(ex)s AND w.first_close > 0""",
+        {"days": days, "ex": ex})
+    if not rows:
+        return {"error": f"no stored prices for {ex} yet"}
+    ups = sum(1 for r in rows if (r["change_pct"] or 0) > 0)
+    by_sector: dict[str, list] = {}
+    for r in rows:
+        by_sector.setdefault(r["sector"] or "Unclassified", []).append(
+            float(r["change_pct"] or 0))
+    med = lambda xs: sorted(xs)[len(xs) // 2]  # noqa: E731
+    sectors = sorted(({"sector": k, "median_pct": round(med(v), 2), "n": len(v)}
+                      for k, v in by_sector.items()),
+                     key=lambda x: x["median_pct"], reverse=True)
+    ranked = sorted(rows, key=lambda r: float(r["change_pct"] or 0), reverse=True)
+    out = {
+        "exchange": ex, "market": {"US": "United States", "ASX": "Australia",
+                                   "NSE": "India"}.get(ex, ex),
+        "window_days": days, "covered": len(rows),
+        "advancing": ups, "declining": len(rows) - ups,
+        "breadth_pct": round(ups / len(rows) * 100, 1),
+        "sectors_strongest": sectors[:4], "sectors_weakest": sectors[-4:],
+        "top_movers": ranked[:8], "worst_movers": ranked[-8:],
+    }
+    if index:
+        idx = _query_prices([index], days=max(days, 7))
+        out["index"] = idx.get(index)
+    return out
+
+
 def _get_world_model() -> dict:
     row = world_model.latest()
     if not row:
@@ -449,6 +707,10 @@ HANDLERS = {
     "get_world_model": _get_world_model,
     "fetch_url": _fetch_url,
     "run_python": _run_python,
+    "screen_stocks": _screen_stocks,
+    "stock_profile": _stock_profile,
+    "stock_news": _stock_news,
+    "market_snapshot": _market_snapshot,
 }
 
 # Span kinds for the trace tree: lookups that feed the model context are
@@ -458,6 +720,10 @@ _SPAN_KIND = {
     "get_recent_news": "retrieval",
     "query_relationships": "retrieval",
     "get_world_model": "retrieval",
+    "screen_stocks": "retrieval",
+    "stock_profile": "retrieval",
+    "stock_news": "retrieval",
+    "market_snapshot": "retrieval",
 }
 
 
