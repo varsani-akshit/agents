@@ -10,10 +10,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ asset('style.css') }}">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111111'/><polygon points='1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16' fill='%23EA580C'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23111111'/><g transform='translate(0,28)'><polygon points='3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20' fill='%23EA580C'/></g></svg>">
 </head>
 <body>
-{% set MARK %}<svg class="mark" viewBox="0 0 32 28" width="24" height="21" role="img" aria-label="Alfred"><polygon points="1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16" fill="currentColor"/></svg>{% endset %}
+{% set MARK %}<svg class="mark" viewBox="0 0 100 44" width="26" height="11" role="img" aria-label="Alfred"><polygon points="3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20" fill="currentColor"/></svg>{% endset %}
 {% set PRIMARY = [('/', 'latest', 'Brief'), ('/charts', 'charts', 'Charts'), ('/graph', 'graph', 'Graph'), ('/markets', 'markets', 'Markets'), ('/ask', 'ask', 'Ask')]
    + ([('/add', 'add', 'Add')] if is_admin else []) %}
 {# Status names the models and their cost; Add changes what Alfred ingests.
@@ -66,6 +66,8 @@
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="{{ asset('charts.js') }}"></script>
 <script src="{{ asset('nav.js') }}" defer></script>
+<script src="{{ asset('local.js') }}" defer></script>
+<script src="{{ asset('tables.js') }}" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -61,9 +61,23 @@ def _rewrite(row: dict, dry_run: bool = False) -> dict:
     meta = row["meta"] or {}
     when = row["created_at"].strftime("%d %B %Y, %H:%M UTC")
 
+    # The format now requires embedded figures, so the rewrite must be told
+    # which keys exist — otherwise it invents plausible-looking ones and the
+    # renderer drops them, leaving a brief that promised charts and has none.
+    from signals import chartdata
+
+    try:
+        pack = chartdata.load_pack(row["id"]) or chartdata.latest_pack()
+        chart_lines = digest.chart_link_lines(pack)
+    except Exception:  # noqa: BLE001
+        chart_lines = ""
+
     user = f"""Restructure the brief below into the required format.
 
 It was written at {when}. Its regime label was: {meta.get('regime') or 'unrecorded'}
+
+# Charts available — embed at least three with ![title](charts/KEY.png)
+{chart_lines or '(none stored for this brief; do not embed any)'}
 
 # Required format
 {digest.FORMAT}

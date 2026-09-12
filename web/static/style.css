@@ -36,6 +36,9 @@
   --measure: 680px;
   --shell: 1080px;
   --pad: 24px;
+
+  /* The Alfred mark: a bat, used as an image and as a CSS mask. */
+  --bat: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 44'><polygon points='3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20' fill='black'/></svg>");
 }
 
 * { box-sizing: border-box; }
@@ -674,12 +677,16 @@ button:disabled { opacity: .45; cursor: progress; }
 .msg.alfred .who .when { margin-left: auto; text-transform: none; letter-spacing: 0; color: var(--t3); }
 .msg.alfred .who a.when { color: var(--atext); text-decoration: none; }
 .msg.alfred .who a.when:hover { text-decoration: underline; }
-.mark {
-  width: 9px; height: 9px; background: var(--accent);
-  clip-path: polygon(50% 0, 100% 100%, 0 100%);
-  display: inline-block; flex: none;
+/* The bat, drawn as a mask so one silhouette serves the nav, the chat avatar
+   and the welcome card, and every one of them takes the accent colour. */
+.mark { color: var(--accent); flex: none; }
+span.mark {
+  width: 16px; height: 11px; background: var(--accent);
+  display: inline-block;
+  -webkit-mask: var(--bat) center/contain no-repeat;
+  mask: var(--bat) center/contain no-repeat;
 }
-.mark.big { width: 20px; height: 20px; }
+span.mark.big { width: 46px; height: 32px; }
 .msg.alfred .mbody { font-size: 15.5px; line-height: 1.75; }
 .msg.alfred .mbody h2 { font-size: 18px; margin: 30px 0 14px; }
 .msg.alfred .mbody h3 { margin: 26px 0 10px; }
@@ -871,3 +878,24 @@ button:disabled { opacity: .45; cursor: progress; }
 .mkt-table .tick {
   display: block; font: 400 10.5px/1.4 var(--mono); color: var(--t3);
 }
+
+/* ── Wide tables ──────────────────────────────────────────────────────────
+   A five-column positioning table needs ~700px and the reading column is
+   668px at a narrow window, so it scrolled inside its wrapper with no sign
+   that it did — the last column simply looked cut off. Wide tables now take
+   the full content width, tighten their own typography, and show a fade at
+   the edge while there is still something to scroll to. */
+.mbody .tablewrap { position: relative; }
+.mbody table { font-size: 15px; }
+.mbody table th, .mbody table td { padding: 9px 12px; }
+/* Five columns or more: tighter, and allowed past the reading measure. */
+.mbody .tablewrap:has(tr > th:nth-child(5)) { max-width: 100%; }
+.mbody table:has(tr > th:nth-child(5)) { font-size: 13.5px; }
+.mbody table:has(tr > th:nth-child(5)) th,
+.mbody table:has(tr > th:nth-child(5)) td { padding: 8px 10px; }
+.mbody .tablewrap.scrolls::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 34px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--bg));
+}
+.mbody .tablewrap.scrolls { scrollbar-width: thin; }

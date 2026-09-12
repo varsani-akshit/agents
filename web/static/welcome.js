@@ -10,7 +10,10 @@
   var h = new Date().getHours();
   var greeting = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   var g = el.querySelector(".wg");
-  if (g) g.textContent = greeting + ".";
+  if (g) {
+    var name = (g.dataset.name || "").trim();
+    g.textContent = name ? greeting + ", " + name + "." : greeting + ".";
+  }
 
   var drop = function () {
     if (el.classList.contains("done")) return;

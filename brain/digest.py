@@ -72,9 +72,37 @@ deciding whether to read on.
 ## Bottom Line
 
 Three or four sentences. What changed across the world this window and what it
-means for how capital is positioned. Where several regions moved for one
+means for how capital is positioned — this is the sentence the Direction table
+below expands into rows. Where several regions moved for one
 underlying reason, say so here — that connection is usually the most valuable
 sentence in the brief.
+
+## Direction
+
+The scoreboard, and the reason the brief exists: where the argument now points
+across everything Alfred tracks. A markdown table, one row per asset or market,
+ordered by how much this window changed the case — the movers first, the
+unchanged omitted entirely.
+
+| Asset | Direction | Conviction | What changed this window | What would flip it |
+
+- ASSET: the specific thing, not the category — "Gold", "US 10-year duration",
+  "ASX energy (WDS, STO)", "Bitcoin", "AUD/USD", "NIFTY IT". Name listed
+  companies where the argument reaches them.
+- DIRECTION: one of *Constructive*, *Deteriorating*, *Neutral*, or *Stretched*
+  — the direction of the ARGUMENT, on the measured evidence. This is analysis,
+  not instruction: "Constructive" means the case strengthened this window, not
+  "buy".
+- CONVICTION: High / Moderate / Low, and be honest — most rows are Moderate,
+  and a Low row with a good reason is more useful than false confidence.
+- WHAT CHANGED: the measured fact from THIS window that moved it, with its
+  number. Not a standing condition.
+- WHAT WOULD FLIP IT: the specific observable that would reverse the argument.
+
+Eight to fourteen rows, spanning rates, currencies, metals, energy, equities by
+market, and digital assets. This table is the first thing the reader looks at,
+so every row must be earned by evidence in the sections below — and every
+direction must be traceable to a development the brief actually reports.
 
 ## What Happened
 
@@ -141,8 +169,9 @@ nothing clears the bar, say so in one line.
 
 ## Signals
 
-The measured story. Two to four relationships that CHANGED this window, each
-with the values carrying the argument and a link to the standing chart. Not a
+Open with the movers table described above, then the measured story: two to
+four relationships that CHANGED this window, each with the values carrying the
+argument and a link to the standing chart. Not a
 tour of the statistics pack: a relationship behaving as it did last cycle does
 not appear. Where a development above should have moved a relationship and did
 not, that absence is itself a finding.
@@ -188,10 +217,24 @@ homepage looks like a citation and is not one. With no exact URL, name the sourc
 in plain text. Every source found by search is listed under the brief
 automatically.
 
-Charts: the Charts tab holds every standing figure, always available and
-interactive — do NOT embed those. Link them in prose using the exact link form
-from `# Charts available`. Embed a chart only where this cycle produced a
-specific insight that the figure demonstrates, using image syntax.
+CHARTS AND TABLES are part of the brief, not an optional garnish. A reader
+scanning ten sections of prose cannot see a shape; a figure shows it in one
+glance. Every brief must carry:
+
+- At least THREE embedded figures, using image syntax `![title](charts/KEY.png)`
+  with a key from `# Charts available`. Place each one directly beneath the
+  development it evidences, not in a gallery at the end. Choose the figure that
+  demonstrates the specific claim — the regime gauge under a regime call, the
+  yield curve under a duration argument, the correlation heatmap under a
+  "relationship broke" finding.
+- A MOVERS TABLE in `## Signals`: the instruments that actually moved this
+  window, as a markdown table — instrument, level, change over the window,
+  and the one-line reason. Six to ten rows, sorted by absolute move. Numbers
+  from the measured data, never from memory.
+- The `## Scenarios` and `## Positioning Implications` tables, as specified.
+
+Link the remaining figures in prose with `[text](/charts#KEY)` rather than
+embedding them — the Charts tab holds every standing figure, always live.
 
 Tables render only at the top level, with a blank line before and after, never
 indented inside a list item.

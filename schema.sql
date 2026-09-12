@@ -324,3 +324,7 @@ ALTER TABLE analyses ADD COLUMN IF NOT EXISTS owner TEXT;
 ALTER TABLE research_notes ADD COLUMN IF NOT EXISTS owner TEXT;
 CREATE INDEX IF NOT EXISTS analyses_owner_idx ON analyses (kind, owner, created_at DESC);
 CREATE INDEX IF NOT EXISTS research_notes_owner_idx ON research_notes (owner, created_at DESC);
+
+-- A person's name, for greeting them. The username is a credential; it is not
+-- what you call someone at the top of their morning brief.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;

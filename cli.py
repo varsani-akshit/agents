@@ -244,8 +244,9 @@ def cmd_user(args) -> int:
         for u in auth.list_users():
             last = u["last_login"].strftime("%Y-%m-%d %H:%M") if u["last_login"] else "never"
             role = "admin " if u.get("is_admin") else "reader"
-            out.info(f"  {u['username']:<20} {role}  created {u['created_at']:%Y-%m-%d}  "
-                     f"last login {last}")
+            name = u.get("display_name") or "—"
+            out.info(f"  {u['username']:<14} {name:<20} {role}  "
+                     f"created {u['created_at']:%Y-%m-%d}  last login {last}")
         return 0
     if not args.username:
         out.error("give a username, or --list")
@@ -261,7 +262,8 @@ def cmd_user(args) -> int:
             return 0
     password = args.password or getpass.getpass("password: ")
     try:
-        auth.create_user(args.username, password, is_admin=bool(args.admin))
+        auth.create_user(args.username, password, is_admin=bool(args.admin),
+                         display_name=args.name)
     except ValueError as exc:
         out.error(str(exc))
         return 2
@@ -377,6 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--admin", action="store_true",
                    help="grant administrator rights (Status, Add, sources)")
     u.add_argument("--no-admin", action="store_true", help="revoke administrator rights")
+    u.add_argument("--name", help="the person's name, shown when greeting them")
     u.add_argument("--create", action="store_true",
                    help="with --admin, also set a password")
     u.set_defaults(func=cmd_user)

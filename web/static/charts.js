@@ -452,7 +452,13 @@
         if (e.isIntersecting) { render(e.target); obs.unobserve(e.target); }
       });
     }, { rootMargin: "300px 0px" });
-    nodes.forEach(function (n) { obs.observe(n); });
+    nodes.forEach(function (n) {
+      // A figure inside its own scrolling pane (the chat transcript) never
+      // intersects the viewport root, so it mounted and stayed blank forever.
+      // Those panes hold one or two figures, so draw them outright.
+      if (n.closest(".chat-scroll")) { render(n); return; }
+      obs.observe(n);
+    });
   }
 
   if (document.readyState === "loading") {

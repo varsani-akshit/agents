@@ -371,6 +371,32 @@ def editor(*, findings_by_beat: dict[str, dict], north_star: str, slim: dict,
            chart_lines: str, prior_wm: str, hours: int,
            citation_urls: list[dict], role: str, fmt: str) -> tuple[str, str, float]:
     """The single writer. Sees every beat's findings; writes the whole brief."""
+    # The movers table is a measurement, so it is computed here rather than
+    # left to the writer to remember and recall.
+    perf = [r for r in (slim.get("performance") or [])
+            if r.get("chg_1d_pct") is not None]
+    movers = sorted(perf, key=lambda r: -abs(float(r.get("chg_1d_pct") or 0)))[:10]
+
+    # The Direction table is the brief's answer to "where does capital go
+    # next", so the writer is handed the measured cross-asset state rather
+    # than asked to remember it.
+    direction_inputs = {
+        k: slim.get(k) for k in
+        ("cross_asset_board", "fx_board", "regime_score", "yield_curve",
+         "ratios", "drawdowns", "correlation_flips", "gold_in_currencies")
+    }
+    from brain import tools
+
+    for ex in ("US", "ASX", "NSE"):
+        try:
+            snap = tools.HANDLERS["market_snapshot"](exchange=ex, days=5)
+            direction_inputs[f"market_{ex}"] = {
+                k: snap.get(k) for k in
+                ("breadth_pct", "sectors_strongest", "sectors_weakest", "top_movers")
+            }
+        except Exception:  # noqa: BLE001
+            pass
+
     sections = []
     for key, payload in findings_by_beat.items():
         sections.append(f"## beat:{key} — {payload.get('beat_summary', '')}\n"
@@ -387,8 +413,17 @@ Timestamp: {datetime.now(timezone.utc).isoformat()}
 # Compact measured state (for the Signals section and any number you add)
 {json.dumps({k: slim.get(k) for k in ('performance', 'intraday_moves', 'yield_curve', 'regime_score', 'net_liquidity', 'correlation_flips', 'ratios', 'historical_analogues')}, default=str)[:20000]}
 
-# Charts available — link in prose with the exact form shown
+# Charts available — EMBED at least three of these with
+# ![title](charts/KEY.png), each under the development it evidences; link the
+# rest in prose with [text](/charts#KEY)
 {chart_lines}
+
+# Biggest movers this window — the raw material for the Signals table
+{json.dumps(movers, default=str)[:4000]}
+
+# Cross-asset board and market breadth — the raw material for the Direction
+# table. Every row you write must trace to a number here or to a finding above.
+{json.dumps(direction_inputs, default=str)[:9000]}
 
 # Source URLs your researchers actually saw (cite only from this list)
 {json.dumps(citation_urls, default=str)[:6000]}

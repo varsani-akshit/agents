@@ -134,6 +134,14 @@
           '</div><article class="mbody"></article>');
         $(".mbody", a).innerHTML = res.d.html;
         scroll.appendChild(a);
+        // Content injected after load is invisible to the page-load machinery:
+        // the chart renderer's IntersectionObserver only watches nodes that
+        // existed when it was built, so an answer's figure mounted and never
+        // drew, and its timestamps stayed in UTC. Both are told explicitly.
+        if (window.AlfredCharts && window.AlfredCharts.ensure) {
+          a.querySelectorAll("[data-chart]").forEach(window.AlfredCharts.ensure);
+        }
+        document.dispatchEvent(new CustomEvent("alfred:content", { detail: a }));
         toBottom();
         box.focus();
       })

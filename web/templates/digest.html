@@ -13,7 +13,7 @@
 <div class="welcome" id="welcome" data-brief="{{ digest.id }}">
   <div class="welcome-in">
     <span class="mark"></span>
-    <div class="wg">Good evening.</div>
+    <div class="wg" data-name="{{ first_name }}">Good evening.</div>
     <div class="wt">Your brief is ready.</div>
     <div class="ws">Alfred · {{ digest.created_at|utc('%d %B %Y · %H:%M') }} UTC</div>
     <div class="wrule"></div>

@@ -315,8 +315,13 @@ def test_utc_filter_converts_from_session_timezone():
 
     melbourne = tz(timedelta(hours=10))
     dt = datetime(2026, 8, 26, 15, 57, tzinfo=melbourne)
-    assert _utc(dt) == "26 Aug 2026, 05:57"
-    assert _utc(dt, "%H:%M") == "05:57"
+    # The filter now emits a <time> element so the browser can re-render it in
+    # the reader's own zone; the UTC instant and its fallback text must both be
+    # correct, because that text is what shows without JavaScript.
+    out = str(_utc(dt))
+    assert 'datetime="2026-08-26T05:57:00+00:00"' in out
+    assert ">26 Aug 2026, 05:57<" in out
+    assert ">05:57<" in str(_utc(dt, "%H:%M"))
 
 
 @pytest.mark.parametrize(

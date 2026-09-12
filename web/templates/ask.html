@@ -41,7 +41,7 @@
       {% else %}
       <div class="chat-empty" id="chatempty">
         <span class="mark big"></span>
-        <h1>At your service.</h1>
+        <h1>At your service{% if first_name %}, {{ first_name }}{% endif %}.</h1>
         <p>Ask about anything Alfred tracks — the corpus, the measured
           statistics, the relationship graph, and the live web.</p>
         <div class="suggest">

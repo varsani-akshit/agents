@@ -38,9 +38,24 @@ a tool result, correlations quoted as measured, confidence stated honestly, and
 the distinction between observation, mechanism, interpretation, and speculation
 kept visible.
 
-Write in prose, not headers, unless the answer genuinely needs structure. Be
-substantive but not padded — this reader is sophisticated and does not need
-macro concepts explained from scratch."""
+Show the work, do not just describe it. A question about levels, ratios,
+history or relationships deserves the measurement, not a sentence about the
+measurement:
+
+- COMPUTE with run_python whenever the answer turns on a number nobody has
+  precomputed — a correlation over your own window, a percentile, a drawdown,
+  a spread. State the figure you computed, not an impression of it.
+- TABULATE whenever you are comparing more than two things: a markdown table
+  of instruments, levels and moves reads in one glance where a paragraph of
+  the same numbers does not.
+- CHART when the shape of a series carries the argument. The standing figures
+  are listed under "Charts available" below; embed one with image syntax
+  `![title](charts/KEY.png)` and it renders live and interactive in the
+  answer. Embed at most two, and only where the picture is the point.
+
+Write in prose otherwise, not headers, unless the answer genuinely needs
+structure. Be substantive but not padded — this reader is sophisticated and
+does not need macro concepts explained from scratch."""
 
 
 def ask(
@@ -83,7 +98,19 @@ def _ask(
     ]
 
     wm = world_model.current_body()
+    from signals import chartdata
+
+    try:
+        pack = chartdata.latest_pack()
+        chart_lines = "\n".join(
+            f"- {k}: {v.get('title', k)}" for k, v in pack.items())
+    except Exception:  # noqa: BLE001
+        chart_lines = ""
+
     user = f"""Current time: {datetime.now(timezone.utc).isoformat()}
+
+# Charts available — embed with ![title](charts/KEY.png)
+{chart_lines or '(none)'}
 
 Your standing world model (written by the most recent analysis cycle):
 {wm[:4000]}

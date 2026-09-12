@@ -41,7 +41,8 @@ def _derive(password: str, salt: str) -> str:
     ).hex()
 
 
-def create_user(username: str, password: str, is_admin: bool = False) -> int:
+def create_user(username: str, password: str, is_admin: bool = False,
+                display_name: str | None = None) -> int:
     """Create or reset a user. Returns the user id.
 
     `is_admin` is not changed on an existing account: resetting someone's
@@ -52,12 +53,14 @@ def create_user(username: str, password: str, is_admin: bool = False) -> int:
         raise ValueError("password must be at least 8 characters")
     salt = secrets.token_hex(16)
     row = db.one(
-        """INSERT INTO users (username, password_hash, salt, is_admin)
-           VALUES (%s, %s, %s, %s)
+        """INSERT INTO users (username, password_hash, salt, is_admin, display_name)
+           VALUES (%s, %s, %s, %s, %s)
            ON CONFLICT (username) DO UPDATE
-             SET password_hash = EXCLUDED.password_hash, salt = EXCLUDED.salt
+             SET password_hash = EXCLUDED.password_hash, salt = EXCLUDED.salt,
+                 display_name = coalesce(EXCLUDED.display_name, users.display_name)
            RETURNING id""",
-        (username.strip().lower(), _derive(password, salt), salt, bool(is_admin)),
+        (username.strip().lower(), _derive(password, salt), salt, bool(is_admin),
+         (display_name or "").strip() or None),
     )
     log.info("user %s created or reset", username)
     return row["id"]
@@ -74,7 +77,8 @@ def set_admin(username: str, is_admin: bool) -> bool:
 def verify(username: str, password: str) -> dict | None:
     """Check a credential pair. Returns the user row, or None."""
     user = db.one(
-        "SELECT id, username, password_hash, salt, is_admin FROM users WHERE username=%s",
+        "SELECT id, username, display_name, password_hash, salt, is_admin "
+        "FROM users WHERE username=%s",
         ((username or "").strip().lower(),),
     )
     if not user:
@@ -87,13 +91,30 @@ def verify(username: str, password: str) -> dict | None:
         return None
     db.execute("UPDATE users SET last_login = now() WHERE id = %s", (user["id"],))
     return {"id": user["id"], "username": user["username"],
+            "display_name": user.get("display_name") or user["username"].title(),
             "is_admin": bool(user.get("is_admin"))}
 
 
 def list_users() -> list[dict]:
     return db.query(
-        "SELECT username, is_admin, created_at, last_login FROM users "
-        "ORDER BY created_at")
+        "SELECT username, display_name, is_admin, created_at, last_login "
+        "FROM users ORDER BY created_at")
+
+
+def display_name(request) -> str:
+    """What to call this person. Falls back to the username for accounts
+    created before names existed, and to nothing at all when signed out."""
+    u = current_user(request)
+    if not u:
+        return ""
+    if u.get("display_name"):
+        return u["display_name"]
+    row = db.one("SELECT display_name FROM users WHERE username = %s", (u["username"],))
+    return (row and row["display_name"]) or u["username"].title()
+
+
+def first_name(request) -> str:
+    return (display_name(request) or "").split(" ")[0]
 
 
 def session_secret() -> str:
@@ -119,8 +140,10 @@ def current_user(request) -> dict | None:
 
 
 def login_session(request, user: dict) -> None:
-    request.session["user"] = {"id": user["id"], "username": user["username"],
-                               "is_admin": bool(user.get("is_admin"))}
+    request.session["user"] = {
+        "id": user["id"], "username": user["username"],
+        "display_name": user.get("display_name") or user["username"].title(),
+        "is_admin": bool(user.get("is_admin"))}
     request.session["at"] = datetime.now(timezone.utc).isoformat()
 
 

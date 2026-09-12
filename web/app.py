@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import markdown as md
+from markupsafe import Markup
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -163,14 +164,35 @@ def _ago(dt: datetime) -> str:
     return f"{mins // 1440}d ago"
 
 
-def _utc(dt: datetime, fmt: str = "%d %b %Y, %H:%M") -> str:
-    """Format in real UTC.
+# Server-side formats map to the Intl options local.js re-renders them with.
+_TZ_FORMATS = {
+    "%d %b %Y, %H:%M": "datetime",
+    "%d %B %Y · %H:%M": "datetime",
+    "%d %B %Y %H:%M": "datetime",
+    "%d %b · %H:%M": "daytime",
+    "%d %B %Y": "date",
+    "%d %b %Y": "date",
+    "%d %b": "dayshort",
+    "%H:%M": "time",
+}
 
-    Postgres returns timestamptz in the session timezone (here
-    Australia/Melbourne), so calling strftime directly and appending "UTC"
-    printed local time under a UTC label — a 10-hour lie on every timestamp.
+
+def _utc(dt: datetime, fmt: str = "%d %b %Y, %H:%M") -> str:
+    """Render a timestamp the reader's browser will convert to their own clock.
+
+    Everything Alfred stores and reasons in is UTC, and it must stay that way —
+    a brief covering "the last 12 hours" is meaningless if the boundary moves
+    with whoever is reading. But a reader should not have to do the arithmetic:
+    the markup carries the machine-readable instant plus a UTC fallback, and
+    local.js rewrites the text to their timezone on load. Without JavaScript
+    the UTC string still shows, correctly labelled.
     """
-    return dt.astimezone(timezone.utc).strftime(fmt)
+    utc = dt.astimezone(timezone.utc)
+    kind = _TZ_FORMATS.get(fmt, "datetime")
+    return Markup(
+        f'<time datetime="{utc.isoformat()}" data-fmt="{kind}">'
+        f'{utc.strftime(fmt)}</time>'
+    )
 
 
 def asset(path: str) -> str:
@@ -244,6 +266,8 @@ def page(request: Request, name: str, ctx: dict) -> HTMLResponse:
     ctx.setdefault("charts_json", "{}")
     ctx["user"] = auth.current_user(request)
     ctx["is_admin"] = auth.is_admin(request)
+    ctx["display_name"] = auth.display_name(request)
+    ctx["first_name"] = auth.first_name(request)
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -512,7 +536,7 @@ async def api_ask(request: Request):
                 return JSONResponse({"error": "research produced no note"}, 500)
             return {"id": result["note_id"], "depth": "deep",
                     "url": f"/research/{result['note_id']}",
-                    "html": render_markdown(result["body"], {})}
+                    "html": render_markdown(result["body"], chartdata.latest_pack())}
 
         from brain import ask as ask_mod
 
@@ -529,7 +553,7 @@ async def api_ask(request: Request):
             return JSONResponse({"error": "the agent returned no answer"}, 500)
         return {"id": result["analysis_id"], "depth": "quick",
                 "url": f"/answer/{result['analysis_id']}",
-                "html": render_markdown(answer, {})}
+                "html": render_markdown(answer, chartdata.latest_pack())}
     except Exception as exc:  # noqa: BLE001
         log.exception("ask failed")
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:300]}, 500)
@@ -579,7 +603,7 @@ async def research_note(request: Request, note_id: int):
         return RedirectResponse("/ask")
     return page(request, "research.html", {
         "note": note,
-        "body_html": render_markdown(note["body"], {}),
+        "body_html": render_markdown(note["body"], chartdata.latest_pack()),
         "history": db.query(
             """SELECT id, question, created_at, usd FROM research_notes
                WHERE owner IS NOT DISTINCT FROM %s
