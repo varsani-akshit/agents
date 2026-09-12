@@ -101,10 +101,11 @@
       </div>
     </form>
     <p class="chat-note">Alfred reasons from measured data and cited sources. Verify before acting.
-      {% if budget %}<span class="budget{{ ' out' if budget.exhausted }}">
-        {% if budget.exhausted %}Monthly allowance spent — resets
-          {{ budget.resets_label }}.{% else %}${{ '%.2f'|format(budget.spent) }}
-          of ${{ '%.2f'|format(budget.limit) }} used this month.{% endif %}
+      {% if budget %}<span class="budget{{ ' out' if budget.exhausted }}"
+        tabindex="0" role="note"
+        aria-label="To top up your credits, drop Akshit a message."
+        data-tip="To top up your credits, drop Akshit a message.">
+        {% if budget.exhausted %}No credit left{% else %}${{ '%.2f'|format(budget.remaining) }} credit left{% endif %}
       </span>{% endif %}</p>
   </section>
 </div>

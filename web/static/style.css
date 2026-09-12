@@ -775,8 +775,33 @@ span.mark.big { width: 46px; height: 32px; }
 /* The reader's own allowance, beside the disclaimer rather than above the
    composer: it is a fact about the account, not a warning about the answer.
    Only rendered for someone who has a cap. */
-.chat-note .budget { display: block; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.chat-note .budget {
+  display: inline-block; margin-top: 5px; font-variant-numeric: tabular-nums;
+  /* Larger than the disclaimer beside it: the disclaimer is standing text a
+     reader stops seeing, this is a number that changes. */
+  font-size: 13px; color: var(--t2);
+  position: relative; cursor: default;
+  /* Dotted, not a link: hovering says where more comes from, it does not
+     navigate anywhere. */
+  border-bottom: 1px dotted var(--border);
+}
 .chat-note .budget.out { color: var(--down); }
+/* Own tooltip rather than title=: the native one waits a second, cannot be
+   styled, and never appears for a keyboard user. */
+.chat-note .budget::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+  white-space: nowrap; padding: 5px 9px; z-index: 80;
+  background: var(--t1); color: var(--surface);
+  font-size: 11px; line-height: 1.3;
+  opacity: 0; visibility: hidden; transition: opacity .12s ease;
+}
+.chat-note .budget:hover::after,
+.chat-note .budget:focus-visible::after { opacity: 1; visibility: visible; }
+@media (max-width: 520px) {
+  /* A nowrap tooltip wider than the phone would push the page sideways. */
+  .chat-note .budget::after { white-space: normal; width: 180px; }
+}
 
 @media (max-width: 860px) {
   .chat { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 118px); }

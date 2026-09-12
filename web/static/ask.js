@@ -128,9 +128,9 @@
           var b = res.d.budget;
           if (b) {
             $(".failed", err).textContent =
-              "That would go over your monthly allowance — $" + b.spent.toFixed(2) +
+              "That would go over your monthly credit — $" + b.spent.toFixed(2) +
               " of $" + b.limit.toFixed(2) + " used. It resets on " +
-              b.resets_label + ".";
+              b.resets_label + ". To top up, drop Akshit a message.";
             box.value = q; grow();
           } else {
             $(".failed", err).textContent =
