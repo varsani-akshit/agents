@@ -50,6 +50,7 @@ def ask(
     save: bool = True,
     model: str | None = None,
     use_web_search: bool = True,
+    owner: str | None = None,
 ) -> dict:
     """Answer one question with full tool access. Returns text plus provenance."""
     from brain import observe
@@ -57,7 +58,7 @@ def ask(
     with observe.run("ask", trigger="dashboard", meta={"depth": "quick"}) as rec:
         rec.set_input({"question": question, "model": model})
         result = _ask(question, max_turns=max_turns, save=save, model=model,
-                      use_web_search=use_web_search)
+                      use_web_search=use_web_search, owner=owner)
         rec.set_output({k: v for k, v in result.items() if k != "text"}
                        | {"answer": (result.get("text") or "")[:4000]})
         return result
@@ -70,6 +71,7 @@ def _ask(
     save: bool = True,
     model: str | None = None,
     use_web_search: bool = True,
+    owner: str | None = None,
 ) -> dict:
     system = [
         {"type": "text", "text": ROLE},
@@ -144,6 +146,7 @@ Question: {question}"""
                 "turns": result["turns"],
                 "usd": result["usd"],
             },
+            owner=owner,
         )
 
     return {

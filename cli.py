@@ -243,16 +243,25 @@ def cmd_user(args) -> int:
     if args.list:
         for u in auth.list_users():
             last = u["last_login"].strftime("%Y-%m-%d %H:%M") if u["last_login"] else "never"
-            out.info(f"  {u['username']:<20} created {u['created_at']:%Y-%m-%d}  last login {last}")
+            role = "admin " if u.get("is_admin") else "reader"
+            out.info(f"  {u['username']:<20} {role}  created {u['created_at']:%Y-%m-%d}  "
+                     f"last login {last}")
         return 0
     if not args.username:
         out.error("give a username, or --list")
         return 2
     # Prompt rather than accept a password argument: anything on the command
     # line lands in shell history and in the process table.
+    if args.admin or args.no_admin:
+        # Rights are changed on their own, never as a side effect of a
+        # password reset.
+        auth.set_admin(args.username, bool(args.admin))
+        out.info(f"{args.username} is now {'an admin' if args.admin else 'a reader'}")
+        if not (args.password or args.create):
+            return 0
     password = args.password or getpass.getpass("password: ")
     try:
-        auth.create_user(args.username, password)
+        auth.create_user(args.username, password, is_admin=bool(args.admin))
     except ValueError as exc:
         out.error(str(exc))
         return 2
@@ -365,6 +374,11 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("username", nargs="?")
     u.add_argument("--password", help="skip the prompt (avoid: lands in shell history)")
     u.add_argument("--list", action="store_true", help="list existing users")
+    u.add_argument("--admin", action="store_true",
+                   help="grant administrator rights (Status, Add, sources)")
+    u.add_argument("--no-admin", action="store_true", help="revoke administrator rights")
+    u.add_argument("--create", action="store_true",
+                   help="with --admin, also set a password")
     u.set_defaults(func=cmd_user)
 
     rw = sub.add_parser("rewrite", help="re-render stored briefs in the current format")

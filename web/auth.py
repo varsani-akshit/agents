@@ -41,26 +41,40 @@ def _derive(password: str, salt: str) -> str:
     ).hex()
 
 
-def create_user(username: str, password: str) -> int:
-    """Create or reset a user. Returns the user id."""
+def create_user(username: str, password: str, is_admin: bool = False) -> int:
+    """Create or reset a user. Returns the user id.
+
+    `is_admin` is not changed on an existing account: resetting someone's
+    password must never silently grant or revoke their privileges. Use
+    `set_admin` for that, deliberately.
+    """
     if len(password) < 8:
         raise ValueError("password must be at least 8 characters")
     salt = secrets.token_hex(16)
     row = db.one(
-        """INSERT INTO users (username, password_hash, salt) VALUES (%s, %s, %s)
+        """INSERT INTO users (username, password_hash, salt, is_admin)
+           VALUES (%s, %s, %s, %s)
            ON CONFLICT (username) DO UPDATE
              SET password_hash = EXCLUDED.password_hash, salt = EXCLUDED.salt
            RETURNING id""",
-        (username.strip().lower(), _derive(password, salt), salt),
+        (username.strip().lower(), _derive(password, salt), salt, bool(is_admin)),
     )
     log.info("user %s created or reset", username)
     return row["id"]
 
 
+def set_admin(username: str, is_admin: bool) -> bool:
+    """Grant or revoke administrator rights."""
+    n = db.execute("UPDATE users SET is_admin = %s WHERE username = %s",
+                   (bool(is_admin), username.strip().lower()))
+    log.info("user %s admin=%s", username, is_admin)
+    return bool(n)
+
+
 def verify(username: str, password: str) -> dict | None:
     """Check a credential pair. Returns the user row, or None."""
     user = db.one(
-        "SELECT id, username, password_hash, salt FROM users WHERE username=%s",
+        "SELECT id, username, password_hash, salt, is_admin FROM users WHERE username=%s",
         ((username or "").strip().lower(),),
     )
     if not user:
@@ -72,12 +86,14 @@ def verify(username: str, password: str) -> dict | None:
     if not hmac.compare_digest(_derive(password or "", user["salt"]), user["password_hash"]):
         return None
     db.execute("UPDATE users SET last_login = now() WHERE id = %s", (user["id"],))
-    return {"id": user["id"], "username": user["username"]}
+    return {"id": user["id"], "username": user["username"],
+            "is_admin": bool(user.get("is_admin"))}
 
 
 def list_users() -> list[dict]:
     return db.query(
-        "SELECT username, created_at, last_login FROM users ORDER BY created_at")
+        "SELECT username, is_admin, created_at, last_login FROM users "
+        "ORDER BY created_at")
 
 
 def session_secret() -> str:
@@ -103,8 +119,38 @@ def current_user(request) -> dict | None:
 
 
 def login_session(request, user: dict) -> None:
-    request.session["user"] = {"id": user["id"], "username": user["username"]}
+    request.session["user"] = {"id": user["id"], "username": user["username"],
+                               "is_admin": bool(user.get("is_admin"))}
     request.session["at"] = datetime.now(timezone.utc).isoformat()
+
+
+def username_of(request) -> str | None:
+    u = current_user(request)
+    return u["username"] if u else None
+
+
+def is_admin(request) -> bool:
+    """Administrator rights are read from the database, not the cookie.
+
+    A session issued before someone's rights changed would otherwise keep the
+    old answer until they signed out — and a revoked admin must lose access
+    immediately, not eventually.
+    """
+    u = current_user(request)
+    if not u:
+        return False
+    row = db.one("SELECT is_admin FROM users WHERE username = %s", (u["username"],))
+    return bool(row and row["is_admin"])
+
+
+# Surfaces that expose how Alfred is built and what it costs, or that change
+# what it ingests. Readers get the product; only an administrator sees the
+# machinery.
+ADMIN_PATHS = ("/status", "/add")
+
+
+def is_admin_path(path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in ADMIN_PATHS)
 
 
 def is_public(path: str) -> bool:

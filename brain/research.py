@@ -54,7 +54,8 @@ URLs), ### Judgement (what it means for the question, clearly marked as
 judgement). Under 500 words. Only cite URLs you actually saw."""
 
 
-def run(question: str, *, trigger: str = "ask") -> dict:
+def run(question: str, *, trigger: str = "ask",
+        owner: str | None = None) -> dict:
     """Investigate one question end to end. Returns the stored note."""
     started = datetime.now(timezone.utc)
     # One agent, two depths: this is the deep mode of `ask`. Same question
@@ -155,11 +156,11 @@ def run(question: str, *, trigger: str = "ask") -> dict:
 
         total = _spend(started)
         row = db.one(
-            """INSERT INTO research_notes (question, body, facets, usd)
-               VALUES (%s,%s,%s,%s) RETURNING id""",
+            """INSERT INTO research_notes (question, body, facets, usd, owner)
+               VALUES (%s,%s,%s,%s,%s) RETURNING id""",
             (question, body, json.dumps(
                 [{k: r[k] for k in ("facet", "report", "citations")} for r in reports],
-                default=str), round(total, 5)),
+                default=str), round(total, 5), owner),
         )
         note_id = row["id"]
         rec.set_output({"note_id": note_id, "usd": total,

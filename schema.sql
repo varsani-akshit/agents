@@ -313,3 +313,14 @@ CREATE TABLE IF NOT EXISTS security_news (
   UNIQUE (symbol, title)
 );
 CREATE INDEX IF NOT EXISTS security_news_sym_idx ON security_news (symbol, published_at DESC);
+
+-- ── Multi-user ────────────────────────────────────────────────────────────
+-- Alfred is becoming multi-tenant: several people read the same briefs and
+-- the same market data, because those are the product, but a question is
+-- private to whoever asked it. Ownership is recorded on the two surfaces a
+-- user creates: answers and research notes.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE analyses ADD COLUMN IF NOT EXISTS owner TEXT;
+ALTER TABLE research_notes ADD COLUMN IF NOT EXISTS owner TEXT;
+CREATE INDEX IF NOT EXISTS analyses_owner_idx ON analyses (kind, owner, created_at DESC);
+CREATE INDEX IF NOT EXISTS research_notes_owner_idx ON research_notes (owner, created_at DESC);

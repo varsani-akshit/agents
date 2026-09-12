@@ -269,6 +269,41 @@ def run_agent(
                 "name": fc["name"], "response": {"result": result}}})
         contents.append({"role": "user", "parts": responses})
 
+    text = "\n\n".join(t for t in text_parts if t).strip()
+
+    # A loop that spent every turn calling tools and never wrote the answer has
+    # done all the work and delivered none of it. Flash does this on roughly
+    # one question in five: the tool results are in `contents`, so one more
+    # call with the tools withheld turns them into the answer. Without this the
+    # reader saw an empty reply while the ledger showed a full-price question.
+    if not text and calls and not stopped:
+        log.warning("%s: %d turns, no answer written — requesting one", purpose, turn + 1)
+        contents.append({"role": "user", "parts": [{"text":
+            "Stop researching and answer now, using only what your tool calls "
+            "above already returned. Do not call any further tools."}]})
+        try:
+            final = _post(model, {
+                "systemInstruction": {"parts": [{"text": system}]},
+                "contents": contents,
+                "generationConfig": {"maxOutputTokens": max_tokens,
+                                     "thinkingConfig": {"thinkingBudget": 0}},
+            })
+            text = "".join(p.get("text", "") for p in final["parts"]
+                           if "text" in p).strip()
+            usd = price(model, final["usage"])
+            spent += usd
+            db.execute(
+                """INSERT INTO api_calls
+                     (provider,model,purpose,input_tokens,output_tokens,usd)
+                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                ("gemini", model, f"{purpose}:final",
+                 final["usage"].get("promptTokenCount", 0),
+                 final["usage"].get("candidatesTokenCount", 0), usd),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.error("%s: forced answer failed: %s", purpose, exc)
+            stopped = stopped or f"no answer after {turn + 1} turns"
+
     seen, cites = set(), []
     for c in all_citations:
         if c["url"] and c["url"] not in seen:
@@ -276,7 +311,7 @@ def run_agent(
             cites.append(c)
 
     return {
-        "text": "\n\n".join(t for t in text_parts if t).strip(),
+        "text": text,
         "tool_calls": calls,
         "citations": cites,
         "turns": turn + 1,

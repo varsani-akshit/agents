@@ -150,15 +150,28 @@ def test_daily_frame_carries_the_live_price():
     import db
     from signals import stats
 
-    live = db.one(
-        """SELECT symbol, price FROM prices WHERE grain='15m'
+    # Pin a symbol first: picking "the newest 15m row" and re-reading it after
+    # the build raced the scheduler, because crypto prints continuously.
+    sym = db.one(
+        """SELECT symbol FROM prices WHERE grain='15m'
            AND ts > now() - interval '2 days' ORDER BY ts DESC LIMIT 1""")
-    if not live:
+    if not sym:
         return  # no intraday data in this environment
-    wide = stats.load_daily([live["symbol"]], 30)
+    symbol = sym["symbol"]
+    wide = stats.load_daily([symbol], 30)
     if wide.empty:
         return
-    assert abs(float(wide[live["symbol"]].iloc[-1]) - float(live["price"])) < 0.01
+    framed = float(wide[symbol].iloc[-1])
+    # Any 15m print for this symbol in the last hour is an acceptable match:
+    # a tick landing mid-test must not fail the assertion, but a four-day-old
+    # forward-filled daily fix still will.
+    recent = db.query(
+        """SELECT price FROM prices WHERE grain='15m' AND symbol=%s
+           AND ts > now() - interval '2 hours' ORDER BY ts DESC LIMIT 8""",
+        (symbol,))
+    assert recent, "no recent intraday prints to compare against"
+    assert any(abs(framed - float(r["price"])) < 0.01 for r in recent), (
+        f"{symbol}: daily frame shows {framed}, not any recent live print")
 
 
 def test_graph_links_securities_without_false_matches():
@@ -222,3 +235,95 @@ def test_verifier_discards_confirmations_filed_as_errors(monkeypatch):
     assert audit["checked_claims"] == 3 and audit["matched"] == 2
     assert len(audit["issues"]) == 1        # the confirmation was discarded
     assert fixed == 1 and "64.80" in out["body"]
+
+
+def test_ask_api_reads_the_key_ask_actually_returns():
+    """`ask()` returns prose under "answer"; /api/ask read "text" and so
+    rendered an empty bubble for every quick question, while the answer saved
+    correctly to the archive — the failure was invisible in the database."""
+    import asyncio
+
+    from brain import ask as ask_mod
+    from web import app as W
+
+    class _Req:
+        session: dict = {}
+
+        async def json(self):
+            return {"question": "test", "depth": "quick"}
+
+    saved = {"analysis_id": 1, "question": "test",
+             "answer": "**Measured:** gold at 4,371.", "turns": 1}
+    orig = ask_mod.ask
+    ask_mod.ask = lambda *a, **k: saved
+    try:
+        out = asyncio.run(W.api_ask(_Req()))
+    finally:
+        ask_mod.ask = orig
+    assert "4,371" in out["html"], out
+
+
+# ── Multi-user isolation ─────────────────────────────────────────────────────
+def _client_as(username: str):
+    """A signed-in client for one user."""
+    from starlette.testclient import TestClient
+
+    from web import auth
+    import web.app as W
+
+    auth.create_user(username, "test-password-123")
+    c = TestClient(W.app, base_url="https://testserver")
+    r = c.post("/login", data={"username": username, "password": "test-password-123"},
+               follow_redirects=False)
+    assert r.status_code == 303, f"login failed for {username}"
+    return c
+
+
+def test_one_user_cannot_see_anothers_questions():
+    """A question is private to whoever asked it. Briefs and market data are
+    shared because they are the product; chat history is not."""
+    import db
+    from memory import store
+
+    mine = store.save_analysis("answer", "Q: my private question",
+                               "The answer.", meta={"question": "my private question"},
+                               owner="privacy_a")
+    theirs = store.save_analysis("answer", "Q: their private question",
+                                 "Their answer.",
+                                 meta={"question": "their private question"},
+                                 owner="privacy_b")
+    try:
+        a = _client_as("privacy_a")
+        page = a.get("/ask").text
+        assert "my private question" in page
+        assert "their private question" not in page
+        # Nor by guessing the id.
+        assert a.get(f"/answer/{theirs}", follow_redirects=False).status_code in (302, 303, 307)
+        assert a.get(f"/answer/{mine}").status_code == 200
+    finally:
+        db.execute("DELETE FROM analyses WHERE id = ANY(%s)", ([mine, theirs],))
+        db.execute("DELETE FROM users WHERE username = ANY(%s)",
+                   (["privacy_a", "privacy_b"],))
+
+
+def test_status_and_add_are_admin_only():
+    """Status names the models and their cost; Add changes what Alfred
+    ingests. Both are refused in middleware, so a route added later cannot
+    forget to check."""
+    import db
+    from web import auth
+
+    try:
+        reader = _client_as("reader_only")
+        for path in ("/status", "/add"):
+            r = reader.get(path, follow_redirects=False)
+            assert r.status_code == 303, f"{path} leaked to a reader"
+        nav = reader.get("/").text
+        assert 'href="/status"' not in nav and 'href="/add"' not in nav
+
+        auth.set_admin("reader_only", True)
+        boss = _client_as("reader_only")
+        assert boss.get("/status").status_code == 200
+        assert 'href="/status"' in boss.get("/").text
+    finally:
+        db.execute("DELETE FROM users WHERE username = %s", ("reader_only",))

@@ -215,12 +215,16 @@ def recent_documents(hours: int = 6, limit: int = 60, min_urgency: str | None = 
     return db.query(sql, params)
 
 
-def save_analysis(kind: str, title: str, body: str, meta: dict | None = None) -> int:
+def save_analysis(kind: str, title: str, body: str, meta: dict | None = None,
+                  owner: str | None = None) -> int:
+    """Store one analysis. `owner` is set for answers, which are private to
+    the reader who asked; briefs and alerts are shared and leave it null."""
     import json
 
     row = db.one(
-        "INSERT INTO analyses (kind,title,body,meta) VALUES (%s,%s,%s,%s) RETURNING id",
-        (kind, title, body, json.dumps(meta or {}, default=str)),
+        "INSERT INTO analyses (kind,title,body,meta,owner) VALUES (%s,%s,%s,%s,%s) "
+        "RETURNING id",
+        (kind, title, body, json.dumps(meta or {}, default=str), owner),
     )
     aid = row["id"]
     embed_analysis(aid, f"{title}\n\n{body[:6000]}")

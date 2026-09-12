@@ -75,25 +75,6 @@ def load_daily(symbols: list[str] | None = None, lookback_days: int = 800) -> pd
     wide.index = pd.to_datetime(wide.index)
     wide = wide.sort_index().ffill()
 
-    # Carry the live price into today's row. Daily bars arrive on their source's
-    # schedule — the LBMA fix publishes once a day at 15:00 London, and over a
-    # bank-holiday weekend the newest fix can be four days old. Forward-filling
-    # that stale figure onto today's date told every reader gold was 4,562 while
-    # it traded at 4,371: a 4% lie, printed under today's date. The 15-minute
-    # grain already holds the current price, so the last row is the live one.
-    live = db.query(
-        """SELECT DISTINCT ON (symbol) symbol, ts, price FROM prices
-           WHERE grain='15m' AND ts > now() - interval '2 days'
-           ORDER BY symbol, ts DESC"""
-    )
-    if live:
-        today = pd.Timestamp(datetime.now(timezone.utc).date())
-        if today not in wide.index:
-            wide.loc[today] = wide.iloc[-1] if len(wide) else None
-            wide = wide.sort_index().ffill()
-        for r in live:
-            if r["symbol"] in wide.columns:
-                wide.loc[today, r["symbol"]] = float(r["price"])
     # Business-day grid. Crypto trades weekends, so the union index carries
     # Saturday and Sunday rows that every other market forward-fills across.
     # Left in, "252 rows" is 8.3 months rather than a year — every row-counted
@@ -101,6 +82,34 @@ def load_daily(symbols: list[str] | None = None, lookback_days: int = 800) -> pd
     # damped by two fake zero-return rows a week. Crypto's weekend move folds
     # into Monday, which is the standard convention for cross-asset work.
     wide = wide[wide.index.dayofweek < 5]
+
+    # Carry the live price into a current row, AFTER the business-day filter.
+    # Daily bars arrive on their source's schedule — the LBMA fix publishes
+    # once a day at 15:00 London, and over a bank-holiday weekend the newest
+    # fix can be four days old. Forward-filling that stale figure onto today's
+    # date told every reader gold was 4,562 while it traded at 4,371.
+    #
+    # Injecting before the filter was worse than not injecting at all: on a
+    # Saturday the fresh row was created and then immediately deleted as a
+    # non-business day, so the weekend — exactly when crypto is the only thing
+    # moving — silently served Friday's close as the current price.
+    live = db.query(
+        """SELECT DISTINCT ON (symbol) symbol, ts, price FROM prices
+           WHERE grain='15m' AND ts > now() - interval '2 days'
+           ORDER BY symbol, ts DESC"""
+    )
+    # The live print updates the LAST row rather than appending a new one. The
+    # business-day grid is load-bearing — a row-counted "1y" must be 252
+    # trading days, and weekend rows add fake zero-return pairs to every
+    # correlation — so a Saturday must not create a Saturday row. Overwriting
+    # keeps the grid exactly as it was and still leaves the frame ending on
+    # the current price, which is what every reader and chart takes it to be.
+    if live and len(wide):
+        last_day = wide.index[-1]
+        for r in live:
+            if r["symbol"] in wide.columns:
+                wide.loc[last_day, r["symbol"]] = float(r["price"])
+
     if symbols:
         wide = wide[[s for s in symbols if s in wide.columns]]
     return wide

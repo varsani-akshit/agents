@@ -243,12 +243,19 @@ def page(request: Request, name: str, ctx: dict) -> HTMLResponse:
     ctx.setdefault("summary", system_summary())
     ctx.setdefault("charts_json", "{}")
     ctx["user"] = auth.current_user(request)
+    ctx["is_admin"] = auth.is_admin(request)
     return templates.TemplateResponse(request, name, ctx)
 
 
 # ─────────────────────────────── auth gate ──────────────────────────────────
 @app.middleware("http")
 async def require_login(request: Request, call_next):
+    # Admin surfaces are refused here rather than in each route, so a page
+    # added later cannot forget to check. /status names the models and their
+    # cost, /add changes what Alfred ingests: neither belongs to a reader.
+    if (auth.is_admin_path(request.url.path)
+            and auth.current_user(request) and not auth.is_admin(request)):
+        return RedirectResponse("/", status_code=303)
     if auth.is_public(request.url.path) or auth.current_user(request):
         # Starlette only re-issues the cookie when the session dict changes, so
         # a fixed max_age would expire 60 days after sign-in however often you
@@ -424,29 +431,38 @@ async def archive(request: Request):
 
 @app.get("/answer/{answer_id}", response_class=HTMLResponse)
 async def one_answer(request: Request, answer_id: int):
-    a = db.one("SELECT id,title,body,meta,created_at FROM analyses WHERE id=%s", (answer_id,))
-    if not a:
+    a = db.one(
+        "SELECT id,title,body,meta,created_at,owner FROM analyses WHERE id=%s",
+        (answer_id,))
+    # Guessing an id must not reveal someone else's question. Unowned rows
+    # predate ownership and belong to the founding account.
+    if not a or (a.get("owner") or "akshit") != auth.username_of(request):
         return RedirectResponse("/ask")
     pack = chartdata.latest_pack()
     return page(request, "ask.html", {
         "answer": a,
         "answer_html": render_markdown(a["body"], pack),
         "question": (a["meta"] or {}).get("question", a["title"]),
-        "conversations": conversation_list(),
+        "conversations": conversation_list(auth.username_of(request)),
         "charts_json": json.dumps(pack, default=str),
         "active": "ask",
     })
 
 
-def conversation_list() -> list[dict]:
-    """Every past exchange, quick and deep, newest first — the chat history."""
+def conversation_list(owner: str | None) -> list[dict]:
+    """One user's past exchanges, quick and deep, newest first.
+
+    A question is private to whoever asked it — briefs and market data are
+    shared because they are the product, but nobody else's chat history is.
+    """
     rows = db.query(
         """SELECT id, coalesce(meta->>'question', title) AS question,
                   created_at, 'quick' AS depth
-           FROM analyses WHERE kind='answer'
+           FROM analyses WHERE kind='answer' AND owner IS NOT DISTINCT FROM %(o)s
          UNION ALL
            SELECT id, question, created_at, 'deep' AS depth FROM research_notes
-           ORDER BY created_at DESC LIMIT 60"""
+           WHERE owner IS NOT DISTINCT FROM %(o)s
+           ORDER BY created_at DESC LIMIT 60""", {"o": owner}
     )
     for r in rows:
         r["url"] = (f"/research/{r['id']}" if r["depth"] == "deep"
@@ -460,7 +476,7 @@ async def ask_form(request: Request, q: str = "", depth: str = "quick"):
         "answer": None,
         "prefill": q[:400],
         "depth": depth if depth in ("quick", "deep") else "quick",
-        "conversations": conversation_list(),
+        "conversations": conversation_list(auth.username_of(request)),
         "active": "ask",
     })
 
@@ -479,6 +495,7 @@ async def api_ask(request: Request):
     q = (payload.get("question") or "").strip()
     if not q:
         return JSONResponse({"error": "empty question"}, 400)
+    owner = auth.username_of(request)
     depth = "deep" if payload.get("depth") == "deep" else "quick"
     # The composer offers a tier, never a model id: no vendor name is ever
     # shipped to the browser, and the routing can change without the UI lying.
@@ -489,7 +506,8 @@ async def api_ask(request: Request):
         if depth == "deep":
             from brain import research as research_mod
 
-            result = await asyncio.to_thread(research_mod.run, q, trigger="ask")
+            result = await asyncio.to_thread(
+                lambda: research_mod.run(q, trigger="ask", owner=owner))
             if not result.get("note_id"):
                 return JSONResponse({"error": "research produced no note"}, 500)
             return {"id": result["note_id"], "depth": "deep",
@@ -499,13 +517,19 @@ async def api_ask(request: Request):
         from brain import ask as ask_mod
 
         result = await asyncio.to_thread(
-            lambda: ask_mod.ask(q, model=model or None))
+            lambda: ask_mod.ask(q, model=model or None, owner=owner))
         if not result.get("analysis_id"):
             return JSONResponse(
                 {"error": result.get("stopped") or "no answer produced"}, 500)
+        # `ask()` returns the prose under "answer"; reading "text" here shipped
+        # an empty bubble to the chat on every quick question while the answer
+        # itself saved correctly to the archive.
+        answer = result.get("answer") or result.get("text") or ""
+        if not answer.strip():
+            return JSONResponse({"error": "the agent returned no answer"}, 500)
         return {"id": result["analysis_id"], "depth": "quick",
                 "url": f"/answer/{result['analysis_id']}",
-                "html": render_markdown(result.get("text") or "", {})}
+                "html": render_markdown(answer, {})}
     except Exception as exc:  # noqa: BLE001
         log.exception("ask failed")
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:300]}, 500)
@@ -551,14 +575,16 @@ async def research_form(q: str = ""):
 @app.get("/research/{note_id}", response_class=HTMLResponse)
 async def research_note(request: Request, note_id: int):
     note = db.one("SELECT * FROM research_notes WHERE id=%s", (note_id,))
-    if not note:
-        return RedirectResponse("/research")
+    if not note or (note.get("owner") or "akshit") != auth.username_of(request):
+        return RedirectResponse("/ask")
     return page(request, "research.html", {
         "note": note,
         "body_html": render_markdown(note["body"], {}),
         "history": db.query(
             """SELECT id, question, created_at, usd FROM research_notes
-               ORDER BY created_at DESC LIMIT 25"""),
+               WHERE owner IS NOT DISTINCT FROM %s
+               ORDER BY created_at DESC LIMIT 25""",
+            (auth.username_of(request),)),
         "active": "ask",
     })
 
