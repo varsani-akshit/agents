@@ -30,6 +30,12 @@ Strict rules:
 - Where the original lacks material for a section, omit that section rather than
   filling it.
 
+About the Direction table specifically: build it only from assets the original
+brief actually establishes a case for, with the number it reported. The row
+count in the format is a target for a fresh brief, not a quota here — six honest
+rows beat fourteen with padding, and an asset the original never discussed does
+not get a row. If the original supports no such table at all, omit the section.
+
 What you may do: reorganise into the required topic sections, write the headline
 and standfirst, give each development a title, add cross-references between
 sections where the original's own content supports them, and bring the register
@@ -66,9 +72,11 @@ def _rewrite(row: dict, dry_run: bool = False) -> dict:
     # renderer drops them, leaving a brief that promised charts and has none.
     from signals import chartdata
 
+    # Only this brief's own pack. Never fall back to the latest one: embedding
+    # today's yield curve in an August brief would make the figure contradict
+    # the prose beside it, which is worse than having no figure at all.
     try:
-        pack = chartdata.load_pack(row["id"]) or chartdata.latest_pack()
-        chart_lines = digest.chart_link_lines(pack)
+        chart_lines = digest.chart_link_lines(chartdata.load_pack(row["id"]))
     except Exception:  # noqa: BLE001
         chart_lines = ""
 

@@ -42,7 +42,7 @@
         <span class="dot {{ 'ok' if t and t.ok else 'bad' }}"></span>{% if t %}{{ t.started_at|ago }}{% else %}none{% endif %}
       </span>
       <details class="menu" id="acct">
-        <summary>{{ user.username if user else 'account' }}</summary>
+        <summary>{{ display_name if user else 'account' }}</summary>
         <div class="menu-panel">
           {% for href, key, label in SECONDARY %}
           <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
@@ -57,7 +57,7 @@
     {% for href, key, label in PRIMARY + SECONDARY %}
     <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
     {% endfor %}
-    <a href="/logout" class="sep">Sign out{% if user %} · {{ user.username }}{% endif %}</a>
+    <a href="/logout" class="sep">Sign out{% if user %} · {{ display_name }}{% endif %}</a>
   </div>
 </nav>
 {% endblock %}

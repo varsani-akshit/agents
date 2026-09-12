@@ -33,11 +33,15 @@
       } catch (e) {}
     });
     // "UTC" printed next to a converted time is now a lie; the element's own
-    // tooltip carries the zone instead.
-    (root || document).querySelectorAll(".facts span, .eyebrow, .when").forEach(function (n) {
-      if (n.querySelector("time[data-localised]")) {
-        n.innerHTML = n.innerHTML.replace(/\s*UTC\b/g, "");
-      }
+    // tooltip carries the zone instead. Walk up from each converted time
+    // rather than listing the wrappers — a new template that prints the label
+    // beside a timestamp should not have to be added to a list here.
+    (root || document).querySelectorAll("time[data-localised]").forEach(function (el) {
+      var n = el.parentNode;
+      if (!n || n.nodeType !== 1 || n.dataset.utcStripped) return;
+      if (!/\bUTC\b/.test(n.textContent)) return;
+      n.dataset.utcStripped = "1";
+      n.innerHTML = n.innerHTML.replace(/\s*UTC\b/g, "");
     });
   }
 

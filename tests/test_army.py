@@ -1,6 +1,7 @@
 """Army plumbing: router locks, sandbox containment, trace mirror, drill-down."""
 from __future__ import annotations
 
+import pathlib
 import pytest
 
 
@@ -327,3 +328,37 @@ def test_status_and_add_are_admin_only():
         assert 'href="/status"' in boss.get("/").text
     finally:
         db.execute("DELETE FROM users WHERE username = %s", ("reader_only",))
+
+
+def test_the_reader_is_addressed_by_their_full_name():
+    """Whoever is signed in sees their own full name — in the account menu, in
+    the brief's arrival card, and in the Ask greeting. A half-name ("Akshit")
+    was the earlier behaviour; two readers with the same first name would have
+    been indistinguishable."""
+    import db
+    from web import auth
+
+    try:
+        auth.create_user("fullname_x", "test-password-123",
+                         display_name="Cassian Rivers-Okonkwo")
+        c = _client_as("fullname_x")
+
+        home = c.get("/").text
+        assert "<summary>Cassian Rivers-Okonkwo</summary>" in home
+        assert 'data-name="Cassian Rivers-Okonkwo"' in home
+        assert "fullname_x" not in home, "username shown where the name belongs"
+
+        assert "At your service, Cassian Rivers-Okonkwo." in c.get("/ask").text
+    finally:
+        db.execute("DELETE FROM users WHERE username = %s", ("fullname_x",))
+
+
+def test_a_converted_timestamp_never_keeps_its_utc_label():
+    """local.js rewrites every <time> into the reader's zone, so a literal
+    'UTC' beside one becomes false. The strip walks up from the timestamp
+    rather than matching a list of wrapper classes — the arrival card was
+    printing '14:50 UTC' on a local time because .ws was not on that list."""
+    js = (pathlib.Path(__file__).parent.parent / "web/static/local.js").read_text()
+    assert 'querySelectorAll("time[data-localised]")' in js
+    assert "parentNode" in js
+    assert '.facts span, .eyebrow, .when' not in js, "back to a wrapper list"
