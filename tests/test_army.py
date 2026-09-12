@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pathlib
+import config
 import pytest
 
 
@@ -247,8 +248,16 @@ def test_ask_api_reads_the_key_ask_actually_returns():
     from brain import ask as ask_mod
     from web import app as W
 
+    import db
+    from web import auth
+
+    # A real account: /api/ask now checks the asker's monthly allowance before
+    # doing any work, and an anonymous request is refused rather than served.
+    auth.create_user("askapi_user", "test-password-123")
+
     class _Req:
-        session: dict = {}
+        session: dict = {"user": {"id": 0, "username": "askapi_user",
+                                  "is_admin": False}}
 
         async def json(self):
             return {"question": "test", "depth": "quick"}
@@ -261,6 +270,7 @@ def test_ask_api_reads_the_key_ask_actually_returns():
         out = asyncio.run(W.api_ask(_Req()))
     finally:
         ask_mod.ask = orig
+        db.execute("DELETE FROM users WHERE username = %s", ("askapi_user",))
     assert "4,371" in out["html"], out
 
 
@@ -362,3 +372,106 @@ def test_a_converted_timestamp_never_keeps_its_utc_label():
     assert 'querySelectorAll("time[data-localised]")' in js
     assert "parentNode" in js
     assert '.facts span, .eyebrow, .when' not in js, "back to a wrapper list"
+
+
+# ── Per-reader spending ──────────────────────────────────────────────────────
+def test_a_readers_month_is_counted_and_capped_but_an_admin_is_not():
+    """Ask is the one surface a reader spends on demand, so it is the one
+    surface with a cap. Admins are exempt in code, not by a row, so revoking
+    admin restores the cap in the same action."""
+    import db
+    from brain import spend
+    from web import auth
+
+    try:
+        auth.create_user("budget_reader", "test-password-123")
+        auth.create_user("budget_boss", "test-password-123", is_admin=True)
+
+        assert spend.budget_for("budget_boss") is None, "admin was capped"
+        assert spend.budget_for("budget_reader") == pytest.approx(
+            config.READER_MONTHLY_USD), "reader did not get the default"
+
+        auth.set_budget("budget_reader", 2.00)
+        assert spend.status("budget_reader")["remaining"] == pytest.approx(2.00)
+
+        # Spending is read from api_calls, so a question that died halfway
+        # still counts against the month.
+        db.execute("INSERT INTO api_calls (model,purpose,usd,owner) "
+                   "VALUES ('m','ask',1.25,'budget_reader')")
+        st = spend.status("budget_reader")
+        assert st["spent"] == pytest.approx(1.25)
+        assert st["remaining"] == pytest.approx(0.75)
+        assert not st["exhausted"]
+        spend.guard("budget_reader")  # still allowed
+
+        db.execute("INSERT INTO api_calls (model,purpose,usd,owner) "
+                   "VALUES ('m','ask',1.00,'budget_reader')")
+        assert spend.status("budget_reader")["exhausted"]
+        with pytest.raises(spend.OverBudget):
+            spend.guard("budget_reader")
+
+        # One reader's spending is not another's, and the admin stays free.
+        assert spend.status("budget_boss")["spent"] == 0
+        spend.guard("budget_boss")
+
+        # An unset budget means the default, never unlimited — the failure mode
+        # that quietly switches a budget system off.
+        auth.set_budget("budget_reader", None)
+        assert spend.budget_for("budget_reader") == pytest.approx(
+            config.READER_MONTHLY_USD)
+    finally:
+        db.execute("DELETE FROM api_calls WHERE owner = ANY(%s)",
+                   (["budget_reader", "budget_boss"],))
+        db.execute("DELETE FROM users WHERE username = ANY(%s)",
+                   (["budget_reader", "budget_boss"],))
+
+
+def test_an_unknown_asker_is_refused_rather_than_given_the_default():
+    """Fail closed. A session for a deleted account, or no session at all,
+    must not inherit a reader's allowance."""
+    from brain import spend
+
+    assert spend.budget_for("no_such_person_at_all") == 0.0
+    with pytest.raises(spend.OverBudget):
+        spend.guard("no_such_person_at_all")
+
+
+def test_every_api_calls_insert_attributes_its_spending():
+    """Attribution is a contextvar, so a new insert site that forgets the
+    owner column charges a reader's question to nobody and the cap silently
+    stops working. Six sites today; this fails when a seventh appears."""
+    root = pathlib.Path(__file__).parent.parent
+    sites = 0
+    for f in root.glob("brain/*.py"):
+        text = f.read_text()
+        for i, line in enumerate(text.splitlines()):
+            if "INSERT INTO api_calls" not in line:
+                continue
+            sites += 1
+            window = "\n".join(text.splitlines()[i:i + 14])
+            assert "owner" in window, f"{f.name}:{i + 1} does not record an owner"
+            assert "spend.owner()" in window, \
+                f"{f.name}:{i + 1} names the column but passes no value"
+    assert sites >= 6, f"expected the six known insert sites, found {sites}"
+
+
+def test_the_charge_survives_the_thread_a_question_runs_on():
+    """Ask hands the work to a worker thread and research fans out further.
+    contextvars do not cross a raw ThreadPoolExecutor, and an owner lost on
+    the way down is spending charged to nobody."""
+    import asyncio
+
+    from brain import observe, spend
+
+    async def run():
+        with spend.charged_to("Thread_Owner"):
+            direct = await asyncio.to_thread(spend.owner)
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                nested = observe.ctx_submit(pool, spend.owner).result()
+        return direct, nested
+
+    direct, nested = asyncio.run(run())
+    assert direct == "thread_owner", "lost crossing asyncio.to_thread"
+    assert nested == "thread_owner", "lost crossing the research fan-out"
+    assert spend.owner() is None, "owner leaked out of the request"

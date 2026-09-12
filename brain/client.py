@@ -13,6 +13,7 @@ import anthropic
 
 import config
 import db
+from brain import spend
 
 log = logging.getLogger("mia.brain")
 
@@ -95,8 +96,8 @@ def record(model: str, purpose: str, usage: Any, web_searches: int = 0) -> float
     usd = price_call(model, usage, web_searches)
     db.execute(
         """INSERT INTO api_calls
-             (model,purpose,input_tokens,output_tokens,cache_read,cache_write,web_searches,usd)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+             (model,purpose,input_tokens,output_tokens,cache_read,cache_write,web_searches,usd,owner)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
         (
             model,
             purpose,
@@ -106,6 +107,7 @@ def record(model: str, purpose: str, usage: Any, web_searches: int = 0) -> float
             getattr(usage, "cache_creation_input_tokens", 0) or 0,
             web_searches,
             usd,
+            spend.owner(),
         ),
     )
     from brain import observe

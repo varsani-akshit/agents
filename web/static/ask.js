@@ -123,7 +123,19 @@
           var err = el("msg alfred",
             '<div class="who"><span class="mark"></span>Alfred</div>' +
             '<div class="failed"></div>');
-          $(".failed", err).textContent = res.d.error || "That did not go through. Try again.";
+          // 402 is a spent allowance, not a fault. Say what it costs to wait
+          // and put the question back in the box so it is not lost.
+          var b = res.d.budget;
+          if (b) {
+            $(".failed", err).textContent =
+              "That would go over your monthly allowance — $" + b.spent.toFixed(2) +
+              " of $" + b.limit.toFixed(2) + " used. It resets on " +
+              b.resets_label + ".";
+            box.value = q; grow();
+          } else {
+            $(".failed", err).textContent =
+              res.d.error || "That did not go through. Try again.";
+          }
           scroll.appendChild(err); toBottom();
           return;
         }

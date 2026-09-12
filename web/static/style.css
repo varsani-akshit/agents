@@ -772,6 +772,11 @@ span.mark.big { width: 46px; height: 32px; }
   text-align: center; font-size: 11px; color: var(--t3);
   margin: 0 0 12px; padding: 0 32px;
 }
+/* The reader's own allowance, beside the disclaimer rather than above the
+   composer: it is a fact about the account, not a warning about the answer.
+   Only rendered for someone who has a cap. */
+.chat-note .budget { display: block; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.chat-note .budget.out { color: var(--down); }
 
 @media (max-width: 860px) {
   .chat { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 118px); }

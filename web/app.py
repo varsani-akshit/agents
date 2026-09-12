@@ -469,6 +469,7 @@ async def one_answer(request: Request, answer_id: int):
         "question": (a["meta"] or {}).get("question", a["title"]),
         "conversations": conversation_list(auth.username_of(request)),
         "charts_json": json.dumps(pack, default=str),
+        "budget": ask_budget(request),
         "active": "ask",
     })
 
@@ -494,6 +495,22 @@ def conversation_list(owner: str | None) -> list[dict]:
     return rows
 
 
+def ask_budget(request: Request) -> dict | None:
+    """What this reader has spent on Ask this month, or None if uncapped.
+
+    None for an administrator, so the allowance is invisible to anyone who
+    does not have one — a budget line on an unlimited account is noise that
+    reads like a restriction.
+    """
+    from brain import spend
+
+    who = auth.username_of(request)
+    if not who:
+        return None
+    state = spend.status(who)
+    return None if state["unlimited"] else state
+
+
 @app.get("/ask", response_class=HTMLResponse)
 async def ask_form(request: Request, q: str = "", depth: str = "quick"):
     return page(request, "ask.html", {
@@ -501,6 +518,7 @@ async def ask_form(request: Request, q: str = "", depth: str = "quick"):
         "prefill": q[:400],
         "depth": depth if depth in ("quick", "deep") else "quick",
         "conversations": conversation_list(auth.username_of(request)),
+        "budget": ask_budget(request),
         "active": "ask",
     })
 
@@ -513,13 +531,19 @@ async def api_ask(request: Request):
     a thinking state while the agent works — a full page round-trip would
     leave the reader on a frozen form for a minute or more.
     """
-    from brain import client
+    from brain import client, spend
 
     payload = await request.json()
     q = (payload.get("question") or "").strip()
     if not q:
         return JSONResponse({"error": "empty question"}, 400)
     owner = auth.username_of(request)
+    try:
+        spend.guard(owner)
+    except spend.OverBudget as over:
+        # 402 rather than 403: this is not a permissions failure, and the chat
+        # should say what was spent and when it comes back, not "denied".
+        return JSONResponse({"error": str(over), "budget": over.state}, 402)
     depth = "deep" if payload.get("depth") == "deep" else "quick"
     # The composer offers a tier, never a model id: no vendor name is ever
     # shipped to the browser, and the routing can change without the UI lying.
@@ -527,61 +551,75 @@ async def api_ask(request: Request):
     client.AUTONOMOUS = False  # interactive: may use the reserved budget
 
     try:
-        if depth == "deep":
-            from brain import research as research_mod
+        with spend.charged_to(owner):
+            if depth == "deep":
+                from brain import research as research_mod
+
+                result = await asyncio.to_thread(
+                    lambda: research_mod.run(q, trigger="ask", owner=owner))
+                if not result.get("note_id"):
+                    return JSONResponse({"error": "research produced no note"}, 500)
+                return {"id": result["note_id"], "depth": "deep",
+                        "url": f"/research/{result['note_id']}",
+                        "html": render_markdown(result["body"], chartdata.latest_pack())}
+
+            from brain import ask as ask_mod
 
             result = await asyncio.to_thread(
-                lambda: research_mod.run(q, trigger="ask", owner=owner))
-            if not result.get("note_id"):
-                return JSONResponse({"error": "research produced no note"}, 500)
-            return {"id": result["note_id"], "depth": "deep",
-                    "url": f"/research/{result['note_id']}",
-                    "html": render_markdown(result["body"], chartdata.latest_pack())}
-
-        from brain import ask as ask_mod
-
-        result = await asyncio.to_thread(
-            lambda: ask_mod.ask(q, model=model or None, owner=owner))
-        if not result.get("analysis_id"):
-            return JSONResponse(
-                {"error": result.get("stopped") or "no answer produced"}, 500)
-        # `ask()` returns the prose under "answer"; reading "text" here shipped
-        # an empty bubble to the chat on every quick question while the answer
-        # itself saved correctly to the archive.
-        answer = result.get("answer") or result.get("text") or ""
-        if not answer.strip():
-            return JSONResponse({"error": "the agent returned no answer"}, 500)
-        return {"id": result["analysis_id"], "depth": "quick",
-                "url": f"/answer/{result['analysis_id']}",
-                "html": render_markdown(answer, chartdata.latest_pack())}
+                lambda: ask_mod.ask(q, model=model or None, owner=owner))
+            if not result.get("analysis_id"):
+                return JSONResponse(
+                    {"error": result.get("stopped") or "no answer produced"}, 500)
+            # `ask()` returns the prose under "answer"; reading "text" here shipped
+            # an empty bubble to the chat on every quick question while the answer
+            # itself saved correctly to the archive.
+            answer = result.get("answer") or result.get("text") or ""
+            if not answer.strip():
+                return JSONResponse({"error": "the agent returned no answer"}, 500)
+            return {"id": result["analysis_id"], "depth": "quick",
+                    "url": f"/answer/{result['analysis_id']}",
+                    "html": render_markdown(answer, chartdata.latest_pack())}
     except Exception as exc:  # noqa: BLE001
         log.exception("ask failed")
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:300]}, 500)
 
 
 @app.post("/ask")
-async def ask_submit(question: str = Form(...), model: str = Form(""),
-                     depth: str = Form("quick")):
+async def ask_submit(request: Request, question: str = Form(...),
+                     model: str = Form(""), depth: str = Form("quick")):
     """One question surface, two depths. Quick is a single tool loop; deep is
     the same agent with the research machinery awake — parallel facet
-    researchers and a synthesis — producing a stored note."""
-    from brain import client
+    researchers and a synthesis — producing a stored note.
+
+    The no-JavaScript path. It recorded no owner, so a question asked here
+    landed in nobody's history and was charged to nobody — both fixed by
+    taking the request and going through the same guard as the JSON route.
+    """
+    from brain import client, spend
 
     client.AUTONOMOUS = False  # interactive: may use the reserved budget
     q = question.strip()
+    owner = auth.username_of(request)
+    try:
+        spend.guard(owner)
+    except spend.OverBudget as over:
+        return JSONResponse({"error": str(over), "budget": over.state}, 402)
 
-    if depth == "deep":
-        from brain import research as research_mod
+    with spend.charged_to(owner):
+        if depth == "deep":
+            from brain import research as research_mod
 
-        result = await asyncio.to_thread(research_mod.run, q, trigger="ask")
-        if result.get("note_id"):
-            return RedirectResponse(f"/research/{result['note_id']}", status_code=303)
-        return JSONResponse({"error": "deep research produced no note"}, 500)
+            result = await asyncio.to_thread(
+                lambda: research_mod.run(q, trigger="ask", owner=owner))
+            if result.get("note_id"):
+                return RedirectResponse(f"/research/{result['note_id']}",
+                                        status_code=303)
+            return JSONResponse({"error": "deep research produced no note"}, 500)
 
-    from brain import ask as ask_mod
+        from brain import ask as ask_mod
 
-    result = await asyncio.to_thread(
-        lambda: ask_mod.ask(q, model=model or None))
+        result = await asyncio.to_thread(
+            lambda: ask_mod.ask(q, model=model or None, owner=owner))
     if result.get("analysis_id"):
         return RedirectResponse(f"/answer/{result['analysis_id']}", status_code=303)
     return JSONResponse({"error": result.get("stopped") or "no answer produced"}, 500)

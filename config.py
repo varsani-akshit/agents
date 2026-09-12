@@ -55,6 +55,11 @@ TOTAL_USD_CAP = _f("MIA_TOTAL_USD_CAP", 3.00)
 # the one use that actually needs the budget to be there.
 AUTONOMOUS_USD_CAP = _f("MIA_AUTONOMOUS_USD_CAP", TOTAL_USD_CAP * 0.75)
 
+# What one reader may spend on Ask in a calendar month. Admins are exempt in
+# code. This is the default for anyone without a budget of their own; a
+# per-person figure lives on users.monthly_usd.
+READER_MONTHLY_USD = _f("MIA_READER_MONTHLY_USD", 5.00)
+
 # Output routing. Slack stays off until a platform is chosen.
 NOTIFY_SLACK = os.getenv("MIA_NOTIFY_SLACK", "false").lower() in {"1", "true", "yes"}
 SLACK_WEBHOOK_CRITICAL = os.getenv("SLACK_WEBHOOK_CRITICAL", "")

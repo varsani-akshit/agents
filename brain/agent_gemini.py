@@ -26,7 +26,7 @@ import time
 import httpx
 
 import db
-from brain import tools
+from brain import spend, tools
 
 log = logging.getLogger("alfred.agent_gemini")
 
@@ -213,14 +213,14 @@ def run_agent(
         searches = len(data["grounding"].get("webSearchQueries") or [])
         db.execute(
             """INSERT INTO api_calls
-                 (provider,model,purpose,input_tokens,output_tokens,cache_read,web_searches,usd)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                 (provider,model,purpose,input_tokens,output_tokens,cache_read,web_searches,usd,owner)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             ("gemini", model, f"{purpose}:turn{turn}",
              data["usage"].get("promptTokenCount", 0),
              data["usage"].get("candidatesTokenCount", 0)
              + data["usage"].get("thoughtsTokenCount", 0),
              (data["usage"].get("cachedContentTokenCount") or 0),
-             searches, usd),
+             searches, usd, spend.owner()),
         )
         log.info("%s:turn%s via %s: $%.5f (in=%s out=%s search=%s)",
                  purpose, turn, model, usd,
@@ -294,11 +294,12 @@ def run_agent(
             spent += usd
             db.execute(
                 """INSERT INTO api_calls
-                     (provider,model,purpose,input_tokens,output_tokens,usd)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
+                     (provider,model,purpose,input_tokens,output_tokens,usd,owner)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                 ("gemini", model, f"{purpose}:final",
                  final["usage"].get("promptTokenCount", 0),
-                 final["usage"].get("candidatesTokenCount", 0), usd),
+                 final["usage"].get("candidatesTokenCount", 0), usd,
+                 spend.owner()),
             )
         except Exception as exc:  # noqa: BLE001
             log.error("%s: forced answer failed: %s", purpose, exc)

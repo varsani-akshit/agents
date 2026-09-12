@@ -241,13 +241,27 @@ def cmd_user(args) -> int:
     from web import auth
 
     if args.list:
+        from brain import spend as spend_mod
+
         for u in auth.list_users():
             last = u["last_login"].strftime("%Y-%m-%d %H:%M") if u["last_login"] else "never"
             role = "admin " if u.get("is_admin") else "reader"
             name = u.get("display_name") or "—"
+            st = spend_mod.status(u["username"])
+            money = "unlimited" if st["unlimited"] else \
+                f"${st['spent']:.2f} of ${st['limit']:.2f}"
             out.info(f"  {u['username']:<14} {name:<20} {role}  "
-                     f"created {u['created_at']:%Y-%m-%d}  last login {last}")
+                     f"{money:<18} last login {last}")
         return 0
+
+    if args.budget is not None:
+        # Set on its own, like admin rights — never as a side effect of a
+        # password reset.
+        auth.set_budget(args.username, None if args.budget < 0 else args.budget)
+        shown = "the default" if args.budget < 0 else f"${args.budget:.2f}"
+        out.info(f"{args.username}'s monthly Ask budget is now {shown}")
+        if not (args.password or args.create):
+            return 0
     if not args.username:
         out.error("give a username, or --list")
         return 2
@@ -380,6 +394,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="grant administrator rights (Status, Add, sources)")
     u.add_argument("--no-admin", action="store_true", help="revoke administrator rights")
     u.add_argument("--name", help="the person's name, shown when greeting them")
+    u.add_argument("--budget", type=float, metavar="USD",
+                   help="monthly Ask budget for this reader; -1 restores the "
+                        "default. Admins are unlimited regardless.")
     u.add_argument("--create", action="store_true",
                    help="with --admin, also set a password")
     u.set_defaults(func=cmd_user)

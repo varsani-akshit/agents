@@ -100,7 +100,12 @@
         </button>
       </div>
     </form>
-    <p class="chat-note">Alfred reasons from measured data and cited sources. Verify before acting.</p>
+    <p class="chat-note">Alfred reasons from measured data and cited sources. Verify before acting.
+      {% if budget %}<span class="budget{{ ' out' if budget.exhausted }}">
+        {% if budget.exhausted %}Monthly allowance spent — resets
+          {{ budget.resets_label }}.{% else %}${{ '%.2f'|format(budget.spent) }}
+          of ${{ '%.2f'|format(budget.limit) }} used this month.{% endif %}
+      </span>{% endif %}</p>
   </section>
 </div>
 {% endblock %}

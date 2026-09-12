@@ -28,6 +28,7 @@ import httpx
 
 import config
 import db
+from brain import spend
 
 log = logging.getLogger("mia.llm")
 
@@ -325,9 +326,9 @@ def complete_json(
             usd = price(attempt, itok, otok)
             db.execute(
                 """INSERT INTO api_calls
-                     (provider,model,purpose,input_tokens,output_tokens,usd)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
-                (provider, model, purpose, itok, otok, usd),
+                     (provider,model,purpose,input_tokens,output_tokens,usd,owner)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (provider, model, purpose, itok, otok, usd, spend.owner()),
             )
             from brain import observe
 
@@ -489,9 +490,10 @@ def complete_text(
                 raise ProviderError("empty completion")
             db.execute(
                 """INSERT INTO api_calls
-                     (provider,model,purpose,input_tokens,output_tokens,usd)
-                   VALUES (%s,%s,%s,%s,%s,%s)""",
-                (provider, model, purpose, itok, otok, price(attempt, itok, otok)),
+                     (provider,model,purpose,input_tokens,output_tokens,usd,owner)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (provider, model, purpose, itok, otok, price(attempt, itok, otok),
+                 spend.owner()),
             )
             from brain import observe
 

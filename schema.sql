@@ -328,3 +328,17 @@ CREATE INDEX IF NOT EXISTS research_notes_owner_idx ON research_notes (owner, cr
 -- A person's name, for greeting them. The username is a credential; it is not
 -- what you call someone at the top of their morning brief.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+
+-- Per-reader spending. Briefs, prices and the graph are shared infrastructure
+-- and cost the same whoever reads them; Ask is the one surface where a reader
+-- spends money on demand, so it is the one surface with a cap. Attribution
+-- lives on api_calls rather than on the saved answer, because a question that
+-- errors halfway still burned tokens and must still count against the month.
+ALTER TABLE api_calls ADD COLUMN IF NOT EXISTS owner TEXT;
+CREATE INDEX IF NOT EXISTS api_calls_owner_month_idx
+  ON api_calls (owner, created_at DESC) WHERE owner IS NOT NULL;
+
+-- NULL means "the default for a reader", not "unlimited" — an unset budget
+-- must never be the permissive case. Admins are unlimited in code, not by a
+-- row here, so revoking admin restores the cap without a second edit.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_usd NUMERIC(10,2);

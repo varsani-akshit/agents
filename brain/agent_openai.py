@@ -22,7 +22,7 @@ import time
 import httpx
 
 import db
-from brain import tools
+from brain import spend, tools
 
 log = logging.getLogger("mia.agent_openai")
 
@@ -290,14 +290,14 @@ def run_agent(
         spent += usd
         db.execute(
             """INSERT INTO api_calls
-                 (provider,model,purpose,input_tokens,output_tokens,cache_read,web_searches,usd)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                 (provider,model,purpose,input_tokens,output_tokens,cache_read,web_searches,usd,owner)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (
                 "openai", model, f"{purpose}:turn{turn}",
                 usage.get("input_tokens", 0),
                 usage.get("output_tokens", 0),
                 (usage.get("input_tokens_details") or {}).get("cached_tokens", 0),
-                searches, usd,
+                searches, usd, spend.owner(),
             ),
         )
         log.info(

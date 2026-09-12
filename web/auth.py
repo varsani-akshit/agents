@@ -74,6 +74,19 @@ def set_admin(username: str, is_admin: bool) -> bool:
     return bool(n)
 
 
+def set_budget(username: str, monthly_usd: float | None) -> bool:
+    """Set one reader's monthly Ask budget, or None to restore the default.
+
+    Storing NULL rather than a large number for "no special limit" keeps the
+    default in one place: raise it in config and everyone without an explicit
+    figure moves with it.
+    """
+    n = db.execute("UPDATE users SET monthly_usd = %s WHERE username = %s",
+                   (monthly_usd, username.strip().lower()))
+    log.info("user %s monthly_usd=%s", username, monthly_usd)
+    return bool(n)
+
+
 def verify(username: str, password: str) -> dict | None:
     """Check a credential pair. Returns the user row, or None."""
     user = db.one(
