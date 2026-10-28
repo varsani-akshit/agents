@@ -545,3 +545,17 @@ CREATE TABLE IF NOT EXISTS sim_candidates (
   detail      JSONB NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS sim_candidates_run_idx ON sim_candidates (run_id, passed_gate DESC, score DESC);
+
+-- Hourly bars for the intraday strategies: about three years is what Yahoo
+-- serves at this interval. Stored in UTC; sessions are grouped in each
+-- exchange's own time zone when loaded.
+CREATE TABLE IF NOT EXISTS bars_1h (
+  symbol TEXT NOT NULL,
+  ts     TIMESTAMPTZ NOT NULL,
+  open   DOUBLE PRECISION NOT NULL,
+  high   DOUBLE PRECISION NOT NULL,
+  low    DOUBLE PRECISION NOT NULL,
+  close  DOUBLE PRECISION NOT NULL,
+  volume DOUBLE PRECISION,
+  PRIMARY KEY (symbol, ts)
+);

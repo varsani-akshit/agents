@@ -202,22 +202,29 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
     # The gate as a matrix: strategies down, markets across.
     matrix: dict[str, dict] = {}
     changes = []
+    from advisor import intraday
+
     for r in results:
-        st = STRATEGIES.get(r["strategy"])
-        row = matrix.setdefault(r["strategy"], {"label": st.label if st else r["strategy"],
-                                                 "horizon": st.max_days if st else None, "cells": {}})
+        st = STRATEGIES.get(r["strategy"]) or intraday.STRATEGIES.get(r["strategy"])
+        row = matrix.setdefault(r["strategy"], {
+            "label": (st.label if st else r["stats"].get("label") or r["strategy"]),
+            "horizon": getattr(st, "max_days", None),
+            "intraday": r["strategy"] in intraday.STRATEGIES, "cells": {}})
         r["was"] = before.get((r["strategy"], r["region"]))
         row["cells"][r["region"]] = r
         if r["was"] is not None and r["was"] != r["passed"]:
             changes.append(r)
-    order = sorted(matrix.items(), key=lambda kv: (-sum(c["passed"] for c in kv[1]["cells"].values()),
+    order = sorted(matrix.items(), key=lambda kv: (kv[1]["intraday"],
+                                                   -sum(c["passed"] for c in kv[1]["cells"].values()),
                                                    kv[1]["label"]))
 
     accounts = db.query("SELECT region, stats, curve FROM sim_accounts WHERE run_id=%s "
                         "ORDER BY array_position(ARRAY['IN','ASX','US'], region)", (run_id,))
     for a in accounts:
         a["svg"] = account_svg(a["curve"])
-        a["name"] = REGION_NAME.get(a["region"], a["region"])
+        base, _, kind = a["region"].partition(":")
+        a["name"] = REGION_NAME.get(base, base) + (" · intraday" if kind else "")
+        a["intraday"] = bool(kind)
 
     where, params = ["run_id = %s"], [run_id]
     if region in REGIONS:
@@ -257,9 +264,14 @@ def method() -> dict:
             if r["passed"]:
                 passing.setdefault(r["strategy"], []).append(REGION_NAME.get(r["region"], r["region"]))
     data = db.one("SELECT count(DISTINCT symbol) AS names, count(*) AS bars, min(d) AS first FROM bars")
-    return {"cfg": settings(), "data": data,
-            "strategies": [{"name": k, "label": v.label, "summary": v.summary, "max_days": v.max_days,
-                            "passes": passing.get(k, [])} for k, v in STRATEGIES.items()]}
+    from advisor import intraday
+
+    rows = [{"name": k, "label": v.label, "summary": v.summary, "max_days": v.max_days,
+             "passes": passing.get(k, [])} for k, v in STRATEGIES.items()]
+    rows += [{"name": k, "label": v.label, "summary": v.summary, "max_days": "same day",
+              "passes": passing.get(k, [])} for k, v in intraday.STRATEGIES.items()]
+    hourly_rows = db.one("SELECT count(*) AS n, min(ts) AS first FROM bars_1h")
+    return {"cfg": settings(), "data": data, "hourly": hourly_rows, "strategies": rows}
 
 
 def _month_end(dates: list[str], start: str | None) -> str | None:

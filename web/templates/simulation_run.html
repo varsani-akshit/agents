@@ -27,7 +27,7 @@
   {% for name, row in matrix %}
   <div class="card">
     <div class="card-head">
-      <h3>{{ row.label }}</h3>
+      <h3>{{ row.label }}{% if row.intraday %} <span class="badge">intraday</span>{% endif %}</h3>
       {% set n = row.cells.values()|selectattr('passed')|list|length %}
       {% if n %}<span class="badge badge-ok">passes in {{ n }}</span>{% else %}<span class="badge">fails everywhere</span>{% endif %}
     </div>
@@ -45,7 +45,7 @@
           <td class="num muted">{{ r(st.random_recent.expectancy_r) }}</td>
           <td class="num">{{ '{:.2f}'.format(st.recent.profit_factor) if st.recent.profit_factor else '—' }}</td>
           <td class="num">{{ pct(st.monte_carlo.chance_of_loss) }}</td>
-          <td class="num">{{ '%sd'|format(st.median_days) if st.median_days else '—' }}</td>
+          <td class="num">{{ 'same day' if st.intraday else ('%sd'|format(st.median_days) if st.median_days else '—') }}</td>
           <td>
             {% if c.passed %}<span class="badge badge-ok">passes</span>{% else %}<span class="badge">fails</span>{% endif %}
             {% if c.was is not none and c.was != c.passed %}<span class="badge badge-warn">{{ 'new' if c.passed else 'dropped' }}</span>{% endif %}

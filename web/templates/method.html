@@ -19,6 +19,7 @@
         <li><b>Costs on every trade</b>Round trip: India {{ cfg.round_trip_cost_pct.NSE }}%, ASX {{ cfg.round_trip_cost_pct.ASX }}%, US {{ cfg.round_trip_cost_pct.US }}%.</li>
         <li><b>Results in R</b>Profit divided by the risk planned at entry: +1R made what it risked; −1R is a clean stop-out.</li>
         <li><b>Then as one account</b>All passing strategies together: at most {{ cfg.max_new_ideas_per_scan }} new tickets a day, {{ cfg.max_open_positions }} positions, {{ cfg.risk_per_trade_pct }}% risk each, cash spent once — against the index, random picks and survivors.</li>
+        <li><b>Intraday, separately</b>Same-day strategies run on hourly bars ({{ '{:,}'.format(hourly.n or 0) }} since {{ hourly.first.strftime('%b %Y') if hourly.first else '—' }}): entry the hour after the signal, stop at the first hour's low, out by the close. Same gate, a one-year recent period, intraday costs (India {{ cfg.intraday.round_trip_cost_pct.NSE }}%, ASX {{ cfg.intraday.round_trip_cost_pct.ASX }}%, US {{ cfg.intraday.round_trip_cost_pct.US }}%), and an account replay of at most {{ cfg.intraday.max_trades_per_day }} trades a day.</li>
         <li><b>Every two hours</b>Prices are topped up and everything re-runs. Daily bars, so a run between closes repeats the last close's verdict; each market's close reaches the evidence within two hours.</li>
       </ol>
     </div>
@@ -47,7 +48,7 @@
       <tr>
         <td><strong>{{ s.label }}</strong></td>
         <td style="white-space:normal">{{ s.summary }}</td>
-        <td class="num">{{ s.max_days }} sessions</td>
+        <td class="num">{{ s.max_days }}{% if s.max_days is number %} sessions{% endif %}</td>
         <td>{% if s.passes %}{% for p in s.passes %}<span class="badge badge-ok">{{ p }}</span> {% endfor %}{% else %}<span class="muted">none</span>{% endif %}</td>
       </tr>
       {% endfor %}

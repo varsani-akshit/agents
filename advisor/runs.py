@@ -46,6 +46,30 @@ def run(trigger: str = "schedule", refresh: bool = True) -> dict:
                 db.execute("INSERT INTO sim_accounts (run_id, region, stats, curve) VALUES (%s,%s,%s,%s)",
                            (run_id, region, json.dumps(acct["stats"]), json.dumps(acct["curve"])))
 
+        # Intraday: hourly prices topped up, then the same-day strategies.
+        try:
+            from advisor import hourly, intraday
+
+            if refresh:
+                hourly.fetch(bars.universe(), period="5d")
+            ireport = intraday.run()
+        except Exception as exc:  # noqa: BLE001 - daily results still stand
+            log.warning("intraday simulation failed: %s", exc)
+            ireport = {}
+        for key, val in ireport.items():
+            if key[0] == "account":
+                curve = val.pop("curve", {})
+                db.execute("INSERT INTO sim_accounts (run_id, region, stats, curve) VALUES (%s,%s,%s,%s)",
+                           (run_id, f"{key[1]}:intraday",
+                            json.dumps(candidates._clean(val), default=str), json.dumps(curve)))
+            else:
+                ok, stats = val
+                report[key] = (ok, stats)
+                db.execute("INSERT INTO sim_results (run_id, strategy, region, passed, stats) "
+                           "VALUES (%s,%s,%s,%s,%s)",
+                           (run_id, key[0], key[1], ok,
+                            json.dumps(candidates._clean(stats), default=str)))
+
         through, cands = {}, []
         for region in REGIONS:
             found = candidates.collect(region)

@@ -44,6 +44,21 @@ round_trip_cost_pct:
   ASX: 0.40
   US: 0.60
 
+# ── Intraday ─────────────────────────────────────────────────────────────────
+# Same-day trades on hourly bars, out by the close. Same gate as above, with
+# a one-year "recent" period (there are about three years of hourly history).
+intraday:
+  recent_period_years: 1
+  max_trades_per_day: 3          # the account replay takes at most this many a day
+  # Round trip, % of trade value, slippage included. Intraday is cheaper than
+  # delivery in India (STT 0.025% on the sell side only); US assumes you hold
+  # USD in Webull so no currency conversion per trade.
+  round_trip_cost_pct:
+    NSE: 0.15
+    BSE: 0.18
+    ASX: 0.30
+    US: 0.10
+
 # ── The gate ─────────────────────────────────────────────────────────────────
 # A strategy may only send ideas in a market once its simulation clears every
 # bar below. History is split in two: the strategies have fixed, textbook
