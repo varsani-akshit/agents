@@ -103,6 +103,28 @@
   </div>
 </div>
 
+{# ── Your names in the news ─────────────────────────────────────────── #}
+<section class="section">
+  <h2>Your names in the news</h2>
+  <p class="lead-in">Articles from the last 36 hours that are about something you hold or have a ticket on, found by Decision-1 reading every harvested article. Its good/bad read is a hint; the move beside it is measured.</p>
+  <div class="card">
+    <ul class="list">
+      {% for n in news %}
+      <li>
+        <span class="badge {{ 'badge-ok' if n.impact == 'positive' else ('badge-bad' if n.impact == 'negative' else '') }}" style="min-width:72px;justify-content:center">{{ n.symbol.split('.')[0] }}</span>
+        <div class="grow">
+          <div class="t">{% if n.url %}<a href="{{ n.url }}" target="_blank" rel="noopener">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}</div>
+          <div class="s">{{ n.source }} · {{ n.at|ago }} · read: {{ n.impact or '—' }}</div>
+        </div>
+        <div class="num {{ 'up' if (n.move_pct or 0) > 0 else ('down' if (n.move_pct or 0) < 0 else 'muted') }}" style="text-align:right;white-space:nowrap">{{ '{:+.1f}%'.format(n.move_pct) if n.move_pct is not none else '—' }}<br><span class="muted" style="font-size:11px">that session</span></div>
+      </li>
+      {% else %}
+      <li class="muted">Nothing about your names in the last 36 hours.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
 {# ── What's next ─────────────────────────────────────────────────────── #}
 <section class="section">
   <h2>Next opportunities</h2>

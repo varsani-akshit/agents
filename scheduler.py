@@ -107,6 +107,17 @@ def job_tick(harvest_news: bool = True) -> dict:
 
             _stage("librarian", _librarian)
 
+            # Clerk: which new articles are about the reader's own names.
+            # Decision-1, one call per article for every name at once; costs
+            # cents a day and feeds "Your money" and the Today page.
+            def _clerk():
+                from brain import news_match
+
+                detail["news_match"] = news_match.run()
+                return detail["news_match"]
+
+            _stage("clerk", _clerk)
+
         # Quant: the measured state of the world. No model, no cost.
         pack = {}
 

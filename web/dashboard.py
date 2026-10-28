@@ -158,7 +158,15 @@ def today() -> dict:
                          "me": st.get("strategy") or {}, "index": st.get("index") or {},
                          "index_symbol": st.get("index_symbol")})
 
-    return {"books": books, "attention": attention, "ideas": ideas, "closed": closed,
+    try:
+        from brain import news_match
+
+        news = news_match.recent(hours=36, per_name=3)
+    except Exception:  # noqa: BLE001 - the dashboard must render without it
+        news = []
+
+    return {"news": news[:12],
+            "books": books, "attention": attention, "ideas": ideas, "closed": closed,
             "regions": regions, "brief": brief, "exits": exits, "near": near[:14],
             "funding": funding, "top": top, "evidence": evidence,
             "board": ledger.scoreboard(),

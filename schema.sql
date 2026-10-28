@@ -470,3 +470,28 @@ CREATE TABLE IF NOT EXISTS scan_candidates (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS scan_candidates_region_idx ON scan_candidates (region, kind);
+
+-- Which articles are about the reader's own names, judged by Decision-1.
+-- One row per (article, name) that matched; `impact` is the model's call on
+-- whether the news is good or bad for a shareholder. documents.matched_at
+-- marks an article as judged, matched or not, so nothing is asked twice.
+CREATE TABLE IF NOT EXISTS news_matches (
+  doc_id      BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  symbol      TEXT NOT NULL,
+  name        TEXT NOT NULL,
+  p_about     DOUBLE PRECISION NOT NULL,
+  impact      TEXT,
+  impact_p    DOUBLE PRECISION,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (doc_id, symbol)
+);
+CREATE INDEX IF NOT EXISTS news_matches_symbol_idx ON news_matches (symbol, created_at DESC);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS matched_at TIMESTAMPTZ;
+
+-- Company names for tickers outside the index universe (Kite holdings like
+-- JINDALSAW), looked up once: a name finds the story, a ticker rarely does.
+CREATE TABLE IF NOT EXISTS name_cache (
+  symbol     TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

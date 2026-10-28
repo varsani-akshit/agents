@@ -8,6 +8,7 @@ model, no network — and every figure is measured.
 from __future__ import annotations
 
 import logging
+from datetime import timezone
 
 import db
 
@@ -66,6 +67,18 @@ def book() -> dict:
                              WHERE kind = 'near'
                              ORDER BY (detail->>'level') IS NULL,
                                       (detail->>'distance_pct')::float LIMIT 30""")][:15]
+    try:
+        from brain import news_match
+
+        out["news"] = [
+            {"symbol": bare(r["symbol"]), "name": r["name"], "title": r["title"],
+             "source": r["source"], "tier": r["source_tier"], "url": r["url"],
+             "at": r["at"].astimezone(timezone.utc).strftime("%d %b %H:%M"), "read": r["impact"],
+             "session_move_pct": r["move_pct"]}
+            for r in news_match.recent(hours=36, per_name=3)]
+    except Exception as exc:  # noqa: BLE001
+        log.warning("news matches unavailable: %s", exc)
+        out["news"] = []
     out["funds"] = settings().get("new_funds") or {}
     out["markets_sending"] = [r["region"] for r in db.query(
         "SELECT region FROM portfolio_backtests WHERE (stats->>'passed')::boolean")]
@@ -86,6 +99,14 @@ def as_text(b: dict, max_holdings: int = 25) -> str:
         lines.append(f"  {h['symbol']} ({h['exchange']}, {h['broker']}) value {h['currency']} "
                      f"{h['value']:,} · {h['pnl_pct']:+}% vs cost"
                      + (f" · {', '.join(flags)}" if flags else ""))
+    if b.get("news"):
+        lines.append("News about the reader's own names, last 36 hours (matched by a judging "
+                     "model — verify before relying; 'read' is that model's good/bad call and is "
+                     "sometimes wrong, the session move is measured):")
+        for n in b["news"]:
+            mv = "" if n["session_move_pct"] is None else f", {n['symbol']} {n['session_move_pct']:+.1f}% that session"
+            lines.append(f"  {n['symbol']}: \"{n['title']}\" — {n['source']} (tier {n['tier']}), "
+                         f"{n['at']} UTC, read: {n['read']}{mv}. {n['url'] or ''}")
     if b.get("tickets"):
         lines.append("Open tickets from Alfred's advisor:")
         lines += [f"  {t['symbol']} ({t['market']}) {t['strategy']} limit {t['limit']:.2f} "

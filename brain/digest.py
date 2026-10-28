@@ -78,12 +78,18 @@ most needs to know, most important first. Where several share one cause, say so.
 ## Your money
 
 What this window meant for the reader's own book (given to you below as
-"The reader's book"). One bullet per holding, ticket or market that a story
-actually touched — name it, say what happened that reaches it, and whether
+"The reader's book", including news matched to each of their names). One
+bullet per holding, ticket or market that a story actually touched — name it, say what happened that reaches it, and whether
 the news strengthens or weakens the case for holding it, with the measured
 evidence. Then one bullet on the largest risk to the book as it stands, if a
 story raised one. Holdings untouched by the news are not listed. If nothing in
 the window reached the book, say so in one line and name what came closest.
+
+Company-specific news about a holding comes first — results, guidance, deals,
+regulatory action, management, insider trades — from the matched articles,
+each cited with its link. The matcher's good/bad "read" is a hint and is
+sometimes wrong: judge from the article and the measured session move, and
+if they disagree, believe the move and the article.
 
 Analysis, never instruction: "the case for holding Coal India weakened as the
 coal tax took effect", not "sell Coal India". Alfred's advisor sends the
