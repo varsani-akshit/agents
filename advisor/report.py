@@ -91,6 +91,10 @@ def compose(result: dict, regime: str | None = None) -> tuple[str, str, str] | N
         parts += [f"Macro backdrop (Alfred's world model): {regime}", ""]
     for t in tickets:
         parts += [ticket_text(t), ""]
+    if result.get("left_out"):
+        parts += [f"{result['left_out']} more signals fired today; these are the "
+                  f"{len(tickets)} strongest by 12-month momentum. The rest are on the "
+                  "Ideas page only if you ask for a preview scan.", ""]
     if fresh:
         parts += ["Holdings that just closed below their trailing stop:"]
         parts += [f"  {h['display']}: close {_money(h['currency'], h['close'])}, stop "

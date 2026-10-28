@@ -30,7 +30,7 @@ import pandas as pd
 
 import db
 from advisor import REGIONS, market_of, settings
-from advisor.strategies import STRATEGIES, Strategy, indicators
+from advisor.strategies import STRATEGIES, Strategy, add_momentum_rank, indicators
 
 log = logging.getLogger("alfred.simulate")
 
@@ -216,6 +216,7 @@ def _frames(region: str) -> dict[str, pd.DataFrame]:
         df = bars.load(s, years=cfg["history_years"])
         if len(df) > WARMUP + 60:
             out[s] = indicators(df)
+    add_momentum_rank(out)
     return out
 
 

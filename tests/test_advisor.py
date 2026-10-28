@@ -211,3 +211,63 @@ def test_scheduler_runs_the_advisor_after_each_close():
 
     ids = {j.id for j in build_scheduler().get_jobs()}
     assert {"advise_in", "advise_asx", "advise_us", "retest"} <= ids
+
+
+# ───────────────────────────── second batch ─────────────────────────────────
+def _frame_from(close):
+    close = list(close)
+    return indicators(pd.DataFrame(
+        {"open": close, "high": [c * 1.01 for c in close], "low": [c * 0.99 for c in close],
+         "close": close}, index=pd.date_range("2015-01-01", periods=len(close), freq="B")))
+
+
+def test_monthly_strategies_only_act_on_the_first_session_of_a_month():
+    x = _frame_from(np.linspace(50, 150, 600))
+    for name in ("abs_momentum", "momentum_rotation"):
+        x["mom_rank"] = 0.95
+        entries = STRATEGIES[name].rules(x)["entry"]
+        assert entries.any(), name
+        assert (x.loc[entries[entries].index, "month_start"]).all(), name
+
+
+def test_rotation_needs_a_rank_and_cannot_enter_without_one():
+    x = _frame_from(np.linspace(50, 150, 600))
+    assert not STRATEGIES["momentum_rotation"].rules(x)["entry"].any()
+
+
+def test_momentum_rank_is_relative_to_the_region():
+    from advisor.strategies import add_momentum_rank
+
+    strong = _frame_from(np.linspace(50, 200, 600))
+    weak = _frame_from(np.linspace(50, 60, 600))
+    frames = {"S": strong, "W": weak}
+    add_momentum_rank(frames)
+    assert strong["mom_rank"].iloc[-1] == 1.0 and weak["mom_rank"].iloc[-1] == 0.5
+
+
+def test_near_high_fires_on_arrival_not_every_day_at_the_top():
+    x = _frame_from(np.linspace(50, 150, 600))
+    entries = STRATEGIES["near_52w_high"].rules(x)["entry"]
+    # A steady climb sits at its high every day: that is one arrival, not 300.
+    assert entries.sum() <= 2
+
+
+def test_quiet_trend_needs_the_cross_itself():
+    down_then_up = list(np.linspace(150, 100, 300)) + list(np.linspace(100, 160, 300))
+    x = _frame_from(down_then_up)
+    sig = STRATEGIES["quiet_trend"].rules(x)
+    cross = (x["sma20"] > x["sma100"]) & (x["sma20"].shift() <= x["sma100"].shift())
+    assert not (sig["entry"] & ~cross).any()
+
+
+def test_a_scan_never_floods_the_inbox():
+    """Monthly strategies fired on 142 US names on one day in the first run.
+    The scan keeps the strongest few, one per name, and counts the rest."""
+    from advisor.scan import select
+
+    tickets = [{"symbol": f"S{i % 40}", "mom_rank": i / 100} for i in range(100)]
+    kept, left_out = select(tickets, 5)
+    assert [t["mom_rank"] for t in kept] == [0.99, 0.98, 0.97, 0.96, 0.95]
+    assert len({t["symbol"] for t in kept}) == 5
+    assert left_out == 35, "40 distinct names, 5 kept"
+    assert select([{"symbol": "A", "mom_rank": None}], None) == ([{"symbol": "A", "mom_rank": None}], 0)

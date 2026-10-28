@@ -11,6 +11,10 @@ risk_per_trade_pct: 0.5
 max_position_pct: 10
 # A limit order not filled within this many sessions is withdrawn.
 validity_sessions: 3
+# At most this many new tickets per market per scan, strongest 12-1 momentum
+# first. Monthly strategies can fire on 140 US names on one day; that is a
+# screen, not advice anyone can fund or act on.
+max_new_ideas_per_scan: 5
 
 # ── Costs ────────────────────────────────────────────────────────────────────
 # Round-trip cost as a percentage of the trade value: brokerage, taxes, fees

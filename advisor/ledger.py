@@ -31,6 +31,9 @@ def update() -> dict:
         if strat is None or x.empty:
             continue
         x = indicators(x)
+        if strat.name == "momentum_rotation":
+            # Its exit depends on the name's rank within the region that day.
+            x = _with_rank(idea["symbol"], x)
         try:
             i = x.index.get_loc(pd.Timestamp(idea["signal_date"]))
         except KeyError:
@@ -62,3 +65,16 @@ def scoreboard() -> dict:
     return {"overall": summarize([r["r_multiple"] for r in rows]),
             "by_strategy": {k: summarize(v) for k, v in by.items()},
             "counts": counts}
+
+
+def _with_rank(symbol: str, x: pd.DataFrame) -> pd.DataFrame:
+    from advisor import REGIONS, region_of
+    from advisor.strategies import add_momentum_rank
+
+    region = REGIONS[region_of(market_of(symbol))]
+    frames = {s: indicators(bars.load(s, years=2)) for s in bars.universe()
+              if market_of(s) in region and s != symbol}
+    frames = {s: f for s, f in frames.items() if len(f) > 260}
+    frames[symbol] = x
+    add_momentum_rank(frames)
+    return frames[symbol]

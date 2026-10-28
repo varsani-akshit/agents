@@ -25,7 +25,7 @@ import numpy as np
 import db
 from advisor import BROKER, CURRENCY, REGIONS, bare, bars, market_of, settings
 from advisor.simulate import WARMUP, evidence
-from advisor.strategies import STRATEGIES, chandelier_stop, indicators
+from advisor.strategies import STRATEGIES, add_momentum_rank, chandelier_stop, indicators
 
 log = logging.getLogger("alfred.scan")
 
@@ -171,13 +171,19 @@ def scan(region: str, *, preview: bool = False) -> dict:
     syms = [s for s in bars.universe() if market_of(s) in REGIONS[region]]
     as_of = None
 
+    # Load the whole region first: momentum rank compares every name with
+    # every other on the same day, so no single name can be judged alone.
+    frames = {}
     for sym in syms:
         df = bars.load(sym, years=2)
         if len(df) < WARMUP:
             if sym in held:
                 risks.append(_too_new(sym, held[sym], len(df)))
             continue
-        x = indicators(df)
+        frames[sym] = indicators(df)
+    add_momentum_rank(frames)
+
+    for sym, x in frames.items():
         as_of = max(as_of or x.index[-1], x.index[-1])
         if sym in held:
             risks.append(holding_risk(sym, x, held[sym]))
@@ -195,13 +201,32 @@ def scan(region: str, *, preview: bool = False) -> dict:
             t = ticket(sym, strat, x, accts, held)
             _attach_evidence(t, ev, own)
             t["preview"] = preview and not ev["passed"]
+            rank = x["mom_rank"].iloc[-1] if "mom_rank" in x else np.nan
+            t["mom_rank"] = None if np.isnan(rank) else float(rank)
             tickets.append(t)
+
+    tickets, left_out = select(tickets, settings().get("max_new_ideas_per_scan"))
 
     stored = 0 if preview else _store(tickets)
     risks.sort(key=lambda r: (not r["newly_below"], not r["below_stop"], r["stop_gap_pct"]))
     return {"region": region, "as_of": as_of and as_of.date(), "tickets": tickets,
-            "holdings": risks, "stored": stored,
+            "left_out": left_out, "holdings": risks, "stored": stored,
             "gate": {n: bool(e and e["passed"]) for n, e in pooled.items()}}
+
+
+def select(tickets: list[dict], cap: int | None) -> tuple[list[dict], int]:
+    """The strongest few tickets by momentum, one per name.
+
+    Applied after the simulation, which took every signal — so the email
+    says how many were left out rather than pretending there were no others.
+    """
+    seen, kept = set(), []
+    for t in sorted(tickets, key=lambda t: -(t.get("mom_rank") or 0)):
+        if t["symbol"] not in seen:
+            seen.add(t["symbol"])
+            kept.append(t)
+    cap = cap or len(kept)
+    return kept[:cap], max(0, len(kept) - cap)
 
 
 def _store(tickets: list[dict]) -> int:

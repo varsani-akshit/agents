@@ -62,7 +62,34 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     out["ll20"] = out["low"].rolling(20).min().shift()
     out["hh22"] = out["high"].rolling(22).max()
     out["atr22"] = atr(out, 22)
+    # Second batch: trend, momentum, and distance from the yearly high.
+    out["sma100"] = c.rolling(100).mean()
+    out["hh252"] = out["high"].rolling(252).max().shift()
+    out["ret12"] = c / c.shift(252) - 1
+    # 12-1 momentum: the year's return excluding the last month, which
+    # the literature finds tends to reverse rather than continue.
+    out["mom12_1"] = c.shift(21) / c.shift(252) - 1
+    out["atr_pct"] = out["atr14"] / c
+    out["atr_pct_med"] = out["atr_pct"].rolling(252).median()
+    # First session of each month: the monthly strategies only act on these.
+    months = pd.Series(out.index.to_period("M"), index=out.index)
+    out["month_start"] = months != months.shift()
     return out
+
+
+def add_momentum_rank(frames: dict[str, pd.DataFrame]) -> None:
+    """Rank every name's 12-1 momentum against the rest of its region, per day.
+
+    A percentile in [0, 1]: 0.9 means stronger than 90% of the region that
+    day. Written into each frame as `mom_rank`; a name with too little
+    history to have momentum gets NaN and cannot enter.
+    """
+    if not frames:
+        return
+    panel = pd.DataFrame({sym: x["mom12_1"] for sym, x in frames.items()})
+    ranks = panel.rank(axis=1, pct=True)
+    for sym, x in frames.items():
+        x["mom_rank"] = ranks[sym].reindex(x.index)
 
 
 # ─────────────────────────────── strategies ─────────────────────────────────
@@ -151,6 +178,82 @@ def _breakout_reasons(r):
     ]
 
 
+# 4 · Quiet trend start — the 20-day average crosses above the 100-day while
+# volatility is below its own one-year median. Trends that begin calm are the
+# ones the breakout's large swings were missing.
+def _quiet_trend_rules(x):
+    cross = (x["sma20"] > x["sma100"]) & (x["sma20"].shift() <= x["sma100"].shift())
+    entry = cross & (x["atr_pct"] < x["atr_pct_med"])
+    return _frame(x, entry, x["close"] - 2 * x["atr14"], x["sma20"] < x["sma100"])
+
+
+def _quiet_trend_reasons(r):
+    return [
+        f"Trend turning up: the 20-day average ({r.sma20:,.2f}) just crossed above the "
+        f"100-day ({r.sma100:,.2f}).",
+        f"Calm start: daily range is {r.atr_pct * 100:.2f}% of price, below its one-year "
+        f"median of {r.atr_pct_med * 100:.2f}%.",
+        "Exit when the 20-day average falls back below the 100-day, or at the stop.",
+    ]
+
+
+# 5 · Momentum rotation — on the first session of each month, buy names in the
+# top 10% of their region by 12-1 momentum, above their 200-day average; sell
+# at a month start once they drop out of the top 30%.
+def _rotation_rules(x):
+    rank = x["mom_rank"] if "mom_rank" in x else pd.Series(np.nan, index=x.index)
+    entry = x["month_start"] & (rank >= 0.9) & (x["close"] > x["sma200"])
+    exit_ = x["month_start"] & (rank < 0.7)
+    return _frame(x, entry, x["close"] - 4 * x["atr14"], exit_)
+
+
+def _rotation_reasons(r):
+    return [
+        f"Leader: 12-month return excluding the last month is {r.mom12_1 * 100:+.1f}%, "
+        f"stronger than {r.mom_rank * 100:.0f}% of its market.",
+        f"In an uptrend: {_pct(r.close, r.sma200)} vs its 200-day average.",
+        "Reviewed on the first session of each month; sold once it falls out of the top 30%. "
+        "Protective stop 4 daily ranges below entry.",
+    ]
+
+
+# 6 · Near the 52-week high — closes within 2% of its highest price of the
+# past year (George & Hwang, 2004). Held six months unless the stop is hit.
+def _near_high_rules(x):
+    near = x["close"] >= 0.98 * x["hh252"]
+    entry = near & ~near.shift(fill_value=False) & (x["close"] > x["sma200"])
+    never = pd.Series(False, index=x.index)
+    return _frame(x, entry, x["close"] - 3 * x["atr14"], never)
+
+
+def _near_high_reasons(r):
+    return [
+        f"At the year's high: close {r.close:,.2f} is within 2% of its 52-week high "
+        f"({r.hh252:,.2f}).",
+        f"Trend confirmed: {_pct(r.close, r.sma200)} vs its 200-day average.",
+        "Held for six months (126 sessions) unless the stop, 3 daily ranges below, is hit.",
+    ]
+
+
+# 7 · Absolute momentum — on each month's first session, own anything whose
+# 12-month return is positive and which is above its 200-day average; sell at
+# a month start once the 12-month return turns negative (Moskowitz, Ooi &
+# Pedersen's time-series momentum, applied name by name).
+def _abs_mom_rules(x):
+    entry = x["month_start"] & (x["ret12"] > 0) & (x["close"] > x["sma200"])
+    exit_ = x["month_start"] & (x["ret12"] < 0)
+    return _frame(x, entry, x["close"] - 4 * x["atr14"], exit_)
+
+
+def _abs_mom_reasons(r):
+    return [
+        f"Positive year: up {r.ret12 * 100:+.1f}% over 12 months.",
+        f"Above its 200-day average ({_pct(r.close, r.sma200)}).",
+        "Reviewed each month start; sold once the 12-month return turns negative. "
+        "Protective stop 4 daily ranges below entry.",
+    ]
+
+
 STRATEGIES: dict[str, Strategy] = {s.name: s for s in (
     Strategy("rsi2_pullback", "Pullback in an uptrend",
              "Buys a 2-day RSI washout above the 200-day average", 10,
@@ -161,6 +264,18 @@ STRATEGIES: dict[str, Strategy] = {s.name: s for s in (
     Strategy("breakout_55", "55-day breakout",
              "Buys a new 55-day high above the 200-day average; exits on a 20-day low", 120,
              _breakout_rules, _breakout_reasons),
+    Strategy("quiet_trend", "Calm trend start",
+             "20/100-day average cross while volatility is below its yearly median", 250,
+             _quiet_trend_rules, _quiet_trend_reasons),
+    Strategy("momentum_rotation", "Momentum leader",
+             "Top 10% of its market by 12-1 momentum, reviewed monthly", 260,
+             _rotation_rules, _rotation_reasons),
+    Strategy("near_52w_high", "At its 52-week high",
+             "Closes within 2% of its yearly high; held six months", 126,
+             _near_high_rules, _near_high_reasons),
+    Strategy("abs_momentum", "Positive 12-month trend",
+             "Positive 12-month return and above the 200-day, reviewed monthly", 260,
+             _abs_mom_rules, _abs_mom_reasons),
 )}
 
 
