@@ -2,9 +2,12 @@
 
 Each adapter answers three questions about a real account: what is held, what
 is open, and how much cash is free. None of them can place, modify or cancel
-an order. That is not an oversight to be patched in an adapter later: when
-Alfred trades, orders will go through a single risk gate in code that checks
-limits before any broker sees them, and the adapters stay read-only underneath.
+an order, and none ever will.
+
+Alfred advises; people trade. It may say "buy X at this limit, stop at Y, and
+here is why", but the order is always placed by hand, in Kite or Webull. That
+is a decision about the product, not a missing feature: tests scan the whole
+codebase for order-placing calls and fail if one appears.
 """
 from __future__ import annotations
 

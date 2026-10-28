@@ -6,3 +6,4 @@ logs/
 outbox/
 .pytest_cache/
 secrets/
+webull_trade_sdk.log

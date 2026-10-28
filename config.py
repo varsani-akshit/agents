@@ -81,6 +81,13 @@ WEBULL_APP_SECRET = os.getenv("WEBULL_APP_SECRET", "")
 # "au" for Webull Australia, "us" for Webull US. The SDK picks the host from it.
 WEBULL_REGION = os.getenv("WEBULL_REGION", "au").strip().lower()
 
+# Email, send-only via Resend. The key should be created with "Sending access",
+# not "Full access". Until a domain is verified in Resend, mail can only go
+# from onboarding@resend.dev to the address the Resend account was opened with.
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+EMAIL_TO = os.getenv("MIA_EMAIL_TO", "").strip()
+EMAIL_FROM = os.getenv("MIA_EMAIL_FROM", "Alfred <onboarding@resend.dev>").strip()
+
 EMBED_MODEL = "voyage-finance-2"
 EMBED_DIM = 1024
 

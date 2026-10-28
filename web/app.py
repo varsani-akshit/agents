@@ -977,6 +977,9 @@ _PORTFOLIO_NOTICES = {
     "kite_state": "That login link did not match this session — try again.",
     "kite_cancelled": "Zerodha login was cancelled.",
     "kite_refused": "Zerodha refused the login. The logs have the reason.",
+    "webull_keys": "Webull API keys are not set in .env.",
+    "webull_started": "Request sent — approve it in the Webull app now.",
+    "webull_running": "A Webull request is already waiting — approve that one.",
 }
 
 
@@ -992,8 +995,11 @@ async def portfolio(request: Request, notice: str = ""):
                         "totals": pf.totals(data["lines"]) if data else {}})
         return out
 
+    brokers = await asyncio.to_thread(gather)
     return page(request, "portfolio.html", {
-        "brokers": await asyncio.to_thread(gather),
+        "brokers": brokers,
+        "waiting": any((b["status"].get("attempt") or {}).get("state") == "waiting"
+                       for b in brokers),
         "notice": _PORTFOLIO_NOTICES.get(notice, ""),
         "active": "portfolio",
     })
@@ -1005,6 +1011,19 @@ async def portfolio_refresh():
 
     await asyncio.to_thread(pf.pull_all)
     return RedirectResponse("/portfolio?notice=refreshed", status_code=303)
+
+
+@app.post("/brokers/webull/connect")
+async def webull_connect():
+    """Ask Webull for a token; the page then waits for approval in the app."""
+    from brokers import webull
+
+    if not webull.configured():
+        return RedirectResponse("/portfolio?notice=webull_keys", status_code=303)
+    started = webull.start_connect()
+    return RedirectResponse(
+        "/portfolio?notice=" + ("webull_started" if started else "webull_running"),
+        status_code=303)
 
 
 @app.get("/brokers/kite/login")

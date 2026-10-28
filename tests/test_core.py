@@ -767,6 +767,29 @@ def test_kite_parsers_count_unsettled_shares_and_skip_closed_positions():
     assert funds["available"] == 1000.5 and funds["cash"] == 2000
 
 
+def test_kite_same_day_delivery_trades_are_not_double_counted():
+    """From a live NRI account: holdings already drop shares sold today, and
+    shares bought today appear only as a CNC position. A sale must not show
+    as a short; a purchase must not vanish until settlement."""
+    from brokers import kite
+
+    lines = kite.parse_positions({"net": [
+        {"tradingsymbol": "BAJFINANCE", "product": "CNC", "quantity": -20,
+         "average_price": 904.1, "pnl": -64},
+        {"tradingsymbol": "JPL", "product": "CNC", "quantity": 149,
+         "average_price": 1357.66, "last_price": 1358.5, "pnl": 125.25},
+        {"tradingsymbol": "RELIANCE", "product": "MIS", "quantity": 10},
+    ]}, "AB1234")
+    got = {ln.symbol: ln.kind for ln in lines}
+    assert got == {"JPL": "holding", "RELIANCE": "position"}
+
+    funds = kite.parse_margins({"equity": {"net": 471.78, "available": {
+        "cash": -876.8, "opening_balance": -876.8, "live_balance": 471.78,
+        "intraday_payin": 43500}, "utilised": {"debits": 42151.4}}})
+    assert funds["cash"] == 471.78, "opening balance shown as cash"
+    assert funds["payin_today"] == 43500
+
+
 def test_webull_parsers_tolerate_wrapped_and_bare_lists():
     from brokers import webull
 
@@ -776,9 +799,30 @@ def test_webull_parsers_tolerate_wrapped_and_bare_lists():
     lines = webull.parse_positions(rows, "acct")
     assert lines[0].symbol == "GLD" and lines[0].quantity == 3 and lines[0].pnl == 28.5
     assert webull._rows([{"a": 1}]) == [{"a": 1}]
-    bal = webull.parse_balance({"total_asset_currency": "USD", "total_cash_balance": "50",
-                                "account_currency_assets": [{"buying_power": "75"}]})
-    assert bal["cash"] == 50 and bal["available"] == 75 and bal["currency"] == "USD"
+    assert lines[0].exchange is None or lines[0].exchange == "US"
+
+
+def test_webull_balance_matches_a_live_au_account():
+    """Shape taken from a real Webull AU response: no total field, and buying
+    power listed per currency with the zero HKD entry first."""
+    from brokers import webull
+
+    bal = webull.parse_balance({
+        "total_asset_currency": "AUD", "total_market_value": "15294.42",
+        "total_cash_balance": "24.91", "total_unrealized_profit_loss": "-397.74",
+        "account_currency_assets": [
+            {"currency": "HKD", "market_value": "0.00", "cash_balance": "0.00", "buying_power": "0.00"},
+            {"currency": "AUD", "market_value": "15173.68", "cash_balance": "24.68", "buying_power": "24.68"},
+            {"currency": "USD", "market_value": "85.25", "cash_balance": "0.16", "buying_power": "0.16"},
+            {"currency": "CNH", "market_value": "0.00", "cash_balance": "0.00", "buying_power": "0.00"},
+        ]})
+    assert bal["currency"] == "AUD"
+    assert bal["available"] == 24.68, "buying power taken from the wrong currency"
+    assert bal["total"] == pytest.approx(15319.33)
+    assert set(bal["other"]) == {"USD"}
+    lines = webull.parse_positions([{"symbol": "TLX", "currency": "AUD", "quantity": "44.0",
+                                     "cost_price": "15.58", "last_price": "13.06"}], "a")
+    assert lines[0].exchange == "ASX"
 
 
 def test_broker_secrets_are_owner_only(tmp_path, monkeypatch):
@@ -804,3 +848,118 @@ def test_brokers_expose_no_order_methods():
     for mod in (kite, webull):
         names = [n.lower() for n in dir(mod)]
         assert not [n for n in names if any(w in n for w in ("order", "place", "cancel", "modify"))]
+
+
+def test_nothing_in_alfred_can_place_an_order():
+    """Alfred advises; people trade. This is the line that keeps it true.
+
+    Scans every source file for the calls that would send an order to Kite or
+    Webull — REST paths, SDK clients, method names. If this fails, someone has
+    started teaching Alfred to trade: that is a product decision to take
+    deliberately, not a diff to slip past review.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    forbidden = re.compile(
+        r"""(/orders\b                  # Kite REST: POST/PUT/DELETE /orders/...
+            |/gtt\b                     # Kite good-till-triggered orders
+            |\.order(_v\d)?\.           # Webull SDK: client.order / order_v2 / order_v3
+            |OrderOperation             # Webull SDK order classes
+            |place_order|modify_order|cancel_order|place_gtt
+            |trade/order                # Webull REST order paths
+            )""", re.X)
+    offenders = []
+    for path in root.rglob("*.py"):
+        rel = path.relative_to(root)
+        if rel.parts[0] in (".venv", "tests") or "site-packages" in rel.parts:
+            continue
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if forbidden.search(line):
+                offenders.append(f"{rel}:{n}: {line.strip()}")
+    assert not offenders, "order-placing code found:\n" + "\n".join(offenders)
+
+
+
+# ────────────────────────────────── email ───────────────────────────────────
+def test_email_is_silent_when_unconfigured(monkeypatch):
+    import config
+    from notify import email
+
+    monkeypatch.setattr(config, "RESEND_API_KEY", "")
+    assert email.send("s", "t") is None
+
+
+def test_email_sends_one_message_to_the_owner_only(monkeypatch):
+    """One recipient, a send-only bearer key, and an idempotency key so a
+    retried job cannot deliver the same alert twice."""
+    import httpx
+
+    import config
+    from notify import email
+
+    monkeypatch.setattr(config, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(config, "EMAIL_TO", "owner@example.com")
+    seen = {}
+
+    def fake_post(url, json, headers, timeout):
+        seen.update(url=url, json=json, headers=headers)
+        return httpx.Response(200, json={"id": "msg_1"})
+
+    monkeypatch.setattr(email.httpx, "post", fake_post)
+    assert email.send("Subject", "Body") == "msg_1"
+    assert seen["json"]["to"] == ["owner@example.com"]
+    assert seen["headers"]["Authorization"] == "Bearer re_test"
+    first = seen["headers"]["Idempotency-Key"]
+    email.send("Subject", "Body")
+    assert seen["headers"]["Idempotency-Key"] == first, "same content must dedupe"
+
+
+def test_email_failure_never_raises(monkeypatch):
+    import httpx
+
+    import config
+    from notify import email
+
+    monkeypatch.setattr(config, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(config, "EMAIL_TO", "owner@example.com")
+    monkeypatch.setattr(email.httpx, "post", lambda *a, **k: httpx.Response(
+        403, json={"message": "You can only send testing emails to your own address"}))
+    assert email.send("s", "t") is None
+
+    def boom(*a, **k):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(email.httpx, "post", boom)
+    assert email.send("s", "t") is None
+
+
+def test_webull_connect_runs_one_attempt_at_a_time(monkeypatch):
+    """Every attempt texts a fresh code, and two polling at once trips Webull's
+    rate limit — so a second click while one waits must do nothing."""
+    import threading
+
+    from brokers import webull
+
+    release = threading.Event()
+    calls = []
+
+    def fake_connect(wait_seconds=300):
+        calls.append(1)
+        release.wait(5)
+        raise webull.NotConnected("expired")
+
+    monkeypatch.setattr(webull, "connect", fake_connect)
+    monkeypatch.setattr(webull, "_attempt", {"state": None, "started": None, "error": None})
+    assert webull.start_connect() is True
+    assert webull.start_connect() is False, "a second attempt started"
+    assert webull.attempt()["state"] == "waiting"
+    release.set()
+    for _ in range(50):
+        if webull.attempt()["state"] != "waiting":
+            break
+        threading.Event().wait(0.05)
+    assert webull.attempt()["state"] == "failed" and len(calls) == 1
+    assert webull.start_connect() is True, "could not retry after a failure"
+    release.set()

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Portfolio — Alfred{% endblock %}
+{% block scripts %}{% if waiting %}<script src="{{ asset('portfolio.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <header class="ph">
   <div class="eyebrow">Your accounts · read-only</div>
@@ -29,11 +30,22 @@
     {% elif b.status.connected %}
       <span class="dot ok"></span> connected{% if b.status.account %} · {{ b.status.account }}{% endif %}
       {% if b.status.expires_at %} · session ends {{ b.status.expires_at[:16].replace('T', ' ') }}{% endif %}
+    {% elif b.status.attempt and b.status.attempt.state == 'waiting' %}
+      <span class="dot"></span> waiting for you to approve in the Webull app
+      · {{ b.status.attempt.waited }}s of 300s
     {% else %}
       <span class="dot bad"></span> not connected — {{ b.status.connect_hint }}
       {% if b.status.broker == 'kite' %}<a class="opt" href="/brokers/kite/login">Log in with Zerodha</a>{% endif %}
+      {% if b.status.broker == 'webull' %}
+      <form method="post" action="/brokers/webull/connect" style="display:inline">
+        <button type="submit" class="opt">Connect Webull</button>
+      </form>
+      {% endif %}
     {% endif %}
   </p>
+  {% if b.status.attempt and b.status.attempt.state == 'failed' %}
+  <p class="hint" style="color:var(--down)">Last attempt: {{ b.status.attempt.error }}</p>
+  {% endif %}
 
   {% set got = b.data %}
   {% if got and got.failed %}

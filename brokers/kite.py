@@ -142,6 +142,17 @@ def parse_holdings(rows: list[dict], account: str | None) -> list[Line]:
 
 
 def parse_positions(data: dict, account: str | None) -> list[Line]:
+    """Open risk that is not already a holding.
+
+    Delivery (CNC) trades appear here on the day they happen, and Kite's
+    holdings already account for one side of them, so they need care:
+      - sold today: holdings already show the reduced quantity (a full exit
+        reads 0), so the -20 here is the same sale again — skip it, or it
+        reads as a short an NRI delivery account cannot even hold;
+      - bought today: not in holdings until it settles (not even as T1), so
+        it is counted as a holding here, or it would vanish for a day.
+    Intraday and F&O positions are genuine open positions and stay as such.
+    """
     out = []
     # `net` is the running position; `day` is today's activity only. Closed
     # positions stay in the list with quantity 0 — those are history, not risk.
@@ -149,11 +160,16 @@ def parse_positions(data: dict, account: str | None) -> list[Line]:
         qty = num(p.get("quantity")) or 0
         if not qty:
             continue
+        delivery = p.get("product") == "CNC"
+        if delivery and qty < 0:
+            continue
         out.append(Line(
-            kind="position", symbol=p["tradingsymbol"], exchange=p.get("exchange"),
+            kind="holding" if delivery else "position",
+            symbol=p["tradingsymbol"], exchange=p.get("exchange"),
             account=account, quantity=qty, avg_price=num(p.get("average_price")),
             last_price=num(p.get("last_price")), pnl=num(p.get("pnl")),
-            currency="INR", product=p.get("product"), raw=p,
+            currency="INR", product="CNC · bought today" if delivery else p.get("product"),
+            raw=p,
         ))
     return out
 
@@ -161,9 +177,15 @@ def parse_positions(data: dict, account: str | None) -> list[Line]:
 def parse_margins(data: dict) -> dict:
     eq = (data or {}).get("equity") or {}
     co = (data or {}).get("commodity") or {}
+    avail = eq.get("available") or {}
     return {
         "currency": "INR",
-        "cash": num((eq.get("available") or {}).get("cash")),
+        # `cash` in Kite's response is the opening balance: it ignores money
+        # added today. `live_balance` includes today's pay-in and trades.
+        "cash": num(avail.get("live_balance")) if avail.get("live_balance") is not None
+        else num(avail.get("cash")),
+        "opening_balance": num(avail.get("opening_balance")),
+        "payin_today": num(avail.get("intraday_payin")),
         "available": num(eq.get("net")),
         "used": num((eq.get("utilised") or {}).get("debits")),
         "commodity_available": num(co.get("net")),

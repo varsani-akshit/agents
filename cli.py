@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import logging
 import sys
@@ -358,6 +359,25 @@ def cmd_broker(args) -> int:
     return 2
 
 
+def cmd_email(args) -> int:
+    """Send a test email to the owner, to prove delivery end to end."""
+    from notify import email, out
+
+    if not email.configured():
+        out.error("set RESEND_API_KEY and MIA_EMAIL_TO in .env first")
+        return 2
+    msg_id = email.send(
+        "Alfred can reach you",
+        "This is a test from Alfred. Trade ideas will arrive here — as advice "
+        "only. Alfred never places orders; you do, in Kite or Webull.",
+        key=f"test-{datetime.now(timezone.utc):%Y%m%d%H%M%S}")
+    if not msg_id:
+        out.error("Resend refused the message — see the log line above for why")
+        return 1
+    out.info(f"sent to {config.EMAIL_TO} (id {msg_id})")
+    return 0
+
+
 def cmd_lockdown(args) -> int:
     """Back to one owner: disable every other account, revoke every share link.
 
@@ -506,6 +526,9 @@ def build_parser() -> argparse.ArgumentParser:
     br.add_argument("--token", help="Kite request_token, for connecting without the web page")
     br.add_argument("--raw", action="store_true", help="with show webull: unparsed responses")
     br.set_defaults(func=cmd_broker)
+
+    sub.add_parser("email-test", help="send a test email to MIA_EMAIL_TO").set_defaults(
+        func=cmd_email)
 
     lk = sub.add_parser("lockdown",
                         help="disable every account but the owner's and revoke share links")
