@@ -24,6 +24,13 @@ benchmark:
   ASX: IOZ.AX
   US: SPY
 
+# Money you have set aside to add when a good ticket needs it, in each
+# account's own currency. Sizing counts it as part of the account, and a
+# ticket that needs more than the free cash says how much of it to add.
+new_funds:
+  kite: 100000      # INR, into Zerodha
+  webull: 3500      # AUD, into Webull AU
+
 # ── Costs ────────────────────────────────────────────────────────────────────
 # Round-trip cost as a percentage of the trade value: brokerage, taxes, fees
 # and slippage, both sides. Deliberately pessimistic — a strategy that only

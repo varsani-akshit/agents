@@ -213,6 +213,32 @@ def asset(path: str) -> str:
 
 templates.env.globals["asset"] = asset
 
+# The Alfred mark: an "A" whose crossbar is a rising price line that breaks
+# out through the right leg and ends in a signal dot — the butler who reads
+# the market for you. Drawn in currentColor so it takes the brand green.
+LOGO_PATHS = (
+    '<path d="M4.5 20.5 12 3.5l7.5 17" fill="none" stroke="currentColor" stroke-width="2.3" '
+    'stroke-linecap="round" stroke-linejoin="round"/>'
+    '<path d="M7.4 14.9l2.9-2.6 2.2 1.9 4.6-4.9" fill="none" stroke="currentColor" '
+    'stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>'
+    '<circle cx="18.6" cy="8.6" r="1.75" fill="currentColor"/>'
+)
+
+
+def logo(size: int = 20, cls: str = "mark") -> Markup:
+    return Markup(f'<svg class="{cls}" viewBox="0 0 24 24" width="{size}" height="{size}" '
+                  f'role="img" aria-label="Alfred">{LOGO_PATHS}</svg>')
+
+
+# Favicon: the mark in green on a near-black rounded tile.
+FAVICON = ("data:image/svg+xml," + (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
+    "<rect width='24' height='24' rx='5.5' fill='%230B0D0C'/>"
+    "<g transform='translate(1.6 1.4) scale(.86)' color='%2322C55E'>"
+    + LOGO_PATHS.replace('"', "'") + "</g></svg>"))
+templates.env.globals["logo"] = logo
+templates.env.globals["FAVICON"] = FAVICON
+
 
 templates.env.filters["ago"] = _ago
 templates.env.filters["utc"] = _utc

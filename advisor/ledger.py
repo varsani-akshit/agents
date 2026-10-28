@@ -23,8 +23,16 @@ _STATUS = {"pending": "open", "expired": "expired", "open": "filled", "closed": 
 
 
 def update() -> dict:
+    """Replay every live idea. Returns what changed, and which exits are due.
+
+    `exit_due`: the strategy's own exit fired on the latest close, so the
+    position should be sold at the next open — the one moment an exit email
+    is still actionable. `closed`: ideas that finished this run (stop, target,
+    time, or yesterday's exit signal), for the record.
+    """
     cfg = settings()
     changed = 0
+    exit_due, closed = [], []
     for idea in db.query("SELECT * FROM ideas WHERE status IN ('open', 'filled')"):
         strat = STRATEGIES.get(idea["strategy"])
         x = bars.load(idea["symbol"], years=2)
@@ -52,7 +60,14 @@ def update() -> dict:
             (status, d(out.fill_i), out.fill, d(out.exit_i), out.exit, out.reason,
              out.r, idea["id"]))
         changed += status != idea["status"]
-    return {"updated": changed}
+        brief = {"id": idea["id"], "symbol": idea["symbol"], "broker": idea["broker"],
+                 "strategy": idea["strategy"], "currency": idea["currency"],
+                 "fill_price": out.fill, "last": float(x["close"].iloc[-1])}
+        if out.status == "open" and out.reason == "exit at next open":
+            exit_due.append({**brief, "reason": "the strategy's exit fired at today's close"})
+        elif status == "closed" and idea["status"] != "closed":
+            closed.append({**brief, "reason": out.reason, "exit_price": out.exit, "r": out.r})
+    return {"updated": changed, "exit_due": exit_due, "closed": closed}
 
 
 def scoreboard() -> dict:

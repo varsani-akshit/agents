@@ -12,14 +12,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ asset('style.css') }}">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23111111'/><polygon points='1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16' fill='%23EA580C'/></svg>">
+<link rel="icon" href="{{ FAVICON }}">
 </head>
 <body>
 {# No navigation, deliberately: the recipient sees this brief and has no route
    into the archive, the charts, or anything else. #}
 <nav class="nav">
   <div class="nav-in">
-    <span class="wordmark"><svg class="mark" viewBox="0 0 32 28" width="24" height="21" role="img" aria-label="Alfred"><polygon points="1,15 9,10 12,12 14,7 16,10 18,7 20,12 23,10 31,15 24,16 21,21 18,16 16,22 14,16 11,21 8,16" fill="currentColor"/></svg>ALFRED</span>
+    <span class="wordmark">{{ logo(20) }}ALFRED</span>
     <span class="tick">shared brief</span>
   </div>
 </nav>

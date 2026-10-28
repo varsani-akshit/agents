@@ -1,111 +1,180 @@
 {% extends "base.html" %}
 {% block title %}Today — Alfred{% endblock %}
 {% macro money(ccy, v, dp=0) %}{% if v is none %}—{% else %}{{ {'INR': '₹', 'AUD': 'A$', 'USD': 'US$'}.get(ccy, (ccy or '') ~ ' ') }}{{ ('{:,.' ~ dp ~ 'f}').format(v) }}{% endif %}{% endmacro %}
+{% macro broker_name(b) %}{{ 'Kite' if b == 'kite' else 'Webull' }}{% endmacro %}
 {% block content %}
 <header class="ph">
-  <div class="eyebrow">{{ first_name and ('Good to see you, ' ~ first_name) or 'Today' }}</div>
+  <div class="eyebrow">{{ first_name and ('Good to see you, ' ~ first_name) or 'Today' }}{% if scanned_at %} · markets scanned {{ scanned_at|ago }}{% endif %}</div>
   <h1>Today</h1>
-  <p class="sub">What to act on. Alfred advises; you place every order yourself.</p>
+  <p class="sub">What to buy, what to sell, what to fund — and what's next. Alfred advises; you place every order.</p>
 </header>
 
 {% for b in books if b.status.configured and not b.status.connected %}
 <div class="notice notice-warn">
-  <span><b>{{ b.status.label }}</b> is not connected — holdings shown are from {{ b.as_of|ago if b.as_of else 'never' }}.</span>
+  <span><b>{{ b.status.label }}</b> is not connected — figures are from {{ b.as_of|ago if b.as_of else 'never' }}.</span>
   {% if b.broker == 'kite' %}<a class="btn btn-sm" href="/brokers/kite/login">Log in with Zerodha</a>
   {% else %}<form method="post" action="/brokers/webull/connect" style="margin-left:auto"><button class="btn-sm">Connect Webull</button></form>{% endif %}
 </div>
 {% endfor %}
 
+{# ── The numbers ─────────────────────────────────────────────────────── #}
 <div class="stat-row">
   {% for b in books %}
   <a class="kpi" href="/portfolio">
-    <div class="kpi-label">{{ 'Kite · India' if b.broker == 'kite' else 'Webull · AU/US' }}</div>
+    <div class="kpi-label">{{ 'Kite · India' if b.broker == 'kite' else 'Webull · AU / US' }}</div>
     <div class="kpi-value">{{ money(b.currency, b.value) }}</div>
-    <div class="kpi-hint">
-      {% if b.pnl is not none %}<span class="{{ 'up' if b.pnl >= 0 else 'down' }}">{{ '{:+,.0f}'.format(b.pnl) }}</span> unrealised · {% endif %}{{ money(b.currency, b.cash) }} free
-    </div>
+    <div class="kpi-hint">{% if b.pnl is not none %}<span class="{{ 'up' if b.pnl >= 0 else 'down' }}">{{ '{:+,.0f}'.format(b.pnl) }}</span> unrealised · {% endif %}{{ money(b.currency, b.cash) }} free</div>
   </a>
   {% endfor %}
   <a class="kpi" href="/ideas">
-    <div class="kpi-label">Open ideas</div>
-    <div class="kpi-value">{{ ideas|length }}</div>
-    <div class="kpi-hint">{{ closed|length }} closed recently</div>
+    <div class="kpi-label">Act on</div>
+    <div class="kpi-value">{{ ideas|selectattr('status', 'equalto', 'open')|list|length }} buy · {{ exits|length }} sell</div>
+    <div class="kpi-hint">{{ attention|length }} holdings below their stop</div>
   </a>
   <a class="kpi" href="/simulations">
     <div class="kpi-label">Markets sending</div>
     <div class="kpi-value">{{ regions|selectattr('sending')|list|length }} of {{ regions|length }}</div>
-    <div class="kpi-hint">passed the gate</div>
+    <div class="kpi-hint">{{ board.overall.trades or 0 }} ideas closed{% if board.overall.trades %} · {{ '{:+.2f}R'.format(board.overall.expectancy_r) }} each{% endif %}</div>
   </a>
 </div>
 
+{# ── Act now ─────────────────────────────────────────────────────────── #}
 <div class="section grid">
   <div class="card">
-    <div class="card-head"><h2>New tickets</h2><a href="/ideas">All ideas →</a></div>
+    <div class="card-head"><h2>Buy</h2><a href="/ideas">All ideas →</a></div>
     {% for i in ideas %}
     <div class="ticket">
       <div class="ticket-top">
         <span class="ticket-act">{{ i.action }}</span>
         <span class="ticket-sym">{{ i.symbol.split('.')[0] }}</span>
-        <span class="muted">{{ i.market }} · in {{ 'Kite' if i.broker == 'kite' else 'Webull' }}</span>
-        <span class="badge {{ 'badge-ok' if i.status == 'filled' else '' }}" style="margin-left:auto">{{ 'would have filled' if i.status == 'filled' else 'open until ' ~ i.valid_until.strftime('%a %d %b') }}</span>
+        <span class="muted">{{ i.market }} · {{ broker_name(i.broker) }}</span>
+        <span class="badge {{ 'badge-ok' if i.status == 'filled' else 'badge-warn' }}" style="margin-left:auto">{{ 'holding — watch the exit' if i.status == 'filled' else 'place by ' ~ i.valid_until.strftime('%a %d %b') }}</span>
       </div>
       <div class="ticket-figs">
         <span>limit <b>{{ '{:,.2f}'.format(i.limit_price) }}</b></span>
         <span>stop <b>{{ '{:,.2f}'.format(i.stop_price) }}</b></span>
         {% if i.quantity %}<span>qty <b>{{ '{:g}'.format(i.quantity) }}</b></span>{% endif %}
         {% if i.risk_amount %}<span>risks <b>{{ money(i.currency, i.risk_amount, 2) }}</b></span>{% endif %}
+        {% if i.evidence and i.evidence.median_days %}<span>typical hold <b>{{ i.evidence.median_days }}d</b></span>{% endif %}
       </div>
       {% if i.reasons %}<ul class="ticket-why">{% for r in i.reasons[:2] %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
     </div>
     {% else %}
-    <div class="card-body muted">No open tickets. Alfred emails you after each market closes when a strategy that passed the gate fires.</div>
+    <div class="card-body muted">No open tickets. They arrive by email after each market closes, when a strategy that passed the gate fires.</div>
     {% endfor %}
   </div>
 
-  <div class="card">
-    <div class="card-head"><h2>Holdings below their trailing stop</h2><a href="/portfolio">Portfolio →</a></div>
-    <ul class="list">
-      {% for h in attention %}
-      <li>
-        <div class="grow">
-          <div class="t">{{ h.display }} {% if h.newly_below %}<span class="badge badge-bad">just broke</span>{% endif %}</div>
-          <div class="s">{{ 'Kite' if h.broker == 'kite' else 'Webull' }}{% if h.below_200d %} · under its 200-day average{% endif %}</div>
-        </div>
-        <div class="num" style="text-align:right">
-          {{ money(h.currency, h.close, 2) }}<br><span class="muted">stop {{ money(h.currency, h.stop, 2) }}</span>
-        </div>
-      </li>
-      {% else %}
-      <li class="muted">Every holding is above its trailing stop.</li>
-      {% endfor %}
-    </ul>
-    <div class="card-body hint" style="border-top:1px solid var(--line)">Stop = 3 daily ranges under the 22-day high. A risk level, not a gated trade.</div>
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Sell</h2><span class="hint">exits due · stops broken</span></div>
+      <ul class="list">
+        {% for e in exits %}
+        <li>
+          <span class="ticket-act" style="background:var(--down-soft);color:var(--down)">SELL</span>
+          <div class="grow"><div class="t">{{ e.symbol.split('.')[0] }} at the next open</div>
+            <div class="s">{{ broker_name(e.detail.broker) }} · {{ e.detail.reason }}</div></div>
+        </li>
+        {% endfor %}
+        {% for h in attention %}
+        <li>
+          <div class="grow">
+            <div class="t">{{ h.display }} {% if h.newly_below %}<span class="badge badge-bad">just broke</span>{% else %}<span class="badge">below stop</span>{% endif %}</div>
+            <div class="s">{{ broker_name(h.broker) }}{% if h.below_200d %} · under its 200-day average{% endif %} · decide if the reason you hold it still stands</div>
+          </div>
+          <div class="num" style="text-align:right">{{ money(h.currency, h.close, 2) }}<br><span class="muted">stop {{ money(h.currency, h.stop, 2) }}</span></div>
+        </li>
+        {% endfor %}
+        {% if not exits and not attention %}<li class="muted">Nothing to sell. Every holding is above its trailing stop.</li>{% endif %}
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Fund</h2><span class="hint">from the money you set aside</span></div>
+      <ul class="list">
+        {% for f in funding %}
+        <li>
+          <div class="grow"><div class="t">{{ broker_name(f.broker) }}</div>
+            <div class="s">{{ money(f.currency, f.reserve) }} set aside · open tickets need {{ money(f.currency, f.tickets_cost) }}</div></div>
+          {% if f.add > 0 %}<span class="badge badge-warn">add {{ money(f.currency, f.add) }}</span>{% else %}<span class="badge badge-ok">no transfer needed</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
   </div>
 </div>
 
+{# ── What's next ─────────────────────────────────────────────────────── #}
+<section class="section">
+  <h2>Next opportunities</h2>
+  <p class="lead-in">Names close to triggering a strategy that passed the gate — measured distances, not forecasts. A ticket comes by email only if one actually fires.</p>
+  <div class="tablewrap">
+    <table class="data">
+      <thead><tr><th>Name</th><th>Market</th><th>Strategy</th><th>Waiting for</th><th class="num">Last</th></tr></thead>
+      <tbody>
+      {% for c in near %}{% set d = c.detail %}
+      <tr>
+        <td><strong>{{ d.display or c.symbol.split('.')[0] }}</strong></td>
+        <td class="muted">{{ c.region }} · {{ broker_name(d.broker) }}</td>
+        <td>{{ (d.labels or [d.label])|join(' · ') }}</td>
+        <td>{% if c.kind == 'also' %}<span class="badge badge-ok">fired today</span> beyond the 5-ticket cap{% else %}{{ d.waiting }}{% endif %}</td>
+        <td class="num">{{ money(d.currency, d.close, 2) if d.close else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Nothing near a trigger at the last scan.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{# ── Portfolio, evidence, brief ──────────────────────────────────────── #}
 <div class="section grid">
   <div class="card">
-    <div class="card-head"><h2>Markets</h2><a href="/simulations">Simulations →</a></div>
-    <ul class="list">
-      {% for r in regions %}
-      <li>
-        <div class="grow">
-          <div class="t">{{ r.name }}</div>
-          <div class="s">{{ r.strategies or 0 }} of {{ r.of or 0 }} strategies pass{% if r.last_scan %} · scanned {{ r.last_scan.started_at|ago }}{% endif %}</div>
-        </div>
-        {% if r.sending %}<span class="badge badge-ok">sending tickets</span>{% else %}<span class="badge">quiet</span>{% endif %}
-      </li>
-      {% endfor %}
-    </ul>
+    <div class="card-head"><h2>Largest holdings</h2><a href="/portfolio">Portfolio →</a></div>
+    <div class="tablewrap">
+      <table class="data">
+        <thead><tr><th>Name</th><th class="num">Value</th><th class="num">P&amp;L</th></tr></thead>
+        <tbody>
+        {% for broker, lines in top.items() %}{% for ln in lines %}
+        <tr>
+          <td><strong>{{ ln.symbol }}</strong> <span class="muted">{{ broker_name(broker) }}</span></td>
+          <td class="num">{{ money(ln.currency, ln.value) }}</td>
+          <td class="num {{ 'up' if (ln.pnl or 0) >= 0 else 'down' }}">{{ '{:+,.0f}'.format(ln.pnl|float) if ln.pnl is not none else '—' }}</td>
+        </tr>
+        {% endfor %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
+
   <div class="card">
-    <div class="card-head"><h2>Latest brief</h2><a href="/brief">Read →</a></div>
-    {% if brief %}
-    <a class="card-body" href="/brief" style="display:block">
-      <div class="t" style="font-size:15px;font-weight:500;letter-spacing:-.01em">{{ brief.title }}</div>
-      <div class="s muted" style="margin-top:6px">{{ brief.created_at|ago }}{% if brief.meta and brief.meta.regime %} · {{ brief.meta.regime }}{% endif %}</div>
-    </a>
-    {% else %}<div class="card-body muted">No brief yet.</div>{% endif %}
+    <div class="card-head"><h2>Evidence</h2><a href="/simulations">Simulations →</a></div>
+    <div class="tablewrap">
+      <table class="data">
+        <thead><tr><th>Market</th><th class="num">Alfred / yr</th><th class="num">Index / yr</th><th class="num">Worst fall</th><th></th></tr></thead>
+        <tbody>
+        {% for e in evidence %}
+        <tr>
+          <td><strong>{{ e.name }}</strong><div class="muted" style="font-size:11.5px">{{ e.labels|join(' · ') or 'nothing passes' }}</div></td>
+          <td class="num">{{ '{:+.1f}%'.format(e.me.cagr * 100) if e.me.cagr is defined else '—' }}</td>
+          <td class="num muted">{{ '{:+.1f}%'.format(e.index.cagr * 100) if e.index.cagr is defined else '—' }}</td>
+          <td class="num">{{ '{:.0f}%'.format(e.me.max_drawdown * 100) if e.me.max_drawdown is defined else '—' }} <span class="muted">vs {{ '{:.0f}%'.format(e.index.max_drawdown * 100) if e.index.max_drawdown is defined else '—' }}</span></td>
+          <td>{% if e.sending %}<span class="badge badge-ok">sending</span>{% else %}<span class="badge">quiet</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
+</div>
+
+<div class="section card">
+  <div class="card-head"><h2>Latest brief</h2><a href="/brief">Read →</a></div>
+  {% if brief %}
+  <a class="card-body" href="/brief" style="display:block">
+    <div style="font-size:15px;font-weight:500;letter-spacing:-.01em">{{ brief.title }}</div>
+    <div class="muted" style="margin-top:6px;font-size:12.5px">{{ brief.created_at|ago }}{% if brief.meta and brief.meta.regime %} · {{ brief.meta.regime }}{% endif %}</div>
+  </a>
+  {% else %}<div class="card-body muted">No brief yet.</div>{% endif %}
 </div>
 {% endblock %}

@@ -71,6 +71,10 @@ def indicators(df: pd.DataFrame) -> pd.DataFrame:
     out["mom12_1"] = c.shift(21) / c.shift(252) - 1
     out["atr_pct"] = out["atr14"] / c
     out["atr_pct_med"] = out["atr_pct"].rolling(252).median()
+    # Short-term channels for the third batch.
+    out["hh20"] = out["high"].rolling(20).max().shift()
+    out["ll10"] = out["low"].rolling(10).min().shift()
+    out["hh10"] = out["high"].rolling(10).max().shift()
     # First session of each month: the monthly strategies only act on these.
     months = pd.Series(out.index.to_period("M"), index=out.index)
     out["month_start"] = months != months.shift()
@@ -254,6 +258,41 @@ def _abs_mom_reasons(r):
     ]
 
 
+# 8 · 20-day breakout — the Turtles' System 1: a new 20-day high in an
+# uptrend, out on a 10-day low. The short-term cousin of the 55-day breakout.
+def _breakout20_rules(x):
+    entry = (x["close"] > x["hh20"]) & (x["close"] > x["sma200"])
+    return _frame(x, entry, x["close"] - 2 * x["atr14"], x["close"] < x["ll10"])
+
+
+def _breakout20_reasons(r):
+    return [
+        f"New 20-day high: close {r.close:,.2f} cleared the prior high of {r.hh20:,.2f}.",
+        f"Uptrend: {_pct(r.close, r.sma200)} vs its 200-day average.",
+        f"Exit on a close below the 10-day low ({r.ll10:,.2f} now), or at the stop. Usually a "
+        "few days to a few weeks.",
+    ]
+
+
+# 9 · First dip to the 20-day — in a strong uptrend (50-day above 200-day,
+# price above the 50-day), buy the first close back under the 20-day mean;
+# sell into the next push to a 10-day high, or after ten sessions.
+def _dip20_rules(x):
+    strong = (x["sma50"] > x["sma200"]) & (x["close"] > x["sma50"])
+    first = (x["close"] < x["sma20"]) & (x["close"].shift() >= x["sma20"].shift())
+    return _frame(x, strong & first, x["close"] - 2 * x["atr14"], x["close"] > x["hh10"])
+
+
+def _dip20_reasons(r):
+    return [
+        f"Strong uptrend: the 50-day average sits above the 200-day and price "
+        f"({r.close:,.2f}) is above the 50-day ({r.sma50:,.2f}).",
+        f"First dip: closed back under its 20-day average ({r.sma20:,.2f}) today.",
+        f"Exit on a close above the prior 10-day high ({r.hh10:,.2f}), after 10 sessions, "
+        "or at the stop.",
+    ]
+
+
 STRATEGIES: dict[str, Strategy] = {s.name: s for s in (
     Strategy("rsi2_pullback", "Pullback in an uptrend",
              "Buys a 2-day RSI washout above the 200-day average", 10,
@@ -276,6 +315,12 @@ STRATEGIES: dict[str, Strategy] = {s.name: s for s in (
     Strategy("abs_momentum", "Positive 12-month trend",
              "Positive 12-month return and above the 200-day, reviewed monthly", 260,
              _abs_mom_rules, _abs_mom_reasons),
+    Strategy("breakout_20", "20-day breakout",
+             "Short-term: a new 20-day high in an uptrend; out on a 10-day low", 40,
+             _breakout20_rules, _breakout20_reasons),
+    Strategy("dip_20", "First dip in a strong trend",
+             "Short-term: first close under the 20-day in a strong uptrend; out on a 10-day high", 10,
+             _dip20_rules, _dip20_reasons),
 )}
 
 

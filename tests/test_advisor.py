@@ -390,3 +390,38 @@ def test_a_dry_run_scan_stores_nothing(monkeypatch):
     scan.scan("US")
     scan.scan("US", preview=True, store=True)
     assert stored == [], "a scan that was not asked to store, stored"
+
+
+def test_exit_alerts_lead_the_email():
+    from datetime import date
+
+    from advisor import report
+
+    res = {"region": "US", "as_of": date(2026, 10, 27), "tickets": [], "holdings": [],
+           "exits": [{"symbol": "SPGI", "broker": "webull", "strategy": "quiet_trend",
+                      "currency": "USD", "fill_price": 440.0, "last": 470.0,
+                      "reason": "the strategy's exit fired at today's close"}],
+           "closed": []}
+    subject, text, _ = report.compose(res)
+    assert "SELL SPGI" in subject
+    assert text.index("SELL SPGI at the next open") < text.index("Your holdings")
+    assert "+6.8% from the ticket's fill" in text
+
+
+def test_ticket_says_how_much_to_add_from_the_set_aside_funds(monkeypatch):
+    import numpy as np
+    from advisor import scan
+    from advisor.strategies import STRATEGIES, indicators
+
+    close = list(np.linspace(100, 200, 300))
+    df = pd.DataFrame({"open": close, "high": [c * 1.01 for c in close],
+                       "low": [c * 0.99 for c in close], "close": close},
+                      index=pd.date_range("2025-01-01", periods=300, freq="B"))
+    cfg = {"validity_sessions": 3, "risk_per_trade_pct": 0.5, "max_position_pct": 10,
+           "new_funds": {"kite": 100000}}
+    monkeypatch.setattr(scan, "settings", lambda: cfg)
+    accts = {"kite": {"value": 300000.0, "cash": 500.0, "currency": "INR"}}
+    t = scan.ticket("TEST.NS", STRATEGIES["breakout_55"], indicators(df), accts, {})
+    assert t["fund"] and t["fund"]["broker"] == "kite" and t["fund"]["within_reserve"]
+    assert t["fund"]["amount"] % 1000 == 0
+    assert any("Add about ₹" in n and "you set aside" in n for n in t["notes"])

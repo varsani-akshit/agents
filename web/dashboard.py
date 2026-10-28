@@ -112,8 +112,57 @@ def today() -> dict:
                         "strategies": n and n["p"], "of": n and n["n"], "last_scan": last})
     brief = db.one("""SELECT id, title, created_at, meta FROM analyses WHERE kind='digest'
                       ORDER BY created_at DESC LIMIT 1""")
+
+    # Act now: exits due on what you hold, then tickets, then how much to fund.
+    cands = db.query("""SELECT region, kind, symbol, strategy, as_of, detail, created_at
+                        FROM scan_candidates ORDER BY region, kind""")
+    exits = [c for c in cands if c["kind"] == "exit"]
+    near = [c for c in cands if c["kind"] in ("near", "also")]
+    near.sort(key=lambda c: (c["kind"] != "also", c["detail"].get("level") is None,
+                             c["detail"].get("distance_pct") or 0))
+    cfg = settings()
+    funding = []
+    for b in books:
+        reserve = float((cfg.get("new_funds") or {}).get(b["broker"]) or 0)
+        need = 0.0
+        for i in ideas:
+            if i["broker"] != b["broker"] or i["status"] != "open" or not i["quantity"]:
+                continue
+            cost = i["quantity"] * i["limit_price"]
+            if i["currency"] != b["currency"]:
+                rate = scan._in_currency(1.0, b["currency"], i["currency"]) or 1
+                cost /= rate
+            need += cost
+        add = max(0.0, need - (b["cash"] or 0))
+        funding.append({"broker": b["broker"], "currency": b["currency"], "reserve": reserve,
+                        "tickets_cost": need, "add": add})
+
+    # Portfolio at a glance: the largest holdings per broker.
+    top = {}
+    for name in ("kite", "webull"):
+        data = pf.latest(name)
+        if data and data["lines"]:
+            top[name] = sorted((ln for ln in data["lines"] if ln["value"]),
+                               key=lambda ln: -ln["value"])[:5]
+
+    # Evidence at a glance: per market, what passes and how the account did.
+    from advisor import ledger
+    from advisor.strategies import STRATEGIES
+
+    evidence = []
+    for r in regions:
+        acct = db.one("SELECT stats FROM portfolio_backtests WHERE region=%s", (r["region"],))
+        st = acct and acct["stats"] or {}
+        evidence.append({**r, "labels": [STRATEGIES[n].label for n in st.get("strategies", [])
+                                         if n in STRATEGIES],
+                         "me": st.get("strategy") or {}, "index": st.get("index") or {},
+                         "index_symbol": st.get("index_symbol")})
+
     return {"books": books, "attention": attention, "ideas": ideas, "closed": closed,
-            "regions": regions, "brief": brief}
+            "regions": regions, "brief": brief, "exits": exits, "near": near[:14],
+            "funding": funding, "top": top, "evidence": evidence,
+            "board": ledger.scoreboard(),
+            "scanned_at": max((c["created_at"] for c in cands), default=None)}
 
 
 # ──────────────────────────────── Simulations ───────────────────────────────

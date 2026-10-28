@@ -77,7 +77,9 @@ def ticket_text(t: dict) -> str:
         + (f" · target {_money(ccy, t['target'])}" if t["target"] else " · no fixed target")
         + f" · quantity {qty}"
         + (f" · risks {_money(ccy, t['risk_amount'])}" if t.get("risk_amount") else ""),
-        f"  Good until {t['valid_until']:%a %d %b}. Strategy: {t['label']}.",
+        f"  Good until {t['valid_until']:%a %d %b}. Strategy: {t['label']}."
+        + (f" Typical hold: about {t['evidence']['median_days']} sessions."
+           if t.get("evidence", {}).get("median_days") else ""),
         "  Why:",
         *[f"   - {r}" for r in t["reasons"]],
         *[f"   ! {n}" for n in t["notes"]],
@@ -104,10 +106,14 @@ def compose(result: dict, regime: str | None = None) -> tuple[str, str, str] | N
     """Subject, text and HTML — or None when there is nothing to act on."""
     tickets = result["tickets"]
     fresh = [h for h in result["holdings"] if h["newly_below"]]
-    if not tickets and not fresh:
+    exits = result.get("exits") or []
+    closed = result.get("closed") or []
+    if not tickets and not fresh and not exits and not closed:
         return None
     region = REGION_NAME.get(result["region"], result["region"])
     bits = []
+    if exits:
+        bits.append(f"SELL {', '.join(e['symbol'].split('.')[0] for e in exits)}")
     if tickets:
         bits.append(f"{len(tickets)} idea{'s' if len(tickets) != 1 else ''}")
     if fresh:
@@ -117,6 +123,18 @@ def compose(result: dict, regime: str | None = None) -> tuple[str, str, str] | N
     parts = [HEADER, ""]
     if regime:
         parts += [f"Macro backdrop (Alfred's world model): {regime}", ""]
+    for e in exits:
+        gain = (e["last"] / e["fill_price"] - 1) * 100 if e.get("fill_price") else None
+        parts += [f"SELL {e['symbol'].split('.')[0]} at the next open · in "
+                  f"{BROKER_NAME[e['broker']]}",
+                  f"  Why: {e['reason']} ({e['strategy'].replace('_', ' ')})."
+                  + (f" Last close {_money(e['currency'], e['last'])}, "
+                     f"{gain:+.1f}% from the ticket's fill." if gain is not None else ""),
+                  ""]
+    for e in closed:
+        parts += [f"Closed: {e['symbol'].split('.')[0]} — {e['reason']} at "
+                  f"{_money(e['currency'], e['exit_price'])} ({e['r']:+.2f}R). If your stop order "
+                  "was in place, this already happened in your account.", ""]
     for t in tickets:
         parts += [ticket_text(t), ""]
     if result.get("left_out"):

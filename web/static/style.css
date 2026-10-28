@@ -53,8 +53,8 @@
   --rail: 220px;
   --r-sm: 5px; --r: 7px; --r-lg: 12px; --r-xl: 16px;
 
-  /* The Alfred mark: a bat, used as an image and as a CSS mask. */
-  --bat: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 44'><polygon points='3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20' fill='black'/></svg>");
+  /* The Alfred mark (see LOGO_PATHS in web/app.py), as a CSS mask. */
+  --bat: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M4.5 20.5 12 3.5l7.5 17' fill='none' stroke='black' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/><path d='M7.4 14.9l2.9-2.6 2.2 1.9 4.6-4.9' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/><circle cx='18.6' cy='8.6' r='1.75' fill='black'/></svg>");
   color-scheme: light;
 }
 
@@ -732,12 +732,12 @@ button:disabled { opacity: .45; cursor: progress; }
    and the welcome card, and every one of them takes the accent colour. */
 .mark { color: var(--accent); flex: none; }
 span.mark {
-  width: 16px; height: 11px; background: var(--accent);
+  width: 16px; height: 16px; background: var(--accent);
   display: inline-block;
   -webkit-mask: var(--bat) center/contain no-repeat;
   mask: var(--bat) center/contain no-repeat;
 }
-span.mark.big { width: 46px; height: 32px; }
+span.mark.big { width: 40px; height: 40px; }
 .msg.alfred .mbody { font-size: 15.5px; line-height: 1.75; }
 .msg.alfred .mbody h2 { font-size: 18px; margin: 30px 0 14px; }
 .msg.alfred .mbody h3 { margin: 26px 0 10px; }
@@ -1119,3 +1119,143 @@ a.kpi { transition: background 150ms ease; }
 a.kpi:hover { background: var(--subtle); }
 .card-head form { margin: 0; }
 .ph-row form { margin: 0; }
+
+/* ═══════════════════ One house style, every page ══════════════════════
+   Everything below re-dresses the older surfaces (brief, archive, status,
+   research, markets) in the same system as Today and Simulations, so no
+   page reads as a different app. */
+
+/* Tables — the property manager's: a card frame, a 36px header of small
+   caps, one hairline under it, subtle row rules, hover, right-aligned
+   tabular figures, 16px at the edges. */
+.tablewrap {
+  margin: 20px 0; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.tablewrap > table { margin: 0; min-width: 0; }
+.card .tablewrap, .tablewrap .tablewrap { border: 0; border-radius: 0; margin: 0; background: none; }
+table.data, .mbody table {
+  width: 100%; border-collapse: collapse; margin: 0;
+  font: 400 13px/1.5 var(--sans); font-variant-numeric: tabular-nums;
+}
+table.data th, .mbody table th {
+  height: 36px; padding: 0 14px; text-align: left; vertical-align: middle;
+  font: 500 10.5px/1.3 var(--mono); letter-spacing: .07em; text-transform: uppercase;
+  color: var(--t3); border-bottom: 1px solid var(--border); white-space: nowrap; background: none;
+}
+table.data td, .mbody table td {
+  padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--t1);
+  vertical-align: middle; font-size: 13px;
+}
+table.data th:first-child, table.data td:first-child,
+.mbody table th:first-child, .mbody table td:first-child { padding-left: 16px; }
+table.data th:last-child, table.data td:last-child,
+.mbody table th:last-child, .mbody table td:last-child { padding-right: 16px; }
+table.data tr:last-child td, .mbody table tr:last-child td { border-bottom: 0; }
+table.data tbody tr:hover td, .mbody table tbody tr:hover td { background: var(--subtle); }
+table.data .num, table.data th.num, .mbody table td.num { text-align: right; }
+.mbody table { font-size: 13.5px; }
+/* A brief table straight from markdown has no wrapper on some old briefs. */
+.mbody > table { border: 1px solid var(--border); border-radius: var(--r-lg); border-collapse: separate; border-spacing: 0; overflow: hidden; margin: 24px 0; }
+.mbody .tablewrap { margin: 24px 0; }
+.mbody .tablewrap.scrolls::after { display: none; }
+td.dim, .dim { color: var(--t3); }
+td.hi { color: var(--down); font-weight: 500; }
+
+/* Blocks (Status, Archive) become cards with a title strip. */
+.block {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  margin: 0 0 16px; overflow: hidden;
+}
+.block > h2 {
+  margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line);
+  font: 600 13px/1.3 var(--sans); letter-spacing: 0; text-transform: none; color: var(--t1);
+}
+.block > table.data, .block > .tablewrap { margin: 0; border: 0; border-radius: 0; }
+.block > p, .block > .kv, .block > dl { padding: 0 16px; }
+.block > p.empty { padding: 28px 16px; }
+.grid2 { gap: 16px; }
+
+/* Row lists (Archive) — whole-row links inside a card. */
+.rows { margin: 0; }
+.row {
+  grid-template-columns: 116px minmax(0, 1fr) auto; gap: 16px; align-items: center;
+  padding: 11px 16px; border-bottom: 1px solid var(--line); border-radius: 0;
+}
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--subtle); }
+.row:hover .row-t { color: var(--atext); }
+.row-t { font-size: 13.5px; }
+.row-when, .row-note { font-size: 11.5px; }
+
+/* Brief and research typography: Geist, tighter, a quieter hierarchy. */
+.mbody { font-size: 15.5px; line-height: 1.75; }
+.mbody h2 {
+  font: 600 19px/1.3 var(--sans); letter-spacing: -.015em;
+  margin: 44px 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.mbody h3 { color: var(--atext); font-size: 11px; letter-spacing: .14em; border-top-color: var(--line); }
+.mbody p.devtitle > strong { font-size: 16.5px; font-weight: 600; }
+.mbody blockquote { border-left-color: var(--accent); background: var(--subtle); border-radius: 0 var(--r) var(--r) 0; padding: 10px 14px; }
+.mbody code { border-radius: var(--r-sm); color: var(--atext); }
+.mbody pre { border-radius: var(--r); }
+.chart-head .t { font-weight: 600; font-size: 14px; }
+.side h3 { font-size: 10.5px; letter-spacing: .12em; }
+.side-list a { padding: 9px 0; border-bottom-color: var(--line); }
+.side-list a:hover .what { color: var(--atext); }
+.sources { border-top-color: var(--border); }
+.sources a, .gpanel a, .gp-rel:hover { color: var(--atext); }
+.sharebar { border-top-color: var(--line); }
+.sharebar input { border-radius: var(--r); border-width: 1px; }
+
+/* Forms: bordered inputs like the property manager's, not underlines. */
+textarea, input[type=text], input[type=password], input[type=search] {
+  border: 1px solid var(--border); border-radius: var(--r); padding: 9px 12px;
+  font: 400 14px/1.5 var(--sans); background: var(--surface);
+}
+textarea:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.composer textarea, .composer textarea:focus { border: 0; box-shadow: none; padding: 14px 15px 6px; }
+.login-card label { margin: 16px 0 6px; }
+.login-mark { color: var(--accent); }
+.login-mark .mark { width: 34px; height: 34px; }
+.ask-form .formrow { margin-top: 12px; }
+
+/* Alerts and markets — same card language. */
+.alert { border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 10px; background: var(--surface); }
+.alert:last-child { border-bottom: 1px solid var(--border); }
+.mkt-snap { border-color: var(--line); }
+.chip { border-radius: 99px; border-width: 1px; }
+.chip.accent { background: var(--atint); border-color: var(--bdash); color: var(--atext); }
+.kvchip { border-radius: var(--r-sm); border-width: 1px; }
+
+/* Chat: rounded composer and suggestions. */
+.composer { border: 1px solid var(--border); border-radius: var(--r-lg); }
+.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+.sg, .pick-btn, .newchat { border-radius: var(--r); border-width: 1px; }
+.pick-menu { border-radius: var(--r-lg); border: 1px solid var(--border); overflow: hidden; }
+.send { border-radius: var(--r); background: var(--accent); color: var(--on-accent); }
+.send:hover { background: var(--accent-hover); }
+.msg.user .bubble { border-radius: var(--r-lg) var(--r-lg) 4px var(--r-lg); background: var(--t1); }
+.chat { border-top-color: var(--line); }
+.chat-rail { background: var(--subtle); border-right-color: var(--line); }
+.rail-item { border-radius: var(--r); }
+.dots i { border-radius: 99px; }
+.spin { border-radius: 99px; }
+
+/* Buttons that are really list items or menu rows wrap like text. */
+.sg, .pick-menu button, .gp-act, .tab, .rail-item {
+  white-space: normal; text-align: left; min-height: 0;
+}
+.sg { display: block; max-width: 100%; background: var(--surface); color: var(--t1); font-weight: 400; }
+.sg:hover { background: var(--subtle); color: var(--t1); }
+.pick-menu button { display: block; background: none; color: var(--t1); font-weight: 400; border-radius: 0; }
+.pick-menu button:hover { background: var(--subtle); color: var(--t1); }
+.pick-btn { background: none; color: var(--t2); font-weight: 400; min-height: 0; }
+.pick-btn:hover { background: var(--hover); color: var(--t1); }
+.tab { background: none; color: var(--t2); font-weight: 400; border-radius: 0; }
+.tab:hover { background: var(--subtle); color: var(--t1); }
+.gp-act { display: block; background: none; color: var(--t1); font-weight: 500; }
+.gp-act:hover { background: var(--t1); color: var(--surface); }
+.opt { font-weight: 400; }
+.opt.on { background: var(--atint); border-color: var(--accent); color: var(--atext); }

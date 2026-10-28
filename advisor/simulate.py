@@ -263,7 +263,9 @@ def run(regions: list[str] | None = None) -> dict:
             reasons = {}
             for t in trades:
                 reasons[t.reason] = reasons.get(t.reason, 0) + 1
+            held = [np.busday_count(t.filled.date(), t.exited.date()) for t in trades]
             stats = {"curve": curve, "exits": reasons,
+                     "median_days": int(np.median(held)) if held else None,
                      "all": summarize([t.r for t in trades]), "older": older, "recent": recent,
                      "random_recent": baseline, "monte_carlo": mc, "fails": fails,
                      "symbols": len(frames), "recent_from": str(cutoff.date()),

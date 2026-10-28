@@ -455,3 +455,18 @@ CREATE TABLE IF NOT EXISTS portfolio_backtests (
   curve       JSONB NOT NULL,
   computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- What the last scan of each region saw beyond the tickets it sent: signals
+-- the per-scan cap left out, names close to triggering a passing strategy,
+-- and exits due on ideas you hold. Rewritten per region each scan; read by
+-- the Today page so it never has to re-scan 780 names to render.
+CREATE TABLE IF NOT EXISTS scan_candidates (
+  region     TEXT NOT NULL,
+  kind       TEXT NOT NULL,          -- also | near | exit
+  symbol     TEXT NOT NULL,
+  strategy   TEXT NOT NULL,
+  as_of      DATE,
+  detail     JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS scan_candidates_region_idx ON scan_candidates (region, kind);
