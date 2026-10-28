@@ -1259,3 +1259,8 @@ textarea:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px
 .gp-act:hover { background: var(--t1); color: var(--surface); }
 .opt { font-weight: 400; }
 .opt.on { background: var(--atint); border-color: var(--accent); color: var(--atext); }
+
+/* A stat whose value is a phrase ("IN 10-27 · ASX 10-28 · US 10-27") wraps
+   on a phone instead of pushing the page sideways; a single figure has no
+   spaces to break at, so it stays on one line regardless. */
+.kpi-value { white-space: normal; }

@@ -425,3 +425,48 @@ def test_ticket_says_how_much_to_add_from_the_set_aside_funds(monkeypatch):
     assert t["fund"] and t["fund"]["broker"] == "kite" and t["fund"]["within_reserve"]
     assert t["fund"]["amount"] % 1000 == 0
     assert any("Add about ₹" in n and "you set aside" in n for n in t["notes"])
+
+
+# ──────────────────────────────── simulation runs ───────────────────────────
+def test_candidate_score_prefers_better_evidence_and_nearer_triggers():
+    from advisor.candidates import _score
+
+    strong = {"stats": {"recent": {"expectancy_r": 0.8}}}
+    weak = {"stats": {"recent": {"expectancy_r": 0.1}}}
+    assert _score(strong, None) > _score(weak, None)
+    assert _score(strong, {"stats": {"expectancy_r": 1.0}}) > _score(strong, {"stats": {"expectancy_r": -0.5}})
+    assert _score(strong, None, distance=0.5) > _score(strong, None, distance=3.0)
+
+
+def test_candidates_are_json_safe():
+    import json
+
+    import numpy as np
+
+    from advisor.candidates import _clean
+
+    out = _clean({"a": np.float64("nan"), "b": np.int64(3), "c": [np.bool_(True), float("inf")]})
+    assert json.loads(json.dumps(out)) == {"a": None, "b": 3, "c": [True, None]}
+
+
+def _has_runs():
+    try:
+        import db
+        return bool(db.one("SELECT id FROM sim_runs WHERE finished_at IS NOT NULL AND error IS NULL LIMIT 1"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+@pytest.mark.skipif(not _has_runs(), reason="no stored simulation run")
+def test_a_stored_run_opens_with_its_gate_and_candidates():
+    from web import dashboard
+
+    import db
+    run_id = db.one("SELECT id FROM sim_runs WHERE finished_at IS NOT NULL AND error IS NULL "
+                    "ORDER BY id DESC LIMIT 1")["id"]
+    ctx = dashboard.sim_run(run_id)
+    assert ctx["run"]["id"] == run_id and ctx["matrix"]
+    assert set(ctx["candidates"]) == {"passed", "missed", "near_passed", "near_other"}
+    # Non-passing signals are kept and labelled, not hidden.
+    for row in ctx["candidates"]["missed"]["rows"]:
+        assert row["passed_gate"] is False

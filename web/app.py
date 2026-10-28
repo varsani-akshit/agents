@@ -425,11 +425,56 @@ async def brief(request: Request):
 
 @app.get("/simulations", response_class=HTMLResponse)
 async def simulations(request: Request):
-    """What the simulations did, and what they found — refreshed daily."""
+    """Every simulation run, newest first, and the latest one at a glance."""
     from web import dashboard
 
-    ctx = await asyncio.to_thread(dashboard.simulations)
+    ctx = await asyncio.to_thread(dashboard.sim_index)
     return page(request, "simulations.html", {**ctx, "active": "simulations"})
+
+
+@app.get("/simulations/method", response_class=HTMLResponse)
+async def simulations_method(request: Request):
+    """How a simulation works and what each strategy is — the reference text."""
+    from web import dashboard
+
+    ctx = await asyncio.to_thread(dashboard.method)
+    return page(request, "method.html", {**ctx, "active": "simulations"})
+
+
+@app.get("/simulations/{run_id}", response_class=HTMLResponse)
+async def simulation_run(request: Request, run_id: int, region: str = "", show: str = ""):
+    """One run in full: the gate, the replays, every candidate."""
+    from web import dashboard
+
+    ctx = await asyncio.to_thread(dashboard.sim_run, run_id, region=region, show=show)
+    if not ctx.get("run"):
+        return RedirectResponse("/simulations", status_code=303)
+    return page(request, "simulation_run.html", {**ctx, "active": "simulations"})
+
+
+_SIM_LOCK = __import__("threading").Lock()
+
+
+@app.post("/simulations/run")
+async def simulations_run_now():
+    """Start a run now, in the background; one at a time."""
+    import threading
+
+    def go():
+        if not _SIM_LOCK.acquire(blocking=False):
+            return
+        try:
+            from advisor import runs
+
+            runs.run(trigger="manual")
+        except Exception as exc:  # noqa: BLE001 - recorded on the run row
+            log.warning("manual simulation run failed: %s", exc)
+        finally:
+            _SIM_LOCK.release()
+
+    if not _SIM_LOCK.locked():
+        threading.Thread(target=go, name="sim-run", daemon=True).start()
+    return RedirectResponse("/simulations", status_code=303)
 
 
 @app.get("/digest/{digest_id}", response_class=HTMLResponse)
@@ -1063,11 +1108,19 @@ async def ideas(request: Request):
     def gather():
         rows = db.query("SELECT * FROM ideas ORDER BY created_at DESC LIMIT 200")
         regions = db.query("SELECT region, stats->>'passed' AS passed FROM portfolio_backtests")
-        return rows, ledger.scoreboard(), {r["region"]: r["passed"] == "true" for r in regions}
+        run = db.one("""SELECT id, started_at FROM sim_runs WHERE finished_at IS NOT NULL
+                        AND error IS NULL ORDER BY started_at DESC LIMIT 1""")
+        cands = db.query("""SELECT region, symbol, strategy, kind, passed_gate, score, detail
+                            FROM sim_candidates WHERE run_id = %s AND kind = 'signal'
+                            ORDER BY passed_gate DESC, score DESC LIMIT 15""",
+                         (run["id"],)) if run else []
+        return (rows, ledger.scoreboard(), {r["region"]: r["passed"] == "true" for r in regions},
+                run, cands)
 
-    rows, board, sending = await asyncio.to_thread(gather)
+    rows, board, sending, run, cands = await asyncio.to_thread(gather)
     return page(request, "ideas.html", {
-        "ideas": rows, "board": board, "sending": sending, "active": "ideas"})
+        "ideas": rows, "board": board, "sending": sending, "run": run, "cands": cands,
+        "active": "ideas"})
 
 
 @app.post("/portfolio/refresh")

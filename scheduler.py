@@ -350,9 +350,11 @@ ADVISOR_JOBS = (
     ("advise_in", lambda: job_advise("IN"), dict(day_of_week="mon-fri", hour=10, minute=45)),
     ("advise_asx", lambda: job_advise("ASX"), dict(day_of_week="mon-fri", hour=6, minute=45)),
     ("advise_us", lambda: job_advise("US"), dict(day_of_week="mon-fri", hour=21, minute=45)),
-    # Nightly, after the US close (21:00 UTC at the latest) and before Asia
-    # opens: every simulation and account replay on the day's prices.
-    ("retest", job_retest, dict(hour=23, minute=15)),
+    # Every two hours: fresh prices, every simulation and account replay, and
+    # every candidate, stored as a run the Simulations page can open. Daily
+    # bars, so a run between closes repeats the last close's verdict — the
+    # point is that each market's close lands within two hours, not overnight.
+    ("retest", job_retest, dict(hour="*/2", minute=20)),
 )
 
 

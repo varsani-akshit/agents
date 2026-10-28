@@ -29,17 +29,11 @@ def cycle(region: str, *, send: bool = True) -> dict:
 
 
 def retest() -> dict:
-    """Nightly: re-run every simulation and account replay on the latest history.
+    """Every two hours: a full simulation run, stored (see advisor/runs.py).
 
     The gate is not a one-time exam. A strategy that stops working stops
-    sending ideas the week its evidence fades, without anyone deciding so.
+    sending ideas the run its evidence fades, without anyone deciding so.
     """
-    from advisor import portfolio_sim
+    from advisor import runs
 
-    report_ = simulate.run()
-    out = {f"{name}/{region}": ok for (name, region), (ok, _s) in report_.items()}
-    for region in REGIONS:
-        acct = portfolio_sim.run(region)
-        out[f"account/{region}"] = acct and {
-            k: (acct.get(k) or {}).get("cagr") for k in ("strategy", "index", "random_picks")}
-    return out
+    return runs.run()

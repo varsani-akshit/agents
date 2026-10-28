@@ -174,44 +174,92 @@ def today() -> dict:
 
 
 # ──────────────────────────────── Simulations ───────────────────────────────
-def simulations() -> dict:
+def sim_index() -> dict:
+    """Every stored run, newest first, and the latest one at a glance."""
+    runs = db.query("""SELECT id, started_at, finished_at, trigger, bars_through, passing, tested,
+                              candidates, seconds, error FROM sim_runs
+                       ORDER BY started_at DESC LIMIT 84""")
+    latest = next((r for r in runs if r["finished_at"] and not r["error"]), None)
+    out = {"runs": runs, "latest": latest, "running": any(not r["finished_at"] for r in runs)}
+    if latest:
+        out.update(sim_run(latest["id"], top_only=True))
+    return out
+
+
+def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = False) -> dict:
     from advisor.strategies import STRATEGIES
 
-    cfg = settings()
-    rows = db.query("""SELECT strategy, market, passed, stats, computed_at FROM strategy_evidence
-                       WHERE symbol = '' ORDER BY market, strategy""")
-    by_strategy: dict[str, dict] = {}
-    for r in rows:
-        s = r["stats"]
-        curve = s.get("curve") or {}
-        r["svg"] = line_svg(curve.get("dates") or [], [
-            (curve.get("random") or [], "var(--t3)", 1.2, True),
-            (curve.get("strategy") or [], "var(--accent)" if r["passed"] else "var(--t2)", 1.8, False),
-        ], zero=True, mark=_month_end(curve.get("dates") or [], s.get("recent_from")), h=110)
-        r["best"] = db.query(
-            """SELECT symbol, stats FROM strategy_evidence
-               WHERE strategy=%s AND market=%s AND symbol<>'' AND (stats->>'trades')::int >= %s
-               ORDER BY (stats->>'expectancy_r')::float DESC LIMIT 5""",
-            (r["strategy"], r["market"], cfg["gate"]["min_symbol_trades"]))
-        r["region_name"] = REGION_NAME.get(r["market"], r["market"])
-        by_strategy.setdefault(r["strategy"], {"rows": []})["rows"].append(r)
-    for name, entry in by_strategy.items():
-        st = STRATEGIES.get(name)
-        entry.update(name=name, label=st.label if st else name, summary=st.summary if st else "",
-                     max_days=st.max_days if st else None,
-                     passes=sum(r["passed"] for r in entry["rows"]))
-    order = sorted(by_strategy.values(), key=lambda e: (-e["passes"], e["label"]))
+    run = db.one("SELECT * FROM sim_runs WHERE id=%s", (run_id,))
+    if not run:
+        return {"run": None}
+    prev = db.one("""SELECT id FROM sim_runs WHERE started_at < %s AND finished_at IS NOT NULL
+                     AND error IS NULL ORDER BY started_at DESC LIMIT 1""", (run["started_at"],))
+    results = db.query("SELECT strategy, region, passed, stats FROM sim_results WHERE run_id=%s",
+                       (run_id,))
+    before = {(r["strategy"], r["region"]): r["passed"] for r in db.query(
+        "SELECT strategy, region, passed FROM sim_results WHERE run_id=%s", (prev["id"],))} if prev else {}
 
-    accounts = db.query("""SELECT region, stats, curve, computed_at FROM portfolio_backtests
-                           ORDER BY array_position(ARRAY['IN','ASX','US'], region)""")
+    # The gate as a matrix: strategies down, markets across.
+    matrix: dict[str, dict] = {}
+    changes = []
+    for r in results:
+        st = STRATEGIES.get(r["strategy"])
+        row = matrix.setdefault(r["strategy"], {"label": st.label if st else r["strategy"],
+                                                 "horizon": st.max_days if st else None, "cells": {}})
+        r["was"] = before.get((r["strategy"], r["region"]))
+        row["cells"][r["region"]] = r
+        if r["was"] is not None and r["was"] != r["passed"]:
+            changes.append(r)
+    order = sorted(matrix.items(), key=lambda kv: (-sum(c["passed"] for c in kv[1]["cells"].values()),
+                                                   kv[1]["label"]))
+
+    accounts = db.query("SELECT region, stats, curve FROM sim_accounts WHERE run_id=%s "
+                        "ORDER BY array_position(ARRAY['IN','ASX','US'], region)", (run_id,))
     for a in accounts:
         a["svg"] = account_svg(a["curve"])
         a["name"] = REGION_NAME.get(a["region"], a["region"])
 
+    where, params = ["run_id = %s"], [run_id]
+    if region in REGIONS:
+        where.append("region = %s")
+        params.append(region)
+    groups = {
+        "passed": ("Passed the gate — these become tickets", "kind='signal' AND passed_gate"),
+        "missed": ("Fired, but did not pass the gate", "kind='signal' AND NOT passed_gate"),
+        "near_passed": ("Close to firing — strategies that pass", "kind='near' AND passed_gate"),
+        "near_other": ("Close to firing — strategies that do not pass", "kind='near' AND NOT passed_gate"),
+    }
+    limit = 8 if top_only else (500 if show else 25)
+    cand = {}
+    for key, (title, cond) in groups.items():
+        if show and show != key:
+            continue
+        rows = db.query(f"""SELECT region, symbol, strategy, kind, passed_gate, score, detail
+                            FROM sim_candidates WHERE {' AND '.join(where)} AND {cond}
+                            ORDER BY score DESC LIMIT %s""", params + [limit])
+        total = db.one(f"SELECT count(*) AS n FROM sim_candidates WHERE {' AND '.join(where)} AND {cond}",
+                       params)["n"]
+        cand[key] = {"title": title, "rows": rows, "total": total}
+    return {"run": run, "prev": prev, "matrix": order, "changes": changes, "accounts": accounts,
+            "candidates": cand, "region": region, "show": show,
+            "regions": [(k, REGION_NAME[k]) for k in REGIONS]}
+
+
+def method() -> dict:
+    from advisor.strategies import STRATEGIES
+
+    latest = db.one("SELECT id FROM sim_runs WHERE error IS NULL AND finished_at IS NOT NULL "
+                    "ORDER BY started_at DESC LIMIT 1")
+    passing = {}
+    if latest:
+        for r in db.query("SELECT strategy, region, passed FROM sim_results WHERE run_id=%s",
+                          (latest["id"],)):
+            if r["passed"]:
+                passing.setdefault(r["strategy"], []).append(REGION_NAME.get(r["region"], r["region"]))
     data = db.one("SELECT count(DISTINCT symbol) AS names, count(*) AS bars, min(d) AS first FROM bars")
-    when = rows[0]["computed_at"] if rows else None
-    return {"strategies": order, "accounts": accounts, "cfg": cfg, "data": data,
-            "computed_at": when, "passing": sum(r["passed"] for r in rows), "tested": len(rows)}
+    return {"cfg": settings(), "data": data,
+            "strategies": [{"name": k, "label": v.label, "summary": v.summary, "max_days": v.max_days,
+                            "passes": passing.get(k, [])} for k, v in STRATEGIES.items()]}
 
 
 def _month_end(dates: list[str], start: str | None) -> str | None:

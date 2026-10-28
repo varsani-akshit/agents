@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}How it works — Simulations — Alfred{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow"><a href="/simulations" style="color:var(--atext)">← Simulations</a> · reference</div>
+  <h1>How it works</h1>
+  <p class="sub">What a simulation does, what the gate requires, and what each strategy is. The runs themselves are on the Simulations page.</p>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-head"><h2>How a simulation runs</h2></div>
+    <div class="card-body">
+      <ol class="steps">
+        <li><b>Prices</b>Daily open, high, low and close for {{ '{:,}'.format(data.names or 0) }} names since {{ data.first.strftime('%b %Y') if data.first else '—' }}, adjusted for splits and dividends. Untraded days and prices that jump 50% and snap back are removed. A session still trading is ignored until it closes.</li>
+        <li><b>Rules, fixed in advance</b>Each strategy is a written rule with textbook parameters — nothing is tuned to the data.</li>
+        <li><b>Every signal becomes a ticket</b>A buy limit at the close, filled only if a later day trades at or below it within {{ cfg.validity_sessions }} sessions.</li>
+        <li><b>Exits lean against the strategy</b>Stop and target in one day: the stop wins. A gap through the stop exits at the open. A rule's own exit is taken at the next open.</li>
+        <li><b>Costs on every trade</b>Round trip: India {{ cfg.round_trip_cost_pct.NSE }}%, ASX {{ cfg.round_trip_cost_pct.ASX }}%, US {{ cfg.round_trip_cost_pct.US }}%.</li>
+        <li><b>Results in R</b>Profit divided by the risk planned at entry: +1R made what it risked; −1R is a clean stop-out.</li>
+        <li><b>Then as one account</b>All passing strategies together: at most {{ cfg.max_new_ideas_per_scan }} new tickets a day, {{ cfg.max_open_positions }} positions, {{ cfg.risk_per_trade_pct }}% risk each, cash spent once — against the index, random picks and survivors.</li>
+        <li><b>Every two hours</b>Prices are topped up and everything re-runs. Daily bars, so a run between closes repeats the last close's verdict; each market's close reaches the evidence within two hours.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>The gate</h2><span class="hint">all must hold</span></div>
+    <ul class="list">
+      <li><div class="grow">At least {{ cfg.gate.min_trades_recent }} trades in the last {{ cfg.recent_period_years }} years</div></li>
+      <li><div class="grow">Average at least {{ '{:+.2f}R'.format(cfg.gate.min_expectancy_r) }} per trade, profit factor ≥ {{ cfg.gate.min_profit_factor }}</div></li>
+      <li><div class="grow">Profitable in the older period too</div></li>
+      <li><div class="grow">Better than the same exits on random entry days</div></li>
+      <li><div class="grow">95% of 2,000 reshuffled 100-trade runs end profitable</div></li>
+      <li><div class="grow">The name itself: ≥ {{ cfg.gate.min_symbol_trades }} past trades, not a losing record</div></li>
+      <li><div class="grow">The market as one account beats its index on Sharpe and worst fall</div></li>
+    </ul>
+  </div>
+</div>
+
+<section class="section">
+  <h2>Strategies</h2>
+  <div class="tablewrap">
+    <table class="data">
+      <thead><tr><th>Strategy</th><th>Rule</th><th class="num">Longest hold</th><th>Passes in (latest run)</th></tr></thead>
+      <tbody>
+      {% for s in strategies %}
+      <tr>
+        <td><strong>{{ s.label }}</strong></td>
+        <td style="white-space:normal">{{ s.summary }}</td>
+        <td class="num">{{ s.max_days }} sessions</td>
+        <td>{% if s.passes %}{% for p in s.passes %}<span class="badge badge-ok">{{ p }}</span> {% endfor %}{% else %}<span class="muted">none</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="section">
+  <h2>What these numbers can't tell you</h2>
+  <div class="card">
+    <ul class="list">
+      <li><div class="grow"><div class="t">Survivorship</div><div class="s">The universe is today's index members; companies that collapsed and left since 2014 are missing, which flatters trend and momentum most. "Beat random entries" controls for part of it; the survivors line shows the rest.</div></div></li>
+      <li><div class="grow"><div class="t">Daily data, not intraday</div><div class="s">Every rule acts on closing prices. Nothing here tests trades opened and closed within a session.</div></div></li>
+      <li><div class="grow"><div class="t">Costs are estimates</div><div class="s">Pessimistic by design, but not your contract notes. Edit them in <code>conf/advisor.yaml</code>.</div></div></li>
+      <li><div class="grow"><div class="t">The real test is forward</div><div class="s">Every ticket sent is tracked on the Ideas page by the same rules. If live results drift below these, it shows there first.</div></div></li>
+    </ul>
+  </div>
+</section>
+{% endblock %}

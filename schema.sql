@@ -495,3 +495,53 @@ CREATE TABLE IF NOT EXISTS name_cache (
   name       TEXT NOT NULL,
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── Simulation runs ─────────────────────────────────────────────────────────
+-- Every run is kept, so each can be opened later: what the gate decided, how
+-- each market replayed as one account, and every candidate the run surfaced —
+-- including signals from strategies that did not pass, labelled as such.
+-- Pruned after 14 days; strategy_evidence and portfolio_backtests still hold
+-- the latest run for the rest of the app.
+CREATE TABLE IF NOT EXISTS sim_runs (
+  id           BIGSERIAL PRIMARY KEY,
+  started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at  TIMESTAMPTZ,
+  trigger      TEXT NOT NULL DEFAULT 'schedule',
+  bars_through JSONB NOT NULL DEFAULT '{}',   -- region -> last final session
+  passing      INT,
+  tested       INT,
+  candidates   INT,
+  seconds      REAL,
+  error        TEXT
+);
+CREATE INDEX IF NOT EXISTS sim_runs_started_idx ON sim_runs (started_at DESC);
+
+CREATE TABLE IF NOT EXISTS sim_results (
+  run_id   BIGINT NOT NULL REFERENCES sim_runs(id) ON DELETE CASCADE,
+  strategy TEXT NOT NULL,
+  region   TEXT NOT NULL,
+  passed   BOOLEAN NOT NULL,
+  stats    JSONB NOT NULL,
+  PRIMARY KEY (run_id, strategy, region)
+);
+
+CREATE TABLE IF NOT EXISTS sim_accounts (
+  run_id BIGINT NOT NULL REFERENCES sim_runs(id) ON DELETE CASCADE,
+  region TEXT NOT NULL,
+  stats  JSONB NOT NULL,
+  curve  JSONB NOT NULL,
+  PRIMARY KEY (run_id, region)
+);
+
+-- kind: signal (fired on the last close) | near (close to firing)
+CREATE TABLE IF NOT EXISTS sim_candidates (
+  run_id      BIGINT NOT NULL REFERENCES sim_runs(id) ON DELETE CASCADE,
+  region      TEXT NOT NULL,
+  symbol      TEXT NOT NULL,
+  strategy    TEXT NOT NULL,
+  kind        TEXT NOT NULL,
+  passed_gate BOOLEAN NOT NULL,
+  score       DOUBLE PRECISION,
+  detail      JSONB NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS sim_candidates_run_idx ON sim_candidates (run_id, passed_gate DESC, score DESC);

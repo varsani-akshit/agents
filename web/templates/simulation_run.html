@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_cands.html" import cand_table %}
+{% block title %}Run #{{ run.id }} — Simulations — Alfred{% endblock %}
+{% macro pct(v, dp=0, sign=False) %}{% if v is none or v is not defined %}—{% else %}{{ ('{:' ~ ('+' if sign else '') ~ '.' ~ dp ~ 'f}%').format(v * 100) }}{% endif %}{% endmacro %}
+{% macro r(v) %}{% if v is none or v is not defined %}—{% else %}{{ '{:+.2f}R'.format(v) }}{% endif %}{% endmacro %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow"><a href="/simulations" style="color:var(--atext)">← Simulations</a> · {{ run.trigger }} run</div>
+  <h1>Run #{{ run.id }}</h1>
+  <p class="sub">
+    {{ run.started_at|utc('%a %d %b %Y · %H:%M') }} · took {{ '%.0f'|format(run.seconds or 0) }}s ·
+    prices through {% for k, d in (run.bars_through or {}).items() %}{{ k }} {{ d or '—' }}{% if not loop.last %}, {% endif %}{% endfor %}
+    {% if prev %} · compared with <a href="/simulations/{{ prev.id }}" style="color:var(--atext)">run #{{ prev.id }}</a>{% endif %}
+  </p>
+</header>
+
+<div class="stat-row">
+  <div class="kpi"><div class="kpi-label">Passing</div><div class="kpi-value">{{ run.passing }} of {{ run.tested }}</div><div class="kpi-hint">strategy × market</div></div>
+  <div class="kpi"><div class="kpi-label">Changed since last run</div><div class="kpi-value">{{ changes|length }}</div><div class="kpi-hint">{% for c in changes %}{{ c.strategy }}/{{ c.region }} {{ 'now passes' if c.passed else 'now fails' }}{% if not loop.last %} · {% endif %}{% else %}no verdict changed{% endfor %}</div></div>
+  <div class="kpi"><div class="kpi-label">Candidates</div><div class="kpi-value">{{ '{:,}'.format(run.candidates or 0) }}</div><div class="kpi-hint">{{ candidates.passed.total if candidates.passed is defined else '' }} pass the gate</div></div>
+</div>
+
+{# ── The gate ─────────────────────────────────────────────────────────── #}
+<section class="section">
+  <h2>The gate</h2>
+  <p class="lead-in">Every strategy in every market, this run. Per trade is the recent period's average result in R (profit ÷ risk); random is the same exits on random days; loss chance is how often a 100-trade run lost money in 2,000 reshuffles.</p>
+  {% for name, row in matrix %}
+  <div class="card">
+    <div class="card-head">
+      <h3>{{ row.label }}</h3>
+      {% set n = row.cells.values()|selectattr('passed')|list|length %}
+      {% if n %}<span class="badge badge-ok">passes in {{ n }}</span>{% else %}<span class="badge">fails everywhere</span>{% endif %}
+    </div>
+    <div class="tablewrap">
+      <table class="data">
+        <thead><tr><th>Market</th><th class="num">Recent trades</th><th class="num">Win</th><th class="num">Per trade</th><th class="num">Older</th><th class="num">Random</th><th class="num">Profit factor</th><th class="num">Loss chance</th><th class="num">Typical hold</th><th>Verdict</th></tr></thead>
+        <tbody>
+        {% for reg in ['IN', 'ASX', 'US'] %}{% set c = row.cells.get(reg) %}{% if c %}{% set st = c.stats %}
+        <tr>
+          <td><strong>{{ {'IN': 'India', 'ASX': 'Australia', 'US': 'United States'}[reg] }}</strong></td>
+          <td class="num">{{ '{:,}'.format(st.recent.trades or 0) }}</td>
+          <td class="num">{{ pct(st.recent.win_rate) }}</td>
+          <td class="num {{ 'up' if (st.recent.expectancy_r or 0) > 0 else 'down' }}">{{ r(st.recent.expectancy_r) }}</td>
+          <td class="num">{{ r(st.older.expectancy_r) }}</td>
+          <td class="num muted">{{ r(st.random_recent.expectancy_r) }}</td>
+          <td class="num">{{ '{:.2f}'.format(st.recent.profit_factor) if st.recent.profit_factor else '—' }}</td>
+          <td class="num">{{ pct(st.monte_carlo.chance_of_loss) }}</td>
+          <td class="num">{{ '%sd'|format(st.median_days) if st.median_days else '—' }}</td>
+          <td>
+            {% if c.passed %}<span class="badge badge-ok">passes</span>{% else %}<span class="badge">fails</span>{% endif %}
+            {% if c.was is not none and c.was != c.passed %}<span class="badge badge-warn">{{ 'new' if c.passed else 'dropped' }}</span>{% endif %}
+            {% if st.fails %}<div class="muted" style="font-size:11.5px;margin-top:4px;white-space:normal">{{ st.fails|join(' · ') }}</div>{% endif %}
+          </td>
+        </tr>
+        {% endif %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+{# ── As one account ───────────────────────────────────────────────────── #}
+<section class="section">
+  <h2>As one account</h2>
+  <p class="lead-in"><span style="color:var(--accent)">Alfred</span> · index · random picks · survivors (dashed). A market sends tickets only if its account beats the index on Sharpe and worst fall.</p>
+  <div class="grid">
+  {% for a in accounts %}{% set st = a.stats %}
+  <div class="card">
+    <div class="card-head"><h3>{{ a.name }}</h3>{% if st.passed %}<span class="badge badge-ok">sends tickets</span>{% else %}<span class="badge badge-bad">sends nothing</span>{% endif %}</div>
+    <div style="padding:12px 16px 0">{{ a.svg }}</div>
+    <div class="tablewrap"><table class="data">
+      <thead><tr><th></th><th class="num">Per year</th><th class="num">Worst fall</th><th class="num">Sharpe</th></tr></thead>
+      <tbody>
+      {% for label, key in [('Alfred', 'strategy'), ('· recent', 'recent'), ('Random picks', 'random_picks'), (st.index_symbol, 'index'), ('Survivors', 'survivors')] %}{% set m = st[key] or {} %}
+      <tr><td>{% if key == 'strategy' %}<strong>{{ label }}</strong>{% else %}{{ label }}{% endif %}</td>
+        <td class="num">{{ pct(m.cagr, 1, True) }}</td><td class="num">{{ pct(m.max_drawdown) }}</td>
+        <td class="num">{{ '{:.2f}'.format(m.sharpe) if m.sharpe is defined and m.sharpe is not none else '—' }}</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    <div class="card-body hint">{{ st.trades.trades }} trades · {{ pct(st.avg_exposure) }} invested · strategies: {{ (st.strategies or [])|join(', ') }}</div>
+  </div>
+  {% endfor %}
+  </div>
+</section>
+
+{# ── Candidates ───────────────────────────────────────────────────────── #}
+<section class="section">
+  <div class="ph-row" style="margin-bottom:12px">
+    <h2 style="margin:0">Candidates</h2>
+    <div class="segmented">
+      <a href="/simulations/{{ run.id }}{{ '?show=' ~ show if show else '' }}" class="{{ 'on' if not region }}">All</a>
+      {% for k, label in regions %}<a href="/simulations/{{ run.id }}?region={{ k }}{{ '&show=' ~ show if show else '' }}" class="{{ 'on' if region == k }}">{{ label }}</a>{% endfor %}
+    </div>
+  </div>
+  <p class="lead-in">Everything this run surfaced, best first in each group. "Strategy R" is the strategy's recent per-trade result in that market; "Name R" is this name's own record under it (trades in brackets). Anything not marked <span class="badge badge-ok">passes</span> did not clear the gate and is here for your own judgement.</p>
+  {% for key, g in candidates.items() %}
+  <h3 style="margin:22px 0 8px;font:600 13.5px/1.3 var(--sans)">{{ g.title }} <span class="muted" style="font-weight:400">· {{ g.total }}</span></h3>
+  {{ cand_table(g.rows) }}
+  {% if g.total > g.rows|length %}<p class="hint"><a href="/simulations/{{ run.id }}?show={{ key }}{{ '&region=' ~ region if region else '' }}" style="color:var(--atext)">Show all {{ g.total }} →</a></p>{% endif %}
+  {% if show %}<p class="hint"><a href="/simulations/{{ run.id }}{{ '?region=' ~ region if region else '' }}" style="color:var(--atext)">← All groups</a></p>{% endif %}
+  {% endfor %}
+</section>
+{% endblock %}

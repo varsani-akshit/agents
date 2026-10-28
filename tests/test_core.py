@@ -711,7 +711,8 @@ def test_portfolio_is_owner_only():
             r = client.get(path)
             assert r.status_code == 200, path
         assert "Today — Alfred" in client.get("/").text
-        assert "How a simulation runs" in client.get("/simulations").text
+        assert "Runs" in client.get("/simulations").text
+        assert "How a simulation runs" in client.get("/simulations/method").text
     auth.set_admin(TEST_USER, False)
 
 

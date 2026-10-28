@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_cands.html" import cand_table %}
 {% block title %}Ideas — Alfred{% endblock %}
 {% block content %}
 <header class="ph">
@@ -27,8 +28,17 @@
     <div class="kpi-hint"><a href="/simulations" style="color:var(--atext)">see the evidence →</a></div></div>
 </div>
 
+{% if run %}
+<section class="section">
+  <h2>Candidates from the latest simulation</h2>
+  <p class="lead-in">Run #{{ run.id }}, {{ run.started_at|ago }}: every signal that fired on the last close, those that pass the gate first. The rest did not pass and are shown for your own judgement, not as advice.</p>
+  {{ cand_table(cands, 'No signals fired on the last close.') }}
+  <p class="hint"><a href="/simulations/{{ run.id }}" style="color:var(--atext)">Open the full run →</a></p>
+</section>
+{% endif %}
+
 <div class="section card">
-  <div class="card-head"><h2>Tickets</h2><span class="hint">newest first</span></div>
+  <div class="card-head"><h2>Tickets sent</h2><span class="hint">newest first</span></div>
   <div class="tablewrap">
     <table class="data">
       <thead><tr>

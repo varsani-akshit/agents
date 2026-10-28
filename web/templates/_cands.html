@@ -1,0 +1,36 @@
+{# One table of simulation candidates. `rows` are sim_candidates rows; each
+   carries its strategy's evidence and, for signals, a sized ticket. #}
+{% macro cand_table(rows, empty='Nothing here in this run.') %}
+<div class="tablewrap">
+  <table class="data">
+    <thead><tr>
+      <th>Name</th><th>Market</th><th>Strategy</th><th>What fired / waiting for</th>
+      <th class="num">Last</th><th class="num">Limit · stop</th><th class="num">Strategy R</th>
+      <th class="num">Name R</th><th>Gate</th>
+    </tr></thead>
+    <tbody>
+    {% for c in rows %}{% set d = c.detail %}
+    <tr>
+      <td><strong>{{ d.display or c.symbol }}</strong>{% if d.held %} <span class="badge">held</span>{% endif %}</td>
+      <td class="muted">{{ c.region }} · {{ 'Kite' if d.broker == 'kite' else 'Webull' }}</td>
+      <td>{{ d.label }}</td>
+      <td>{% if c.kind == 'signal' %}<span class="badge badge-ok">fired {{ d.as_of }}</span>{% if d.reasons %}<div class="muted" style="font-size:11.5px;margin-top:3px">{{ d.reasons[0] }}</div>{% endif %}
+          {% else %}{{ d.waiting }}{% endif %}</td>
+      <td class="num">{{ '{:,.2f}'.format(d.close) if d.close is not none else '—' }}</td>
+      <td class="num">{% if c.kind == 'signal' %}{{ '{:,.2f}'.format(d.limit) }}<br><span class="muted">{{ '{:,.2f}'.format(d.stop) }} ({{ '{:+.1f}%'.format(d.stop_pct) }})</span>{% else %}—{% endif %}</td>
+      <td class="num {{ 'up' if (d.evidence.expectancy_r if d.evidence else 0) > 0 else '' }}">{% if d.evidence %}{{ '{:+.2f}'.format(d.evidence.expectancy_r or 0) }}{% else %}—{% endif %}</td>
+      <td class="num">{% if d.name_expectancy_r is not none %}{{ '{:+.2f}'.format(d.name_expectancy_r) }}<span class="muted"> ({{ d.name_trades }})</span>{% else %}—{% endif %}</td>
+      <td>
+        {% if c.passed_gate %}<span class="badge badge-ok">passes</span>
+        {% elif not d.strategy_passed %}<span class="badge badge-warn" title="{{ d.fails|join('; ') }}">strategy fails</span>
+        {% elif not d.market_sending %}<span class="badge badge-warn">market quiet</span>
+        {% else %}<span class="badge badge-warn">weak name record</span>{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="muted" style="padding:20px 16px">{{ empty }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
