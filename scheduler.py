@@ -316,7 +316,7 @@ def job_maintenance() -> dict:
     b = detail["budget"]
     out.info(
         f"maintenance · graph {detail['hygiene']} · "
-        f"spend today ${b['spent_today_usd']:.3f} total ${b['spent_total_usd']:.3f}"
+        f"spend 24h ${b['spent_today_usd']:.3f} · 30 days ${b['spent_month_usd']:.3f}"
     )
     return detail
 

@@ -149,11 +149,11 @@ def cmd_status(args) -> int:
 
     b = client.budget_status()
     c.print(
-        f"\n[bold]spend[/bold]  today ${b['spent_today_usd']:.4f}/"
-        f"${b['daily_cap_usd']:.2f}   total ${b['spent_total_usd']:.4f}/"
-        f"${b['total_cap_usd']:.2f}"
-        f"\n[dim]scheduled jobs stop at ${b['autonomous_cap_usd']:.2f}; "
-        f"${b['interactive_reserve_usd']:.4f} reserved for your own queries[/dim]"
+        f"\n[bold]spend[/bold]  24h ${b['spent_today_usd']:.2f}/${b['daily_cap_usd']:.2f}   "
+        f"30 days ${b['spent_month_usd']:.2f}/${b['monthly_cap_usd']:.2f}   "
+        f"all time ${b['spent_total_usd']:.2f}"
+        f"\n[dim]scheduled jobs stop at ${b['scheduled_daily_cap_usd']:.2f} a day; "
+        f"${b['interactive_reserve_usd']:.2f} kept for your own questions[/dim]"
     )
 
     from brain import llm

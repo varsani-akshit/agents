@@ -56,6 +56,9 @@ def ask(state: str, questions: dict[str, dict], *, purpose: str, timeout: float 
     """
     if not available():
         raise DecisionError("Azure is not configured")
+    from brain import client
+
+    client.check_budget(0.0005)
     try:
         r = httpx.post(_url(), timeout=timeout,
                        headers={"api-key": os.environ["AZURE_FOUNDRY_API_KEY"]},

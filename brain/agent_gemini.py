@@ -189,7 +189,10 @@ def run_agent(
     # Gemini exposes reasoning as a token budget rather than a named effort.
     budget = {"low": 2048, "medium": 8192, "high": 24576}.get(effort, 8192)
 
+    from brain import client as _budget
+
     for turn in range(max_turns):
+        _budget.check_budget(0.03)
         payload = {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": contents,

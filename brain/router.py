@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import os
 
-from brain import llm
+from brain import client, llm
 
 log = logging.getLogger("mia.router")
 
@@ -85,6 +85,8 @@ def complete_json(role: str, *, system: str, user: str, schema: dict,
                     purpose=purpose, max_tokens=max_tokens, fallback=spec,
                 )
                 return payload, spec
+            except client.BudgetExceeded:
+                raise   # a cap is a decision, not a fault to route around
             except Exception as exc:  # noqa: BLE001
                 last = exc
                 log.warning("%s: role=%s %s attempt %d failed (%s)",
@@ -108,6 +110,8 @@ def complete_text(role: str, *, system: str, user: str, purpose: str,
                     max_tokens=max_tokens, fallback=spec, with_cost=True,
                 )
                 return text, spec, usd
+            except client.BudgetExceeded:
+                raise   # a cap is a decision, not a fault to route around
             except Exception as exc:  # noqa: BLE001
                 last = exc
                 log.warning("%s: role=%s %s attempt %d failed (%s)",

@@ -41,32 +41,33 @@ def client() -> anthropic.Anthropic:
 
 # ─────────────────────────────── cost accounting ────────────────────────────
 def spend_today() -> float:
-    """Rolling 24-hour spend, not calendar-day.
+    """Rolling 24-hour spend, every provider.
 
     A calendar-day cap on a continuously-running system behaves badly: spend
     early in the day blocks the rest of it, and the limiter resets on an
     arbitrary boundary rather than relative to actual usage. A rolling window is
     what "don't burn more than X per day" actually means.
     """
-    row = db.one(
-        "SELECT COALESCE(SUM(usd),0) AS s FROM api_calls "
-        "WHERE provider='anthropic' AND created_at > now() - interval '24 hours'"
-    )
-    return float(row["s"]) if row else 0.0
+    return _spend_since("24 hours")
+
+
+def spend_month() -> float:
+    """Rolling 30-day spend, every provider."""
+    return _spend_since("30 days")
 
 
 def spend_total() -> float:
-    """Anthropic spend only.
+    """All-time spend, every provider. Reported, not capped."""
+    row = db.one("SELECT COALESCE(SUM(usd),0) AS s FROM api_calls")
+    return float(row["s"]) if row else 0.0
 
-    The caps exist to protect one prepaid Anthropic balance. Counting routed
-    Gemini/Groq/OpenAI spend against them would defeat the point of routing work
-    off Anthropic in the first place — the cheap providers would consume the very
-    headroom the routing was meant to free. Cross-provider spend is reported
-    separately by `spend_by_provider`.
-    """
-    row = db.one(
-        "SELECT COALESCE(SUM(usd),0) AS s FROM api_calls WHERE provider='anthropic'"
-    )
+
+def _spend_since(window: str) -> float:
+    # Every provider counts. The caps once covered Anthropic alone, to guard a
+    # prepaid balance; when the work moved to Gemini and Azure that left every
+    # call the system actually makes uncapped.
+    row = db.one("SELECT COALESCE(SUM(usd),0) AS s FROM api_calls "
+                 f"WHERE created_at > now() - interval '{window}'")
     return float(row["s"]) if row else 0.0
 
 
@@ -126,36 +127,34 @@ AUTONOMOUS = True
 
 
 def check_budget(estimated: float = 0.02) -> None:
-    today, total = spend_today(), spend_total()
+    """Refuse a call that would cross a cap. Raised before money is spent."""
+    today, month = spend_today(), spend_month()
     if today + estimated > config.DAILY_USD_CAP:
         raise BudgetExceeded(
-            f"daily cap reached: ${today:.4f} spent, cap ${config.DAILY_USD_CAP:.2f}"
-        )
-    if total + estimated > config.TOTAL_USD_CAP:
+            f"daily cap reached: ${today:.2f} spent in 24h, cap ${config.DAILY_USD_CAP:.2f}")
+    if month + estimated > config.MONTHLY_USD_CAP:
         raise BudgetExceeded(
-            f"total cap reached: ${total:.4f} spent, cap ${config.TOTAL_USD_CAP:.2f}"
-        )
-    if AUTONOMOUS and total + estimated > config.AUTONOMOUS_USD_CAP:
+            f"monthly cap reached: ${month:.2f} spent in 30 days, cap ${config.MONTHLY_USD_CAP:.2f}")
+    if AUTONOMOUS and today + estimated > config.SCHEDULED_DAILY_USD_CAP:
         raise BudgetExceeded(
-            f"autonomous cap reached: ${total:.4f} spent, scheduled-job cap "
-            f"${config.AUTONOMOUS_USD_CAP:.2f} — the remainder of the "
-            f"${config.TOTAL_USD_CAP:.2f} total is reserved for interactive use"
-        )
+            f"scheduled-job cap reached: ${today:.2f} spent in 24h, scheduled jobs stop at "
+            f"${config.SCHEDULED_DAILY_USD_CAP:.2f} — the rest of the "
+            f"${config.DAILY_USD_CAP:.2f} daily cap is kept for your own questions")
 
 
 def budget_status() -> dict:
-    today, total = spend_today(), spend_total()
+    today, month = spend_today(), spend_month()
     return {
         "spent_today_usd": round(today, 4),
         "daily_cap_usd": config.DAILY_USD_CAP,
         "daily_remaining_usd": round(max(0.0, config.DAILY_USD_CAP - today), 4),
-        "spent_total_usd": round(total, 4),
-        "total_cap_usd": config.TOTAL_USD_CAP,
-        "total_remaining_usd": round(max(0.0, config.TOTAL_USD_CAP - total), 4),
-        "autonomous_cap_usd": config.AUTONOMOUS_USD_CAP,
+        "scheduled_daily_cap_usd": config.SCHEDULED_DAILY_USD_CAP,
         "interactive_reserve_usd": round(
-            max(0.0, config.TOTAL_USD_CAP - max(total, config.AUTONOMOUS_USD_CAP)), 4
-        ),
+            max(0.0, config.DAILY_USD_CAP - max(today, config.SCHEDULED_DAILY_USD_CAP)), 4),
+        "spent_month_usd": round(month, 4),
+        "monthly_cap_usd": config.MONTHLY_USD_CAP,
+        "monthly_remaining_usd": round(max(0.0, config.MONTHLY_USD_CAP - month), 4),
+        "spent_total_usd": round(spend_total(), 4),
     }
 
 

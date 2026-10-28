@@ -303,6 +303,11 @@ def complete_json(
     Falls back to `fallback` (default: the configured Anthropic classify model)
     on any provider error, so a routing decision cannot break the pipeline.
     """
+    from brain import client as _budget
+
+    # Checked once, before any provider is tried, so a cap stops the work
+    # rather than being retried down every fallback.
+    _budget.check_budget(price(spec, (len(system) + len(user)) // 4, max_tokens // 2))
     fallback = fallback or config.FALLBACK_SPEC
     attempts = [spec] + ([fallback] if fallback != spec else [])
 
@@ -461,6 +466,11 @@ def complete_text(
     model name and then calling the Anthropic client regardless — so pointing a
     task at Gemini sent a Gemini model id to Anthropic and 404'd.
     """
+    from brain import client as _budget
+
+    # Checked once, before any provider is tried, so a cap stops the work
+    # rather than being retried down every fallback.
+    _budget.check_budget(price(spec, (len(system) + len(user)) // 4, max_tokens // 2))
     fallback = fallback or config.FALLBACK_SPEC
     attempts = [spec] + ([fallback] if fallback != spec else [])
     last: Exception | None = None

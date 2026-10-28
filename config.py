@@ -54,15 +54,17 @@ if AZURE_READY:
     CLASSIFY_SPEC = os.getenv("MIA_CLASSIFY_SPEC", _MAVERICK)
     EXTRACT_SPEC = os.getenv("MIA_EXTRACT_SPEC", _MAVERICK)
 
-# Hard spend guards (USD). The ledger refuses calls once these are reached.
-DAILY_USD_CAP = _f("MIA_DAILY_USD_CAP", 0.60)
-TOTAL_USD_CAP = _f("MIA_TOTAL_USD_CAP", 3.00)
+# Hard spend guards (USD), across every provider (Gemini, Azure, Decision-1),
+# checked before every model call. Rolling windows, not calendar ones: spend
+# early in a day should not block the rest of it, and nothing resets at an
+# arbitrary midnight.
+DAILY_USD_CAP = _f("MIA_DAILY_USD_CAP", 8.00)                   # any 24 hours
+MONTHLY_USD_CAP = _f("MIA_MONTHLY_USD_CAP", _f("MIA_TOTAL_USD_CAP", 150.00))  # any 30 days
 
-# Scheduled jobs stop at this, leaving the remainder of TOTAL_USD_CAP available
-# for interactive `ask`. Without it a busy night of autonomous cycles can consume
-# the whole balance and leave the user unable to ask their own questions —
-# the one use that actually needs the budget to be there.
-AUTONOMOUS_USD_CAP = _f("MIA_AUTONOMOUS_USD_CAP", TOTAL_USD_CAP * 0.75)
+# Scheduled jobs (briefs, harvests, matching) stop at this share of the daily
+# cap, so a busy night can never leave you unable to ask your own questions —
+# the one use that most needs the budget to be there.
+SCHEDULED_DAILY_USD_CAP = _f("MIA_SCHEDULED_DAILY_USD_CAP", 5.00)
 
 # What one reader may spend on Ask in a calendar month. Admins are exempt in
 # code. This is the default for anyone without a budget of their own; a
