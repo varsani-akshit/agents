@@ -310,6 +310,14 @@ def job_maintenance() -> dict:
     return detail
 
 
+def job_portfolio() -> dict:
+    """Pull every configured broker. Read-only; costs nothing but API calls."""
+    from brokers import portfolio as pf
+
+    results = pf.pull_all()
+    return {"brokers": results}
+
+
 # ─────────────────────────────────── runner ─────────────────────────────────
 def build_scheduler() -> BlockingScheduler:
     sched = BlockingScheduler(
@@ -334,6 +342,12 @@ def build_scheduler() -> BlockingScheduler:
         lambda: _guard("digest", job_digest),
         CronTrigger(hour="9,21", minute=5),
         id="digest",
+    )
+    sched.add_job(
+        lambda: _guard("portfolio", job_portfolio),
+        IntervalTrigger(minutes=15),
+        id="portfolio",
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
     )
     sched.add_job(
         lambda: _guard("daily_data", job_daily_data),
@@ -370,6 +384,7 @@ def build_background_scheduler():
         ("tick_prices", lambda: job_tick(harvest_news=False),
          IntervalTrigger(minutes=30, start_date=datetime.now(timezone.utc) + timedelta(minutes=15))),
         ("digest", job_digest, CronTrigger(hour="9,21", minute=5)),
+        ("portfolio", job_portfolio, IntervalTrigger(minutes=15)),
         ("daily_data", job_daily_data, CronTrigger(hour=2, minute=0)),
         ("maintenance", job_maintenance, CronTrigger(hour=3, minute=0)),
     ):

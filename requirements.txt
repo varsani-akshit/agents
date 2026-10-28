@@ -25,6 +25,9 @@ feedparser==6.0.14
 beautifulsoup4==4.15.0
 lxml==6.1.2
 
+# Brokers
+webull-openapi-python-sdk==3.0.4   # request signing is only documented via the SDK
+
 # Runtime
 apscheduler==3.11.3
 python-dotenv==1.2.3

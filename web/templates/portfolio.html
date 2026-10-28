@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Portfolio — Alfred{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">Your accounts · read-only</div>
+  <h1>Portfolio</h1>
+  <p class="sub">
+    What you hold at each broker, pulled every 15 minutes. Alfred can read
+    these accounts but cannot place, change or cancel an order.
+  </p>
+</header>
+
+{% if notice %}<p class="hint" style="margin-bottom:18px">{{ notice }}</p>{% endif %}
+
+<div class="ctl">
+  <div class="ctlrow">
+    <form method="post" action="/portfolio/refresh" style="display:inline">
+      <button type="submit" class="opt">Refresh now</button>
+    </form>
+  </div>
+</div>
+
+{% for b in brokers %}
+<section class="pf-broker" style="margin-top:32px">
+  <h2 style="margin-bottom:6px">{{ b.status.label }}</h2>
+  <p class="hint">
+    {% if not b.status.configured %}
+      Not configured — add its API keys to <code>.env</code>.
+    {% elif b.status.connected %}
+      <span class="dot ok"></span> connected{% if b.status.account %} · {{ b.status.account }}{% endif %}
+      {% if b.status.expires_at %} · session ends {{ b.status.expires_at[:16].replace('T', ' ') }}{% endif %}
+    {% else %}
+      <span class="dot bad"></span> not connected — {{ b.status.connect_hint }}
+      {% if b.status.broker == 'kite' %}<a class="opt" href="/brokers/kite/login">Log in with Zerodha</a>{% endif %}
+    {% endif %}
+  </p>
+
+  {% set got = b.data %}
+  {% if got and got.failed %}
+  <p class="hint" style="color:var(--down)">
+    Last pull failed {{ got.failed.taken_at|ago }}: {{ got.failed.error }}
+  </p>
+  {% endif %}
+
+  {% if got and got.snapshot %}
+  <p class="hint">
+    As of {{ got.snapshot.taken_at|utc('%d %b · %H:%M') }}
+    {% set f = got.snapshot.funds or {} %}
+    {% if f.available is not none and f.available is defined %} · available {{ '{:,.0f}'.format(f.available) }} {{ f.currency }}{% endif %}
+    {% if f.cash is not none and f.cash is defined %} · cash {{ '{:,.0f}'.format(f.cash) }}{% endif %}
+  </p>
+  {% for cur, t in b.totals.items() %}
+  <p class="hint">
+    {{ cur }} · value {{ '{:,.0f}'.format(t.value) }} ·
+    unrealised <span class="{{ 'up' if t.pnl >= 0 else 'down' }}">{{ '{:+,.0f}'.format(t.pnl) }}</span>
+  </p>
+  {% endfor %}
+
+  {% if got.lines %}
+  <div class="tablewrap">
+    <table class="data mkt-table">
+      <thead><tr>
+        <th>Symbol</th><th>Kind</th><th class="num">Qty</th><th class="num">Avg</th>
+        <th class="num">Last</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Day</th>
+      </tr></thead>
+      <tbody>
+      {% for ln in got.lines %}
+      <tr>
+        <td><strong>{{ ln.symbol }}</strong> <span class="hint">{{ ln.exchange or '' }}</span></td>
+        <td>{{ ln.kind }}{% if ln.product %} · {{ ln.product }}{% endif %}</td>
+        <td class="num">{{ '{:,g}'.format(ln.quantity|float) }}</td>
+        <td class="num">{{ '{:,.2f}'.format(ln.avg_price|float) if ln.avg_price is not none else '—' }}</td>
+        <td class="num">{{ '{:,.2f}'.format(ln.last_price|float) if ln.last_price is not none else '—' }}</td>
+        <td class="num">{{ '{:,.0f}'.format(ln.value) if ln.value is not none else '—' }}</td>
+        <td class="num {{ 'up' if (ln.pnl or 0) >= 0 else 'down' }}">{{ '{:+,.0f}'.format(ln.pnl|float) if ln.pnl is not none else '—' }}</td>
+        <td class="num {{ 'up' if (ln.day_change_pct or 0) >= 0 else 'down' }}">{{ '{:+.2f}%'.format(ln.day_change_pct|float) if ln.day_change_pct is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">No open holdings or positions.</p>
+  {% endif %}
+  {% elif b.status.configured %}
+  <p class="empty">Nothing pulled yet.</p>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

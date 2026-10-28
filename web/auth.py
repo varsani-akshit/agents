@@ -90,7 +90,7 @@ def set_budget(username: str, monthly_usd: float | None) -> bool:
 def verify(username: str, password: str) -> dict | None:
     """Check a credential pair. Returns the user row, or None."""
     user = db.one(
-        "SELECT id, username, display_name, password_hash, salt, is_admin "
+        "SELECT id, username, display_name, password_hash, salt, is_admin, disabled_at "
         "FROM users WHERE username=%s",
         ((username or "").strip().lower(),),
     )
@@ -102,15 +102,50 @@ def verify(username: str, password: str) -> dict | None:
         return None
     if not hmac.compare_digest(_derive(password or "", user["salt"]), user["password_hash"]):
         return None
+    # Checked after the password, so a disabled account answers exactly like a
+    # wrong password: the form never confirms which usernames exist.
+    if user.get("disabled_at"):
+        log.info("login refused for disabled account %s", user["username"])
+        return None
     db.execute("UPDATE users SET last_login = now() WHERE id = %s", (user["id"],))
     return {"id": user["id"], "username": user["username"],
             "display_name": user.get("display_name") or user["username"].title(),
             "is_admin": bool(user.get("is_admin"))}
 
 
+def set_disabled(username: str, disabled: bool) -> bool:
+    """Switch an account off or back on. Nothing it owns is deleted."""
+    n = db.execute(
+        "UPDATE users SET disabled_at = CASE WHEN %s THEN coalesce(disabled_at, now()) END "
+        "WHERE username = %s",
+        (bool(disabled), username.strip().lower()))
+    log.info("user %s disabled=%s", username, disabled)
+    return bool(n)
+
+
+def lockdown(owner: str) -> list[str]:
+    """Disable every account except the owner's. Returns who was switched off.
+
+    Refuses unless the owner exists and is an admin: locking everyone out,
+    including yourself, is the one outcome this must never produce.
+    """
+    owner = owner.strip().lower()
+    row = db.one("SELECT is_admin FROM users WHERE username = %s", (owner,))
+    if not row or not row["is_admin"]:
+        raise ValueError(f"owner '{owner}' does not exist or is not an admin")
+    rows = db.query(
+        "UPDATE users SET disabled_at = now() "
+        "WHERE username <> %s AND disabled_at IS NULL RETURNING username",
+        (owner,))
+    db.execute("UPDATE users SET disabled_at = NULL WHERE username = %s", (owner,))
+    names = [r["username"] for r in rows]
+    log.info("lockdown: kept %s, disabled %s", owner, names or "nobody")
+    return names
+
+
 def list_users() -> list[dict]:
     return db.query(
-        "SELECT username, display_name, is_admin, created_at, last_login "
+        "SELECT username, display_name, is_admin, created_at, last_login, disabled_at "
         "FROM users ORDER BY created_at")
 
 
@@ -165,6 +200,20 @@ def username_of(request) -> str | None:
     return u["username"] if u else None
 
 
+def is_active(request) -> bool:
+    """Whether the signed-in account is still allowed in.
+
+    Read from the database on every request, like admin rights: disabling an
+    account has to end sessions already open on someone's phone, not just stop
+    the next sign-in.
+    """
+    u = current_user(request)
+    if not u:
+        return False
+    row = db.one("SELECT disabled_at FROM users WHERE username = %s", (u["username"],))
+    return bool(row) and row["disabled_at"] is None
+
+
 def is_admin(request) -> bool:
     """Administrator rights are read from the database, not the cookie.
 
@@ -182,7 +231,9 @@ def is_admin(request) -> bool:
 # Surfaces that expose how Alfred is built and what it costs, or that change
 # what it ingests. Readers get the product; only an administrator sees the
 # machinery.
-ADMIN_PATHS = ("/status", "/add")
+# Holdings and broker sessions are the owner's alone, even if reader accounts
+# come back: they are listed here so re-enabling someone can never expose them.
+ADMIN_PATHS = ("/status", "/add", "/portfolio", "/brokers")
 
 
 def is_admin_path(path: str) -> bool:

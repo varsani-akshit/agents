@@ -65,6 +65,22 @@ NOTIFY_SLACK = os.getenv("MIA_NOTIFY_SLACK", "false").lower() in {"1", "true", "
 SLACK_WEBHOOK_CRITICAL = os.getenv("SLACK_WEBHOOK_CRITICAL", "")
 SLACK_WEBHOOK_DIGESTS = os.getenv("SLACK_WEBHOOK_DIGESTS", "")
 
+# Private mode. The owner is the one account `mia lockdown` leaves standing.
+# Share links are off unless switched back on: a link is a credential, and a
+# dashboard that is about to show holdings should not be handing them out.
+OWNER = os.getenv("MIA_OWNER", "akshit").strip().lower()
+SHARING_ENABLED = os.getenv("MIA_SHARING", "false").lower() in {"1", "true", "yes"}
+
+# Brokers, read-only for now. Tokens live on disk under SECRETS, mode 0600,
+# never in the database or the logs.
+SECRETS = ROOT / "secrets"
+KITE_API_KEY = os.getenv("KITE_API_KEY", "")
+KITE_API_SECRET = os.getenv("KITE_API_SECRET", "")
+WEBULL_APP_KEY = os.getenv("WEBULL_APP_KEY", "")
+WEBULL_APP_SECRET = os.getenv("WEBULL_APP_SECRET", "")
+# "au" for Webull Australia, "us" for Webull US. The SDK picks the host from it.
+WEBULL_REGION = os.getenv("WEBULL_REGION", "au").strip().lower()
+
 EMBED_MODEL = "voyage-finance-2"
 EMBED_DIM = 1024
 

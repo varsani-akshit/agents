@@ -246,6 +246,8 @@ def cmd_user(args) -> int:
         for u in auth.list_users():
             last = u["last_login"].strftime("%Y-%m-%d %H:%M") if u["last_login"] else "never"
             role = "admin " if u.get("is_admin") else "reader"
+            if u.get("disabled_at"):
+                role = "OFF   "
             name = u.get("display_name") or "—"
             st = spend_mod.status(u["username"])
             money = "unlimited" if st["unlimited"] else \
@@ -265,6 +267,19 @@ def cmd_user(args) -> int:
     if not args.username:
         out.error("give a username, or --list")
         return 2
+    if args.disable or args.enable:
+        if args.enable and not args.disable:
+            ok = auth.set_disabled(args.username, False)
+        elif args.username.strip().lower() == config.OWNER:
+            out.error("refusing to disable the owner account")
+            return 2
+        else:
+            ok = auth.set_disabled(args.username, True)
+        if not ok:
+            out.error(f"no user '{args.username}'")
+            return 2
+        out.info(f"{args.username} is now {'enabled' if args.enable else 'disabled'}")
+        return 0
     # Prompt rather than accept a password argument: anything on the command
     # line lands in shell history and in the process table.
     if args.admin or args.no_admin:
@@ -282,6 +297,87 @@ def cmd_user(args) -> int:
         out.error(str(exc))
         return 2
     out.info(f"user '{args.username.lower()}' ready")
+    return 0
+
+
+def cmd_broker(args) -> int:
+    """Broker connections: status, connect, pull, inspect. Read-only throughout."""
+    from brokers import NotConnected, portfolio as pf
+    from notify import out
+
+    if args.action == "status":
+        for name, mod in pf.ADAPTERS.items():
+            st = mod.status()
+            state = ("connected" if st["connected"] else
+                     "not connected" if st["configured"] else "not configured")
+            out.info(f"  {st['label']:<18} {state}"
+                     + (f" · until {st['expires_at']}" if st.get("expires_at") else ""))
+        return 0
+
+    if args.action == "connect":
+        if args.broker == "kite":
+            from brokers import kite
+
+            if not args.token:
+                out.info("Open this, log in, and copy request_token from the URL you land on:")
+                out.info(kite.login_url())
+                out.info("then: mia broker connect kite --token REQUEST_TOKEN")
+                return 0
+            out.info(f"connected: {kite.exchange(args.token)}")
+            return 0
+        if args.broker == "webull":
+            from brokers import webull
+
+            out.info("Approve the request in the Webull app — waiting up to 5 minutes…")
+            try:
+                accounts = webull.connect()
+            except NotConnected as exc:
+                out.error(str(exc))
+                return 2
+            out.info(f"connected: {len(accounts)} account(s)")
+            return 0
+        out.error("connect kite or webull")
+        return 2
+
+    if args.action == "pull":
+        for r in ([pf.pull(args.broker)] if args.broker else pf.pull_all()):
+            out.info(f"  {r}")
+        return 0
+
+    if args.action == "show":
+        if args.raw:
+            if args.broker != "webull":
+                out.error("--raw is for checking the Webull field mapping: show webull --raw")
+                return 2
+            from brokers import webull
+
+            print(json.dumps(webull.raw(), indent=2, default=str))
+            return 0
+        print(pf.book_summary(max_lines=200) or "no snapshots yet")
+        return 0
+    return 2
+
+
+def cmd_lockdown(args) -> int:
+    """Back to one owner: disable every other account, revoke every share link.
+
+    Reversible on purpose. Accounts are switched off, not deleted, and come
+    back one at a time with `mia user NAME --enable`.
+    """
+    from notify import out
+    from web import auth, sharing
+
+    owner = (args.owner or config.OWNER).strip().lower()
+    try:
+        disabled = auth.lockdown(owner)
+    except ValueError as exc:
+        out.error(str(exc))
+        return 2
+    revoked = sharing.revoke_all()
+    out.info(f"kept {owner}; disabled {', '.join(disabled) or 'nobody else'}")
+    out.info(f"revoked {revoked} live share link{'' if revoked == 1 else 's'}")
+    if config.SHARING_ENABLED:
+        out.error("MIA_SHARING is on — new share links can still be created")
     return 0
 
 
@@ -399,7 +495,22 @@ def build_parser() -> argparse.ArgumentParser:
                         "default. Admins are unlimited regardless.")
     u.add_argument("--create", action="store_true",
                    help="with --admin, also set a password")
+    u.add_argument("--disable", action="store_true",
+                   help="switch the account off; nothing it owns is deleted")
+    u.add_argument("--enable", action="store_true", help="switch the account back on")
     u.set_defaults(func=cmd_user)
+
+    br = sub.add_parser("broker", help="broker connections (read-only)")
+    br.add_argument("action", choices=["status", "connect", "pull", "show"])
+    br.add_argument("broker", nargs="?", choices=["kite", "webull"])
+    br.add_argument("--token", help="Kite request_token, for connecting without the web page")
+    br.add_argument("--raw", action="store_true", help="with show webull: unparsed responses")
+    br.set_defaults(func=cmd_broker)
+
+    lk = sub.add_parser("lockdown",
+                        help="disable every account but the owner's and revoke share links")
+    lk.add_argument("--owner", help=f"account to keep (default MIA_OWNER, '{config.OWNER}')")
+    lk.set_defaults(func=cmd_lockdown)
 
     rw = sub.add_parser("rewrite", help="re-render stored briefs in the current format")
     rw.add_argument("--limit", type=int, default=5, help="how many recent briefs")

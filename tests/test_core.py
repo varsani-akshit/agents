@@ -326,7 +326,7 @@ def test_utc_filter_converts_from_session_timezone():
 
 @pytest.mark.parametrize(
     "path", ["/", "/archive", "/ask", "/alerts", "/world", "/status", "/healthz",
-             "/api/latest", "/charts", "/graph", "/add", "/api/graph"]
+             "/api/latest", "/charts", "/graph", "/add", "/api/graph", "/portfolio"]
 )
 def test_every_page_renders(path):
     """Smoke test across every route.
@@ -587,13 +587,16 @@ def test_every_document_falls_under_some_retention_rule():
     assert uncovered == 0, f"{uncovered} documents match no retention rule"
 
 
-def test_share_link_shows_one_brief_and_nothing_else():
+def test_share_link_shows_one_brief_and_nothing_else(monkeypatch):
     """A share recipient has no account. The token is the only credential, so
     the page must carry no route into the rest of the dashboard, and a revoked
     token must stop working immediately."""
     from fastapi.testclient import TestClient
 
+    import config
     import db
+
+    monkeypatch.setattr(config, "SHARING_ENABLED", True)
     from web import sharing
     from web.app import app
 
@@ -628,3 +631,176 @@ def test_share_token_is_unguessable_and_validated():
     assert sharing.resolve("") is None
     assert sharing.resolve("short") is None
     assert sharing.resolve("z" * 32) is None
+
+
+# ─────────────────────────────── private mode ───────────────────────────────
+def test_disabled_account_cannot_sign_in_and_loses_open_session():
+    """Disabling has to end a session already open on someone's phone, not
+    just refuse the next sign-in."""
+    from fastapi.testclient import TestClient
+
+    from web import auth
+    from web.app import app
+
+    auth.create_user(TEST_USER, TEST_PASS)
+    auth.set_disabled(TEST_USER, False)
+    with TestClient(app) as client:
+        _sign_in(client)
+        assert client.get("/archive", follow_redirects=False).status_code == 200
+        auth.set_disabled(TEST_USER, True)
+        r = client.get("/archive", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"].startswith("/login")
+        r = client.post("/login", data={"username": TEST_USER, "password": TEST_PASS},
+                        follow_redirects=False)
+        assert r.status_code == 401, "a disabled account signed in"
+    auth.set_disabled(TEST_USER, False)
+
+
+def test_lockdown_refuses_an_owner_who_is_not_an_admin():
+    """Locking everyone out, owner included, is the outcome lockdown must never
+    produce — so it refuses before touching anyone."""
+    from web import auth
+
+    auth.create_user(TEST_USER, TEST_PASS)
+    with pytest.raises(ValueError):
+        auth.lockdown(TEST_USER)
+    with pytest.raises(ValueError):
+        auth.lockdown("no-such-user-xyz")
+
+
+def test_share_links_are_dead_while_sharing_is_off(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import config
+    import db
+    from web import sharing
+    from web.app import app
+
+    row = db.one("SELECT id FROM analyses WHERE kind='digest' ORDER BY id DESC LIMIT 1")
+    if not row:
+        pytest.skip("no brief to share")
+    token = sharing.create(row["id"], "pytest")
+    monkeypatch.setattr(config, "SHARING_ENABLED", False)
+    with TestClient(app) as client:
+        assert client.get(f"/s/{token}").status_code == 404
+        _sign_in(client)
+        assert client.post(f"/digest/{row['id']}/share").status_code == 403
+    db.execute("DELETE FROM brief_shares WHERE token=%s", (token,))
+
+
+def test_portfolio_is_owner_only():
+    """Holdings stay admin-only even if reader accounts come back."""
+    from fastapi.testclient import TestClient
+
+    from web import auth
+    from web.app import app
+
+    auth.create_user(TEST_USER, TEST_PASS)
+    auth.set_admin(TEST_USER, False)
+    with TestClient(app) as client:
+        _sign_in(client)
+        for path in ("/portfolio", "/brokers/kite/login"):
+            r = client.get(path, follow_redirects=False)
+            assert r.status_code == 303 and r.headers["location"] == "/", path
+        auth.set_admin(TEST_USER, True)
+        assert client.get("/portfolio").status_code == 200
+    auth.set_admin(TEST_USER, False)
+
+
+def test_kite_callback_rejects_a_foreign_state():
+    """A callback link carrying someone else's request token must not connect
+    their account in place of the owner's."""
+    from fastapi.testclient import TestClient
+
+    from web import auth
+    from web.app import app
+
+    auth.create_user(TEST_USER, TEST_PASS)
+    auth.set_admin(TEST_USER, True)
+    with TestClient(app) as client:
+        _sign_in(client)
+        r = client.get("/brokers/kite/callback?request_token=x&status=success&state=forged",
+                       follow_redirects=False)
+        assert r.headers["location"] == "/portfolio?notice=kite_state"
+    auth.set_admin(TEST_USER, False)
+
+
+# ───────────────────────────────── brokers ──────────────────────────────────
+def test_kite_checksum_and_expiry(monkeypatch):
+    import hashlib
+    from datetime import datetime
+
+    import config
+    from brokers import kite
+
+    monkeypatch.setattr(config, "KITE_API_KEY", "key")
+    monkeypatch.setattr(config, "KITE_API_SECRET", "secret")
+    assert kite.checksum("tok") == hashlib.sha256(b"keytoksecret").hexdigest()
+    # Before 06:00 IST the token dies the same morning; after, the next one.
+    early = datetime(2026, 10, 28, 5, 0, tzinfo=kite.IST)
+    late = datetime(2026, 10, 28, 9, 0, tzinfo=kite.IST)
+    assert kite._expiry(early) == datetime(2026, 10, 28, 6, 0, tzinfo=kite.IST)
+    assert kite._expiry(late) == datetime(2026, 10, 29, 6, 0, tzinfo=kite.IST)
+
+
+def test_kite_parsers_count_unsettled_shares_and_skip_closed_positions():
+    from brokers import kite
+
+    holdings = kite.parse_holdings([
+        {"tradingsymbol": "INFY", "exchange": "NSE", "quantity": 10, "t1_quantity": 5,
+         "average_price": 1500, "last_price": 1600, "pnl": 1500,
+         "day_change_percentage": 1.2, "product": "CNC"},
+        {"tradingsymbol": "SOLD", "quantity": 0, "t1_quantity": 0},
+    ], "AB1234")
+    assert [h.symbol for h in holdings] == ["INFY"]
+    assert holdings[0].quantity == 15 and holdings[0].currency == "INR"
+
+    positions = kite.parse_positions({"net": [
+        {"tradingsymbol": "NIFTY26NOVFUT", "quantity": 50, "average_price": 24000,
+         "last_price": 24100, "pnl": 5000, "product": "NRML"},
+        {"tradingsymbol": "CLOSED", "quantity": 0, "pnl": -200},
+    ]}, "AB1234")
+    assert [p.symbol for p in positions] == ["NIFTY26NOVFUT"]
+
+    funds = kite.parse_margins({"equity": {"net": 1000.5, "available": {"cash": 2000},
+                                           "utilised": {"debits": 999.5}}})
+    assert funds["available"] == 1000.5 and funds["cash"] == 2000
+
+
+def test_webull_parsers_tolerate_wrapped_and_bare_lists():
+    from brokers import webull
+
+    rows = webull._rows({"holdings": [{"symbol": "GLD", "quantity": "3",
+                                       "cost_price": "180.5", "last_price": "190",
+                                       "unrealized_profit_loss": "28.5", "currency": "USD"}]})
+    lines = webull.parse_positions(rows, "acct")
+    assert lines[0].symbol == "GLD" and lines[0].quantity == 3 and lines[0].pnl == 28.5
+    assert webull._rows([{"a": 1}]) == [{"a": 1}]
+    bal = webull.parse_balance({"total_asset_currency": "USD", "total_cash_balance": "50",
+                                "account_currency_assets": [{"buying_power": "75"}]})
+    assert bal["cash"] == 50 and bal["available"] == 75 and bal["currency"] == "USD"
+
+
+def test_broker_secrets_are_owner_only(tmp_path, monkeypatch):
+    import os
+    import stat
+
+    import config
+    from brokers import read_secret, write_secret
+
+    monkeypatch.setattr(config, "SECRETS", tmp_path / "secrets")
+    write_secret("t.json", {"access_token": "x"})
+    mode = stat.S_IMODE(os.stat(config.SECRETS / "t.json").st_mode)
+    assert mode == 0o600
+    assert stat.S_IMODE(os.stat(config.SECRETS).st_mode) == 0o700
+    assert read_secret("t.json") == {"access_token": "x"}
+
+
+def test_brokers_expose_no_order_methods():
+    """Read-only is a property of the code, not a promise: no adapter carries
+    anything that could place, modify or cancel an order."""
+    from brokers import kite, webull
+
+    for mod in (kite, webull):
+        names = [n.lower() for n in dir(mod)]
+        assert not [n for n in names if any(w in n for w in ("order", "place", "cancel", "modify"))]

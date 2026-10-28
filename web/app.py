@@ -277,6 +277,11 @@ async def require_login(request: Request, call_next):
     # Admin surfaces are refused here rather than in each route, so a page
     # added later cannot forget to check. /status names the models and their
     # cost, /add changes what Alfred ingests: neither belongs to a reader.
+    if (auth.current_user(request) and not auth.is_public(request.url.path)
+            and not auth.is_active(request)):
+        # A disabled account's open session ends here, on its next request.
+        request.session.clear()
+        return RedirectResponse("/login", status_code=303)
     if (auth.is_admin_path(request.url.path)
             and auth.current_user(request) and not auth.is_admin(request)):
         return RedirectResponse("/", status_code=303)
@@ -360,10 +365,11 @@ def _digest_page(request: Request, d: dict | None) -> HTMLResponse:
         pack = chartdata.latest_pack()
     from web import sharing
 
-    share = sharing.for_analysis(d["id"]) if d else None
+    share = sharing.for_analysis(d["id"]) if d and config.SHARING_ENABLED else None
     return page(request, "digest.html", {
         "digest": d,
         "share": share,
+        "sharing_enabled": config.SHARING_ENABLED,
         "body_html": render_markdown(d["body"], pack) if d else "",
         "recent": digest_list(12),
         "charts_json": json.dumps(pack, default=str),
@@ -961,11 +967,93 @@ async def add_submit(
     })
 
 
+# ──────────────────────────────── portfolio ────────────────────────────────
+# Notices are looked up by key, never echoed from the URL: a crafted link must
+# not be able to put words on the owner's portfolio page.
+_PORTFOLIO_NOTICES = {
+    "kite": "Zerodha connected for today.",
+    "refreshed": "Pulled every connected broker.",
+    "kite_keys": "Kite API keys are not set in .env.",
+    "kite_state": "That login link did not match this session — try again.",
+    "kite_cancelled": "Zerodha login was cancelled.",
+    "kite_refused": "Zerodha refused the login. The logs have the reason.",
+}
+
+
+@app.get("/portfolio", response_class=HTMLResponse)
+async def portfolio(request: Request, notice: str = ""):
+    from brokers import portfolio as pf
+
+    def gather():
+        out = []
+        for name, mod in pf.ADAPTERS.items():
+            data = pf.latest(name)
+            out.append({"status": mod.status(), "data": data,
+                        "totals": pf.totals(data["lines"]) if data else {}})
+        return out
+
+    return page(request, "portfolio.html", {
+        "brokers": await asyncio.to_thread(gather),
+        "notice": _PORTFOLIO_NOTICES.get(notice, ""),
+        "active": "portfolio",
+    })
+
+
+@app.post("/portfolio/refresh")
+async def portfolio_refresh():
+    from brokers import portfolio as pf
+
+    await asyncio.to_thread(pf.pull_all)
+    return RedirectResponse("/portfolio?notice=refreshed", status_code=303)
+
+
+@app.get("/brokers/kite/login")
+async def kite_login(request: Request):
+    """Off to Zerodha's own login page, carrying a one-time state value.
+
+    The state comes back untouched in the redirect and must match the session.
+    Without it, anyone could send the owner a callback link carrying *their*
+    request token and quietly connect their own Kite account in its place.
+    """
+    import secrets as _secrets
+    from urllib.parse import quote
+
+    from brokers import kite
+
+    if not kite.configured():
+        return RedirectResponse("/portfolio?notice=kite_keys", status_code=303)
+    state = _secrets.token_urlsafe(16)
+    request.session["kite_state"] = state
+    return RedirectResponse(
+        kite.login_url() + "&redirect_params=" + quote(f"state={state}"), status_code=303)
+
+
+@app.get("/brokers/kite/callback")
+async def kite_callback(request: Request, request_token: str = "", status: str = "",
+                        state: str = ""):
+    from brokers import kite, portfolio as pf
+
+    expected = request.session.pop("kite_state", None)
+    if not expected or state != expected:
+        return RedirectResponse("/portfolio?notice=kite_state", status_code=303)
+    if status != "success" or not request_token:
+        return RedirectResponse("/portfolio?notice=kite_cancelled", status_code=303)
+    try:
+        await asyncio.to_thread(kite.exchange, request_token)
+    except Exception as exc:  # noqa: BLE001 - shown to the owner, not swallowed
+        log.warning("kite exchange failed: %s", exc)
+        return RedirectResponse("/portfolio?notice=kite_refused", status_code=303)
+    await asyncio.to_thread(pf.pull, "kite")
+    return RedirectResponse("/portfolio?notice=kite", status_code=303)
+
+
 # ─────────────────────────────── share links ───────────────────────────────
 @app.post("/digest/{digest_id}/share")
 async def create_share(request: Request, digest_id: int):
     from web import sharing
 
+    if not config.SHARING_ENABLED:
+        return JSONResponse({"error": "sharing is switched off"}, 403)
     exists = db.one("SELECT id FROM analyses WHERE id=%s AND kind='digest'", (digest_id,))
     if not exists:
         return JSONResponse({"error": "no such brief"}, 404)
@@ -995,7 +1083,9 @@ async def shared_brief(request: Request, token: str):
     """
     from web import sharing
 
-    row = await asyncio.to_thread(sharing.resolve, token)
+    # Switched off, every link reads as missing — including ones minted before.
+    row = (await asyncio.to_thread(sharing.resolve, token)
+           if config.SHARING_ENABLED else None)
     if not row:
         return templates.TemplateResponse(
             request, "share_missing.html", {"charts_json": "{}"}, status_code=404)

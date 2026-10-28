@@ -81,3 +81,8 @@ def for_analysis(analysis_id: int) -> dict | None:
            ORDER BY created_at DESC LIMIT 1""",
         (analysis_id,),
     )
+
+
+def revoke_all() -> int:
+    """Revoke every live link. Used by lockdown; returns how many were live."""
+    return db.execute("UPDATE brief_shares SET revoked_at = now() WHERE revoked_at IS NULL")

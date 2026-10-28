@@ -342,3 +342,43 @@ CREATE INDEX IF NOT EXISTS api_calls_owner_month_idx
 -- must never be the permissive case. Admins are unlimited in code, not by a
 -- row here, so revoking admin restores the cap without a second edit.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_usd NUMERIC(10,2);
+
+-- ── Private mode ──────────────────────────────────────────────────────────
+-- Alfred is going back to one owner while it learns to trade. Accounts are
+-- disabled, not deleted: their answers and notes stay attributed, and turning
+-- someone back on is one command rather than a rebuild.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ;
+
+-- ── Brokers (read-only) ───────────────────────────────────────────────────
+-- What the owner actually holds, captured on a schedule. A snapshot is one
+-- pull from one broker; a failed pull is recorded too, so the page can say
+-- "Kite has not answered since 09:15" instead of showing stale numbers as live.
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+  id         BIGSERIAL PRIMARY KEY,
+  broker     TEXT NOT NULL,
+  taken_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ok         BOOLEAN NOT NULL,
+  error      TEXT,
+  funds      JSONB
+);
+CREATE INDEX IF NOT EXISTS portfolio_snapshots_broker_idx
+  ON portfolio_snapshots (broker, taken_at DESC);
+
+-- `kind` separates long-term holdings from open positions: on Kite these are
+-- different endpoints and different risks (delivery vs intraday/F&O).
+CREATE TABLE IF NOT EXISTS portfolio_lines (
+  snapshot_id    BIGINT NOT NULL REFERENCES portfolio_snapshots(id) ON DELETE CASCADE,
+  kind           TEXT NOT NULL,
+  account        TEXT,
+  symbol         TEXT NOT NULL,
+  exchange       TEXT,
+  quantity       NUMERIC NOT NULL,
+  avg_price      NUMERIC,
+  last_price     NUMERIC,
+  pnl            NUMERIC,
+  day_change_pct NUMERIC,
+  currency       TEXT,
+  product        TEXT,
+  raw            JSONB
+);
+CREATE INDEX IF NOT EXISTS portfolio_lines_snapshot_idx ON portfolio_lines (snapshot_id);

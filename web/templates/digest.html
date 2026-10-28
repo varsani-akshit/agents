@@ -42,6 +42,7 @@
         Figures below are drawn from current data — this brief predates stored chart data.
       </p>
       {% endif %}
+      {% if sharing_enabled %}
       <div class="sharebar" data-id="{{ digest.id }}">
         {% if share %}
         <input type="text" id="shareurl" readonly
@@ -56,6 +57,7 @@
         <span class="hint">Anyone with the link sees only this brief.</span>
         {% endif %}
       </div>
+      {% endif %}
     </header>
     <article class="mbody">{{ body_html|safe }}</article>
     {% if m.citations %}
