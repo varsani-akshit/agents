@@ -26,8 +26,8 @@
     <div class="kpi-value">{{ '{:,}'.format(latest.candidates or 0) }}</div>
     <div class="kpi-hint">{{ candidates.passed.total }} pass · {{ candidates.missed.total }} near-misses</div></div>
   <div class="kpi"><div class="kpi-label">Prices through</div>
-    <div class="kpi-value" style="font-size:16px">{% for r, d in (latest.bars_through or {}).items() %}{{ r }} {{ d[5:] if d else '—' }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
-    <div class="kpi-hint">last finished session per market</div></div>
+    <div class="kpi-value">{{ (latest.bars_through or {}).values()|select|max if (latest.bars_through or {}).values()|select|list else '—' }}</div>
+    <div class="kpi-hint">latest finished session</div></div>
 </div>
 
 <section class="section">
@@ -51,7 +51,7 @@
         <td class="muted">{{ r.trigger }}</td>
         <td class="num">{{ '%s / %s'|format(r.passing, r.tested) if r.passing is not none else '—' }}</td>
         <td class="num">{{ '{:,}'.format(r.candidates) if r.candidates is not none else '—' }}</td>
-        <td class="muted">{% for k, d in (r.bars_through or {}).items() %}{{ k }} {{ d[5:] if d else '—' }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+        <td class="muted">{{ (r.bars_through or {}).values()|select|max if (r.bars_through or {}).values()|select|list else '—' }}</td>
         <td class="num">{{ '%.0fs'|format(r.seconds) if r.seconds else '—' }}</td>
         <td>{% if r.error %}<span class="badge badge-bad" title="{{ r.error }}">failed</span>{% elif not r.finished_at %}<span class="badge badge-warn">running</span>{% else %}<a href="/simulations/{{ r.id }}" style="color:var(--atext)">open →</a>{% endif %}</td>
       </tr>

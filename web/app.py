@@ -1082,9 +1082,12 @@ async def portfolio(request: Request, notice: str = ""):
     from brokers import portfolio as pf
 
     def gather():
+        verdicts = holding_verdicts()
         out = []
         for name, mod in pf.ADAPTERS.items():
             data = pf.latest(name)
+            for ln in (data or {}).get("lines") or []:
+                ln["do"] = verdicts.get(ln["symbol"]) or {"verb": "Hold", "why": ""}
             out.append({"status": mod.status(), "data": data,
                         "totals": pf.totals(data["lines"]) if data else {}})
         return out
@@ -1121,6 +1124,40 @@ async def ideas(request: Request):
     return page(request, "ideas.html", {
         "ideas": rows, "board": board, "sending": sending, "run": run, "cands": cands,
         "active": "ideas"})
+
+
+def holding_verdicts() -> dict[str, dict]:
+    """One instruction per holding, keyed by the broker's symbol.
+
+    Sell when an exit is due on it; Review when it sits below its trailing
+    stop; Add when a strategy that passed the gate just signalled it; else
+    Hold, with the level that would change that.
+    """
+    from advisor import bare, bars, scan
+    from advisor.strategies import indicators
+
+    out: dict[str, dict] = {}
+    held = bars.holdings()
+    for t, h in held.items():
+        df = bars.load(t, years=2)
+        if len(df) < 260:
+            continue
+        r = scan.holding_risk(t, indicators(df), h)
+        out[bare(t)] = ({"verb": "Review", "tone": "bad",
+                         "why": f"below its stop {r['stop']:,.2f}"} if r["below_stop"] else
+                        {"verb": "Hold", "tone": "", "why": f"stop {r['stop']:,.2f}"})
+    run = db.one("""SELECT id FROM sim_runs WHERE finished_at IS NOT NULL AND error IS NULL
+                    ORDER BY started_at DESC LIMIT 1""")
+    if run:
+        for c in db.query("""SELECT symbol, detail FROM sim_candidates WHERE run_id=%s
+                             AND kind='signal' AND passed_gate""", (run["id"],)):
+            d = c["detail"]
+            out[bare(c["symbol"])] = {"verb": "Add", "tone": "ok",
+                                      "why": f"{d.get('label')}: limit {d.get('limit'):,.2f}, "
+                                             f"stop {d.get('stop'):,.2f}"}
+    for e in db.query("SELECT symbol, detail FROM scan_candidates WHERE kind='exit'"):
+        out[bare(e["symbol"])] = {"verb": "Sell", "tone": "bad", "why": "exit due at the next open"}
+    return out
 
 
 @app.post("/portfolio/refresh")

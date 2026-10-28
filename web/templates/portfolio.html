@@ -54,14 +54,17 @@
   <div class="tablewrap">
     <table class="data">
       <thead><tr>
-        <th>Symbol</th><th>Kind</th><th class="num">Qty</th><th class="num">Avg</th>
+        <th>Instrument</th><th>Do</th><th class="num">Qty</th><th class="num">Avg</th>
         <th class="num">Last</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Day</th>
       </tr></thead>
       <tbody>
       {% for ln in got.lines %}
       <tr>
-        <td><strong>{{ ln.symbol }}</strong> <span class="muted">{{ ln.exchange or '' }}</span></td>
-        <td class="muted">{{ ln.kind }}{% if ln.product %} · {{ ln.product }}{% endif %}</td>
+        <td><strong>{{ ln.symbol }}</strong> <span class="muted">{{ ln.exchange or '' }}</span>{% if ln.product and 'bought today' in ln.product %} <span class="badge">bought today</span>{% endif %}</td>
+        <td style="white-space:normal">
+          <span class="badge {{ 'badge-bad' if ln.do.tone == 'bad' else ('badge-ok' if ln.do.tone == 'ok' else '') }}">{{ ln.do.verb }}</span>
+          <span class="muted" style="font-size:11.5px">{{ ln.do.why }}</span>
+        </td>
         <td class="num">{{ '{:,g}'.format(ln.quantity|float) }}</td>
         <td class="num">{{ '{:,.2f}'.format(ln.avg_price|float) if ln.avg_price is not none else '—' }}</td>
         <td class="num">{{ '{:,.2f}'.format(ln.last_price|float) if ln.last_price is not none else '—' }}</td>

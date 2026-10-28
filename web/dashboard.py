@@ -13,7 +13,8 @@ from markupsafe import Markup
 import db
 from advisor import REGIONS, settings
 
-REGION_NAME = {"IN": "India", "ASX": "Australia", "US": "United States"}
+# Markets are named by where you would place the order, never by country.
+REGION_NAME = {"IN": "NSE/BSE", "ASX": "ASX", "US": "NYSE/Nasdaq"}
 
 
 # ─────────────────────────────── line charts ────────────────────────────────
@@ -165,7 +166,69 @@ def today() -> dict:
     except Exception:  # noqa: BLE001 - the dashboard must render without it
         news = []
 
-    return {"news": news[:12],
+    # ── One list of things to do, one row per instrument, most urgent first ──
+    # Every row names the instrument, the verb, where to place it and the
+    # numbers. Nothing is grouped by country: a country is not something you
+    # can buy.
+    def name_of(sym):
+        return sym.split(".")[0]
+
+    actions = []
+    for e in exits:
+        d = e["detail"]
+        actions.append({"verb": "Sell", "tone": "bad", "symbol": name_of(e["symbol"]),
+                        "where": d.get("broker"), "what": "at the next open",
+                        "why": f"{d.get('reason')} ({e['strategy'].replace('_', ' ')})"})
+    for i in ideas:
+        if i["status"] != "open":
+            continue
+        actions.append({"verb": "Buy", "tone": "ok", "symbol": name_of(i["symbol"]), "where": i["broker"],
+                        "what": f"limit {i['limit_price']:,.2f} · stop {i['stop_price']:,.2f}"
+                                + (f" · qty {i['quantity']:g}" if i["quantity"] else ""),
+                        "why": (i["reasons"] or [""])[0],
+                        "by": i["valid_until"], "currency": i["currency"]})
+    for f in funding:
+        if f["add"] > 0:
+            actions.append({"verb": "Fund", "tone": "warn", "symbol": "Kite" if f["broker"] == "kite" else "Webull",
+                            "where": f["broker"], "currency": f["currency"], "amount": f["add"],
+                            "what": "before placing the tickets above",
+                            "why": f"open tickets need {f['tickets_cost']:,.0f} {f['currency']}; "
+                                   f"you set aside {f['reserve']:,.0f}"})
+    for h in attention:
+        actions.append({"verb": "Review", "tone": "bad" if h["newly_below"] else "muted",
+                        "symbol": h["display"], "where": h["broker"],
+                        "what": f"closed {h['close']:,.2f}, under its stop {h['stop']:,.2f}",
+                        "why": ("broke its trailing stop today" if h["newly_below"]
+                                else "below its trailing stop") +
+                               ("; under its 200-day average" if h["below_200d"] else ""),
+                        "urgent": h["newly_below"]})
+
+    # Watch: instruments a passing strategy is close to buying, from the
+    # latest simulation run — the next tickets, if they fire.
+    run = db.one("""SELECT id FROM sim_runs WHERE finished_at IS NOT NULL AND error IS NULL
+                    ORDER BY started_at DESC LIMIT 1""")
+    watch = []
+    if run:
+        seen = set()
+        for c in db.query("""SELECT symbol, strategy, kind, score, detail FROM sim_candidates
+                             WHERE run_id = %s AND passed_gate
+                             ORDER BY (kind = 'signal') DESC, (detail->>'level') IS NULL,
+                                      (detail->>'distance_pct')::float NULLS LAST, score DESC""",
+                          (run["id"],)):
+            d = c["detail"]
+            key = d.get("display") or name_of(c["symbol"])
+            if key in seen or key in {a["symbol"] for a in actions}:
+                continue
+            seen.add(key)
+            watch.append({"symbol": key, "where": d.get("broker"), "strategy": d.get("label"),
+                          "close": d.get("close"), "currency": d.get("currency"),
+                          "waiting": ("fired at the last close — the ticket goes out with the next scan"
+                                      if c["kind"] == "signal" else d.get("waiting")),
+                          "held": d.get("held")})
+            if len(watch) >= 10:
+                break
+
+    return {"news": news[:8], "actions": actions, "watch": watch,
             "books": books, "attention": attention, "ideas": ideas, "closed": closed,
             "regions": regions, "brief": brief, "exits": exits, "near": near[:14],
             "funding": funding, "top": top, "evidence": evidence,
