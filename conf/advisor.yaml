@@ -15,6 +15,14 @@ validity_sessions: 3
 # first. Monthly strategies can fire on 140 US names on one day; that is a
 # screen, not advice anyone can fund or act on.
 max_new_ideas_per_scan: 5
+# The portfolio simulation will not hold more than this many positions at once,
+# and never spends more cash than the account has.
+max_open_positions: 12
+# Benchmark ETF per region: the real index, losers included.
+benchmark:
+  IN: NIFTYBEES.NS
+  ASX: IOZ.AX
+  US: SPY
 
 # ── Costs ────────────────────────────────────────────────────────────────────
 # Round-trip cost as a percentage of the trade value: brokerage, taxes, fees

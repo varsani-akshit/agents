@@ -444,3 +444,14 @@ CREATE TABLE IF NOT EXISTS ideas (
   UNIQUE (strategy, symbol, signal_date)
 );
 CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas (status, created_at DESC);
+
+-- The system replayed as one account: every passing strategy, the per-scan
+-- cap, the open-position limit and cash that can only be spent once. One row
+-- per region, rewritten on each run. `curve` holds weekly points for the
+-- strategy and its benchmarks, normalised to 1.0 at the start.
+CREATE TABLE IF NOT EXISTS portfolio_backtests (
+  region      TEXT PRIMARY KEY,
+  stats       JSONB NOT NULL,
+  curve       JSONB NOT NULL,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

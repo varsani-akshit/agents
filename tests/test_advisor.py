@@ -271,3 +271,63 @@ def test_a_scan_never_floods_the_inbox():
     assert len({t["symbol"] for t in kept}) == 5
     assert left_out == 35, "40 distinct names, 5 kept"
     assert select([{"symbol": "A", "mom_rank": None}], None) == ([{"symbol": "A", "mom_rank": None}], 0)
+
+
+def test_bad_prints_are_dropped_but_real_crashes_are_kept():
+    from advisor.bars import drop_bad_prints
+
+    idx = pd.date_range("2019-12-10", periods=14, freq="B")
+    blip = [130.0] * 6 + [13.0, 13.0] + [130.0] * 6          # NIFTYBEES, Dec 2019
+    crash = [100.0] * 7 + [40.0] * 7                          # a real, lasting fall
+    for close, expect in ((blip, 12), (crash, 14)):
+        df = pd.DataFrame({"open": close, "high": close, "low": close, "close": close}, index=idx)
+        assert len(drop_bad_prints(df)) == expect
+
+
+# ───────────────────────────── account replay ───────────────────────────────
+def _synthetic(n_names=8, days=700, seed=3):
+    rng = np.random.default_rng(seed)
+    frames = {}
+    for k in range(n_names):
+        steps = rng.normal(0.0006 * (k - 3), 0.015, days)
+        close = 100 * np.exp(np.cumsum(steps))
+        df = pd.DataFrame({"open": close, "high": close * 1.01, "low": close * 0.99,
+                           "close": close},
+                          index=pd.date_range("2018-01-01", periods=days, freq="B"))
+        frames[f"S{k}"] = indicators(df)
+    from advisor.strategies import add_momentum_rank
+    add_momentum_rank(frames)
+    return frames
+
+
+def test_account_replay_respects_cash_and_position_limits(monkeypatch):
+    from advisor import portfolio_sim
+
+    cfg = {"risk_per_trade_pct": 2.0, "max_position_pct": 40, "max_new_ideas_per_scan": 2,
+           "max_open_positions": 3, "validity_sessions": 3,
+           "round_trip_cost_pct": {"US": 0.6}}
+    monkeypatch.setattr(portfolio_sim, "settings", lambda: cfg)
+    monkeypatch.setattr("advisor.simulate.settings", lambda: cfg)
+    out = portfolio_sim.replay(_synthetic(), ["abs_momentum", "quiet_trend"])
+    assert out["exposure"].max() <= 1.0 + 1e-9, "spent more than the account had"
+    assert out["equity"].iloc[0] == pytest.approx(1.0)
+    assert out["trades"], "nothing traded on eight trending names"
+    assert out["skipped"]["positions"] + out["skipped"]["cap"] > 0, "limits never bound"
+
+
+def test_flat_market_cannot_make_money_from_nothing(monkeypatch):
+    """Prices that never move: every trade can only lose its costs."""
+    from advisor import portfolio_sim
+
+    cfg = {"risk_per_trade_pct": 1.0, "max_position_pct": 20, "max_new_ideas_per_scan": 5,
+           "max_open_positions": 10, "validity_sessions": 3,
+           "round_trip_cost_pct": {"US": 0.6}}
+    monkeypatch.setattr(portfolio_sim, "settings", lambda: cfg)
+    monkeypatch.setattr("advisor.simulate.settings", lambda: cfg)
+    frames = _synthetic()
+    for x in frames.values():
+        for col in ("open", "high", "low", "close"):
+            x[col] = 100.0
+        x["high"], x["low"] = 100.5, 99.5
+    out = portfolio_sim.replay(frames, ["abs_momentum", "quiet_trend", "near_52w_high"])
+    assert out["equity"].iloc[-1] <= 1.0 + 1e-9

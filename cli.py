@@ -402,6 +402,23 @@ def cmd_advisor(args) -> int:
                      + ("PASS" if ok else "fail: " + "; ".join(s["fails"])))
         return 0
 
+    if args.action == "portfolio":
+        from advisor import REGIONS, portfolio_sim
+
+        for region in ([args.region] if args.region else list(REGIONS)):
+            s = portfolio_sim.run(region)
+            if not s:
+                out.info(f"{region}: no strategy passes the gate; nothing to replay")
+                continue
+            out.info(f"{region} {s['from']} → {s['through']}  ({', '.join(s['strategies'])})")
+            for label, key in (("Alfred", "strategy"), ("random picks", "random_picks"),
+                               (f"index {s['index_symbol']}", "index"), ("survivors", "survivors")):
+                m = s[key] or {}
+                out.info(f"  {label:<20} {(m.get('cagr') or 0) * 100:+6.1f}%/yr  "
+                         f"worst fall {(m.get('max_drawdown') or 0) * 100:6.1f}%  "
+                         f"Sharpe {(m.get('sharpe') or 0):.2f}")
+        return 0
+
     if args.action == "scan":
         from advisor import REGIONS, jobs, report, scan
 
@@ -584,7 +601,7 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_email)
 
     ad = sub.add_parser("advisor", help="trade ideas — advice only, never orders")
-    ad.add_argument("action", choices=["backfill", "simulate", "scan", "ideas"])
+    ad.add_argument("action", choices=["backfill", "simulate", "portfolio", "scan", "ideas"])
     ad.add_argument("--region", choices=["IN", "ASX", "US"])
     ad.add_argument("--years", type=int, default=12, help="backfill depth")
     ad.add_argument("--preview", action="store_true",

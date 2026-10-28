@@ -122,7 +122,23 @@ def load(symbol: str, years: int | None = None, final_only: bool = True) -> pd.D
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     df = pd.DataFrame(rows).set_index("d")
     df.index = pd.to_datetime(df.index)
-    return df.astype(float)
+    return drop_bad_prints(df.astype(float))
+
+
+def drop_bad_prints(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove isolated prices that are off by a factor and snap back.
+
+    Yahoo recorded NIFTYBEES at 13 instead of 130 on 19–20 Dec 2019 — a split
+    adjustment applied to two days only — which made the index look like it
+    fell 90% and recovered. A centred 7-day median sees such a blip as an
+    outlier (most of its window is at the true level), while a genuine crash
+    that stays down moves the median with it and is kept.
+    """
+    if len(df) < 7:
+        return df
+    med = df["close"].rolling(7, center=True, min_periods=3).median()
+    bad = (df["close"] / med - 1).abs() > 0.5
+    return df[~bad]
 
 
 def fx(pair: str) -> float | None:

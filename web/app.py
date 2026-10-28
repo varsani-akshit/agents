@@ -1016,11 +1016,45 @@ async def ideas(request: Request):
             """SELECT strategy, market, passed, stats, computed_at FROM strategy_evidence
                WHERE symbol = '' ORDER BY market, strategy""")
         rows = db.query("SELECT * FROM ideas ORDER BY created_at DESC LIMIT 100")
-        return evidence, rows, ledger.scoreboard()
+        accounts = db.query("""SELECT region, stats, curve, computed_at FROM portfolio_backtests
+                               ORDER BY array_position(ARRAY['IN','ASX','US'], region)""")
+        for a in accounts:
+            a["svg"] = equity_svg(a["curve"])
+        return evidence, rows, ledger.scoreboard(), accounts
 
-    evidence, rows, board = await asyncio.to_thread(gather)
+    evidence, rows, board, accounts = await asyncio.to_thread(gather)
     return page(request, "ideas.html", {
-        "evidence": evidence, "ideas": rows, "board": board, "active": "ideas"})
+        "evidence": evidence, "ideas": rows, "board": board, "accounts": accounts,
+        "active": "ideas"})
+
+
+# The account replay's growth of 1.0, as lines on a log scale so a doubling
+# reads the same at any height. Drawn server-side: four series of ~570 weekly
+# points do not need a charting library.
+_SERIES = (("strategy", "var(--accent)", 2.2), ("index", "var(--t1)", 1.4),
+           ("random", "var(--t3)", 1.2), ("survivors", "var(--t3)", 1.2))
+
+
+def equity_svg(curve: dict, w: int = 640, h: int = 180) -> Markup:
+    import math as _m
+
+    series = {k: curve.get(k) or [] for k, _c, _w in _SERIES}
+    vals = [v for vs in series.values() for v in vs if v]
+    if not vals or not curve.get("dates"):
+        return Markup("")
+    lo, hi = _m.log(min(vals)), _m.log(max(vals))
+    span = (hi - lo) or 1
+    n = len(curve["dates"])
+    paths = []
+    for key, color, width in _SERIES:
+        pts = [f"{i / (n - 1) * w:.1f},{h - (_m.log(v) - lo) / span * h:.1f}"
+               for i, v in enumerate(series[key]) if v]
+        if pts:
+            dash = ' stroke-dasharray="3 3"' if key == "survivors" else ""
+            paths.append(f'<polyline fill="none" stroke="{color}" stroke-width="{width}"'
+                         f'{dash} points="{" ".join(pts)}"/>')
+    return Markup(f'<svg viewBox="0 0 {w} {h}" width="100%" preserveAspectRatio="none" '
+                  f'role="img" aria-label="Account growth vs benchmarks">{"".join(paths)}</svg>')
 
 
 @app.post("/portfolio/refresh")

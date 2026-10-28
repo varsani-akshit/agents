@@ -22,5 +22,12 @@ def retest() -> dict:
     The gate is not a one-time exam. A strategy that stops working stops
     sending ideas the week its evidence fades, without anyone deciding so.
     """
+    from advisor import portfolio_sim
+
     report_ = simulate.run()
-    return {f"{name}/{region}": ok for (name, region), (ok, _s) in report_.items()}
+    out = {f"{name}/{region}": ok for (name, region), (ok, _s) in report_.items()}
+    for region in REGIONS:
+        acct = portfolio_sim.run(region)
+        out[f"account/{region}"] = acct and {
+            k: (acct.get(k) or {}).get("cagr") for k in ("strategy", "index", "random_picks")}
+    return out

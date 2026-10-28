@@ -43,6 +43,45 @@
 </div>
 {% if evidence %}<p class="hint">Simulated {{ evidence[0].computed_at|ago }}, re-run every Sunday. Per trade is in R: profit ÷ the risk planned at entry.</p>{% endif %}
 
+<h2 style="margin-top:32px">As one account</h2>
+<p class="hint">
+  Following every email since late 2015: the strategies that pass, at most
+  five new tickets a day, twelve positions, 0.5% risk each, costs included.
+  <span style="color:var(--accent)">Alfred</span> · index · random picks · survivors (dashed).
+  Survivors is equal weight in today's index members — it shows how much a
+  universe without the companies that failed flatters every number here.
+</p>
+{% for a in accounts %}{% set s = a.stats %}
+<section style="margin:22px 0 30px">
+  <h3 style="margin-bottom:6px">{{ {'IN': 'India', 'ASX': 'Australia', 'US': 'United States'}[a.region] }}
+    <span class="hint">· {{ s.strategies|join(', ') }}</span></h3>
+  {{ a.svg }}
+  <div class="tablewrap">
+    <table class="data mkt-table">
+      <thead><tr><th></th><th class="num">Per year</th><th class="num">Worst fall</th>
+        <th class="num">Worst year</th><th class="num">Sharpe</th></tr></thead>
+      <tbody>
+      {% for label, key in [('Alfred', 'strategy'), ('· older half', 'older'), ('· recent', 'recent'),
+                            ('Random picks', 'random_picks'), ('Index ' ~ s.index_symbol, 'index'),
+                            ('Survivors', 'survivors')] %}{% set m = s[key] or {} %}
+      <tr>
+        <td>{% if key == 'strategy' %}<strong>{{ label }}</strong>{% else %}{{ label }}{% endif %}</td>
+        <td class="num">{{ '{:+.1f}%'.format(m.cagr * 100) if m.cagr is not none and m.cagr is defined else '—' }}</td>
+        <td class="num">{{ '{:.0f}%'.format(m.max_drawdown * 100) if m.max_drawdown is defined and m.max_drawdown is not none else '—' }}</td>
+        <td class="num">{{ '{:+.0f}%'.format(m.worst_year * 100) if m.worst_year is defined and m.worst_year is not none else '—' }}</td>
+        <td class="num">{{ '{:.2f}'.format(m.sharpe) if m.sharpe is defined and m.sharpe is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">{{ s.trades.trades }} trades · {{ '{:+.2f}R'.format(s.trades.expectancy_r or 0) }} each ·
+    {{ '{:.0f}%'.format(s.avg_exposure * 100) }} invested on average · {{ s['from'] }} → {{ s.through }}</p>
+</section>
+{% else %}
+<p class="empty">No account replay yet — run <code>mia advisor portfolio</code>.</p>
+{% endfor %}
+
 <h2 style="margin-top:32px">Sent ideas</h2>
 {% set o = board.overall %}
 <p class="hint">
