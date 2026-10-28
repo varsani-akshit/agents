@@ -36,10 +36,11 @@ log = logging.getLogger("mia.chartdata")
 # data without a spinner.
 MAX_POINTS = 300
 
-# Light-theme palette. Orange is the accent and carries the subject of each
-# chart; everything else is grey so the eye lands on the point being made.
+# Palette. The accent carries the subject of each chart; everything else is
+# grey so the eye lands on the point being made. charts.js maps these onto the
+# live theme (light or dark), so they name roles more than exact colours.
 INK = "#111111"
-ORANGE = "#EA580C"
+ORANGE = "#16A34A"   # the brand accent — green since the redesign; name kept for history
 AMBER = "#B45309"
 SLATE = "#64748B"
 GREY = "#9CA3AF"

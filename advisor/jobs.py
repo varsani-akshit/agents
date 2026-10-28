@@ -21,7 +21,7 @@ def cycle(region: str, *, send: bool = True) -> dict:
 
 
 def retest() -> dict:
-    """Weekly: re-run every simulation on the latest history.
+    """Nightly: re-run every simulation and account replay on the latest history.
 
     The gate is not a one-time exam. A strategy that stops working stops
     sending ideas the week its evidence fades, without anyone deciding so.

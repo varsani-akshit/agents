@@ -341,7 +341,7 @@ def test_status_and_add_are_admin_only():
 
 
 def test_the_reader_is_addressed_by_their_full_name():
-    """Whoever is signed in sees their own full name — in the account menu, in
+    """Whoever is signed in sees their own full name — in the sidebar, in
     the brief's arrival card, and in the Ask greeting. A half-name ("Akshit")
     was the earlier behaviour; two readers with the same first name would have
     been indistinguishable."""
@@ -354,7 +354,7 @@ def test_the_reader_is_addressed_by_their_full_name():
         c = _client_as("fullname_x")
 
         home = c.get("/").text
-        assert "<summary>Cassian Rivers-Okonkwo</summary>" in home
+        assert '<div class="name">Cassian Rivers-Okonkwo</div>' in home
         assert 'data-name="Cassian Rivers-Okonkwo"' in home
         assert "fullname_x" not in home, "username shown where the name belongs"
 

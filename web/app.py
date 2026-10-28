@@ -268,6 +268,9 @@ def page(request: Request, name: str, ctx: dict) -> HTMLResponse:
     ctx["is_admin"] = auth.is_admin(request)
     ctx["display_name"] = auth.display_name(request)
     ctx["first_name"] = auth.first_name(request)
+    if ctx["is_admin"]:
+        row = db.one("SELECT count(*) AS n FROM ideas WHERE status IN ('open', 'filled')")
+        ctx["nav_open_ideas"] = row and row["n"]
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -374,13 +377,33 @@ def _digest_page(request: Request, d: dict | None) -> HTMLResponse:
         "recent": digest_list(12),
         "charts_json": json.dumps(pack, default=str),
         "charts_stale": stale,
-        "active": "latest",
+        "active": "brief",
     })
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
+    """Today, for the owner: what to act on. A reader gets the brief."""
+    if not auth.is_admin(request):
+        return _digest_page(request, latest_digest())
+    from web import dashboard
+
+    ctx = await asyncio.to_thread(dashboard.today)
+    return page(request, "today.html", {**ctx, "active": "today"})
+
+
+@app.get("/brief", response_class=HTMLResponse)
+async def brief(request: Request):
     return _digest_page(request, latest_digest())
+
+
+@app.get("/simulations", response_class=HTMLResponse)
+async def simulations(request: Request):
+    """What the simulations did, and what they found — refreshed daily."""
+    from web import dashboard
+
+    ctx = await asyncio.to_thread(dashboard.simulations)
+    return page(request, "simulations.html", {**ctx, "active": "simulations"})
 
 
 @app.get("/digest/{digest_id}", response_class=HTMLResponse)
@@ -734,7 +757,7 @@ async def api_stock_chart(symbol: str, days: int = 365):
         "x": [p["d"] for p in prof["series"]],
         "yLabel": s.get("currency") or "",
         "series": [{"name": s["symbol"],
-                    "data": [p["c"] for p in prof["series"]], "color": "#EA580C"}],
+                    "data": [p["c"] for p in prof["series"]], "color": "#16A34A"}],
     }
 
 
@@ -1007,54 +1030,18 @@ async def portfolio(request: Request, notice: str = ""):
 
 @app.get("/ideas", response_class=HTMLResponse)
 async def ideas(request: Request):
-    """Every idea sent and what became of it, plus the evidence table that
-    decides which strategies are allowed to send any."""
+    """Every idea sent and what became of it. The evidence that decides which
+    strategies may send any is on /simulations."""
     from advisor import ledger
 
     def gather():
-        evidence = db.query(
-            """SELECT strategy, market, passed, stats, computed_at FROM strategy_evidence
-               WHERE symbol = '' ORDER BY market, strategy""")
-        rows = db.query("SELECT * FROM ideas ORDER BY created_at DESC LIMIT 100")
-        accounts = db.query("""SELECT region, stats, curve, computed_at FROM portfolio_backtests
-                               ORDER BY array_position(ARRAY['IN','ASX','US'], region)""")
-        for a in accounts:
-            a["svg"] = equity_svg(a["curve"])
-        return evidence, rows, ledger.scoreboard(), accounts
+        rows = db.query("SELECT * FROM ideas ORDER BY created_at DESC LIMIT 200")
+        regions = db.query("SELECT region, stats->>'passed' AS passed FROM portfolio_backtests")
+        return rows, ledger.scoreboard(), {r["region"]: r["passed"] == "true" for r in regions}
 
-    evidence, rows, board, accounts = await asyncio.to_thread(gather)
+    rows, board, sending = await asyncio.to_thread(gather)
     return page(request, "ideas.html", {
-        "evidence": evidence, "ideas": rows, "board": board, "accounts": accounts,
-        "active": "ideas"})
-
-
-# The account replay's growth of 1.0, as lines on a log scale so a doubling
-# reads the same at any height. Drawn server-side: four series of ~570 weekly
-# points do not need a charting library.
-_SERIES = (("strategy", "var(--accent)", 2.2), ("index", "var(--t1)", 1.4),
-           ("random", "var(--t3)", 1.2), ("survivors", "var(--t3)", 1.2))
-
-
-def equity_svg(curve: dict, w: int = 640, h: int = 180) -> Markup:
-    import math as _m
-
-    series = {k: curve.get(k) or [] for k, _c, _w in _SERIES}
-    vals = [v for vs in series.values() for v in vs if v]
-    if not vals or not curve.get("dates"):
-        return Markup("")
-    lo, hi = _m.log(min(vals)), _m.log(max(vals))
-    span = (hi - lo) or 1
-    n = len(curve["dates"])
-    paths = []
-    for key, color, width in _SERIES:
-        pts = [f"{i / (n - 1) * w:.1f},{h - (_m.log(v) - lo) / span * h:.1f}"
-               for i, v in enumerate(series[key]) if v]
-        if pts:
-            dash = ' stroke-dasharray="3 3"' if key == "survivors" else ""
-            paths.append(f'<polyline fill="none" stroke="{color}" stroke-width="{width}"'
-                         f'{dash} points="{" ".join(pts)}"/>')
-    return Markup(f'<svg viewBox="0 0 {w} {h}" width="100%" preserveAspectRatio="none" '
-                  f'role="img" aria-label="Account growth vs benchmarks">{"".join(paths)}</svg>')
+        "ideas": rows, "board": board, "sending": sending, "active": "ideas"})
 
 
 @app.post("/portfolio/refresh")

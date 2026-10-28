@@ -18,11 +18,21 @@
   var BORDER = tok("--border", "#E5E7EB");
   var ACCENT = tok("--accent", "#EA580C");
   var SURFACE = tok("--surface", "#FFFFFF");
-  var UP = "#15803D";
-  var DOWN = "#B91C1C";
+  var UP = tok("--up", "#16A34A");
+  var DOWN = tok("--down", "#DC2626");
 
-  var SANS = "Inter, system-ui, -apple-system, sans-serif";
-  var MONO = "'JetBrains Mono', ui-monospace, monospace";
+  var SANS = "Geist, system-ui, -apple-system, sans-serif";
+  var MONO = "'Geist Mono', ui-monospace, monospace";
+
+  // Chart packs carry colours chosen server-side when each brief was written —
+  // the old orange accent, and a near-black ink that vanishes on a dark page.
+  // Briefs are stored with those values, so they are mapped onto the live
+  // theme here rather than rewritten in the database.
+  var THEMED = {
+    "#111111": INK, "#ea580c": ACCENT, "#16a34a": ACCENT, "#9ca3af": T3,
+    "#15803d": UP, "#b91c1c": DOWN, "#64748b": T2
+  };
+  var col = function (c) { return (c && THEMED[String(c).toLowerCase()]) || c; };
 
   var isPhone = function () { return window.innerWidth < 640; };
 
@@ -83,8 +93,8 @@
         name: s.name, type: "line", data: s.data,
         yAxisIndex: s.axis || 0,
         showSymbol: false, symbol: "circle", symbolSize: 6,
-        lineStyle: { width: s.width || 1.7, color: s.color },
-        itemStyle: { color: s.color },
+        lineStyle: { width: s.width || 1.7, color: col(s.color) },
+        itemStyle: { color: col(s.color) },
         emphasis: { focus: "series" },
         connectNulls: false
       };
@@ -279,8 +289,8 @@
         return {
           name: s.name, type: "line", data: s.data,
           symbol: "circle", symbolSize: 7,
-          lineStyle: { width: 2, color: s.color, type: s.dashed ? "dashed" : "solid" },
-          itemStyle: { color: s.color }
+          lineStyle: { width: 2, color: col(s.color), type: s.dashed ? "dashed" : "solid" },
+          itemStyle: { color: col(s.color) }
         };
       })
     });
@@ -321,8 +331,8 @@
                                               axisLabel: { color: T3, fontSize: 9, fontFamily: MONO } }));
       series.push({
         name: p.name, type: "line", data: p.data, xAxisIndex: i, yAxisIndex: i,
-        showSymbol: false, lineStyle: { width: 1.6, color: p.color },
-        areaStyle: { color: p.color, opacity: 0.07 }
+        showSymbol: false, lineStyle: { width: 1.6, color: col(p.color) },
+        areaStyle: { color: col(p.color), opacity: 0.07 }
       });
     });
 

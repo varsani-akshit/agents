@@ -3,65 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light">
-<meta name="theme-color" content="#FAFAFA">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F4F5F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#050605" media="(prefers-color-scheme: dark)">
 <title>{% block title %}Alfred{% endblock %}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="preload" href="{{ asset('fonts/geist.woff2') }}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{{ asset('style.css') }}">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23111111'/><g transform='translate(0,28)'><polygon points='3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20' fill='%23EA580C'/></g></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230B0D0C'/><g transform='translate(0,28)'><polygon points='3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20' fill='%2322C55E'/></g></svg>">
 </head>
 <body>
-{% set MARK %}<svg class="mark" viewBox="0 0 100 44" width="26" height="11" role="img" aria-label="Alfred"><polygon points="3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20" fill="currentColor"/></svg>{% endset %}
-{% set PRIMARY = [('/', 'latest', 'Brief'), ('/charts', 'charts', 'Charts'), ('/graph', 'graph', 'Graph'), ('/markets', 'markets', 'Markets'), ('/ask', 'ask', 'Ask')]
-   + ([('/portfolio', 'portfolio', 'Portfolio'), ('/ideas', 'ideas', 'Ideas'), ('/add', 'add', 'Add')] if is_admin else []) %}
-{# Status names the models and their cost; Add changes what Alfred ingests.
-   Readers get the product, not the machinery — and the middleware refuses both
-   paths anyway, so a hidden link is presentation, not the security boundary. #}
-{% set SECONDARY = [('/archive', 'archive', 'Archive'), ('/alerts', 'alerts', 'Alerts'), ('/world', 'world', 'World model')]
-   + ([('/status', 'status', 'Status')] if is_admin else []) %}
+{% set MARK %}<svg class="mark" viewBox="0 0 100 44" width="24" height="11" role="img" aria-label="Alfred"><polygon points="3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20" fill="currentColor"/></svg>{% endset %}
+{# Icons: Lucide outlines (ISC licence), inlined so nothing loads from a CDN. #}
+{% set ICONS = {
+  'today': '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  'portfolio': '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect x="2" y="6" width="20" height="14" rx="2"/>',
+  'ideas': '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+  'simulations': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
+  'brief': '<path d="M15 18h-5"/><path d="M18 14h-8"/><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"/><rect x="10" y="6" width="8" height="4" rx="1"/>',
+  'ask': '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+  'status': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+} %}
+{% macro icon(name) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ ICONS[name]|safe }}</svg>{% endmacro %}
+{# What you act on, in the order you act on it. Readers (accounts other than
+   the owner, currently all disabled) get the brief and Ask only — the
+   middleware refuses the rest anyway, so hiding a link is presentation, not
+   the security boundary. #}
+{% set NAV = ([('/', 'today', 'Today'), ('/portfolio', 'portfolio', 'Portfolio'),
+               ('/ideas', 'ideas', 'Ideas'), ('/simulations', 'simulations', 'Simulations')] if is_admin else [])
+             + [('/brief', 'brief', 'Brief'), ('/ask', 'ask', 'Ask')] %}
 {% block chrome %}
-<nav class="nav">
-  <div class="nav-in">
+<header class="topbar">
+  <button class="burger" id="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="rail">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <a href="/" class="wordmark">{{ MARK }}ALFRED</a>
+</header>
+
+<aside class="rail" id="rail" aria-label="Main">
+  <div class="rail-head">
     <a href="/" class="wordmark">{{ MARK }}ALFRED</a>
-
-    <button class="burger" id="burger" aria-label="Menu" aria-expanded="false" aria-controls="navpanel">
-      <span></span><span></span><span></span>
+    <button class="rail-close" id="railclose" type="button" aria-label="Close menu">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
-
-    <div class="nav-links">
-      {% for href, key, label in PRIMARY %}
-      <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
-      {% endfor %}
-    </div>
-
-    <div class="nav-right">
-      {% set t = summary.last_tick %}
-      <span class="tick" title="Last ingestion cycle">
-        <span class="dot {{ 'ok' if t and t.ok else 'bad' }}"></span>{% if t %}{{ t.started_at|ago }}{% else %}none{% endif %}
-      </span>
-      <details class="menu" id="acct">
-        <summary>{{ display_name if user else 'account' }}</summary>
-        <div class="menu-panel">
-          {% for href, key, label in SECONDARY %}
-          <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
-          {% endfor %}
-          <a href="/logout" class="sep">Sign out</a>
-        </div>
-      </details>
-    </div>
   </div>
-
-  <div class="navpanel" id="navpanel">
-    {% for href, key, label in PRIMARY + SECONDARY %}
-    <a href="{{ href }}" class="{{ 'on' if active==key }}">{{ label }}</a>
+  <nav class="railnav">
+    {% for href, key, label in NAV %}
+    <a href="{{ href }}" class="ri{{ ' on' if active == key }}"{% if active == key %} aria-current="page"{% endif %}>
+      {{ icon(key) }}<span>{{ label }}</span>
+      {% if key == 'ideas' and nav_open_ideas %}<span class="count">{{ nav_open_ideas }}</span>{% endif %}
+    </a>
     {% endfor %}
-    <a href="/logout" class="sep">Sign out{% if user %} · {{ display_name }}{% endif %}</a>
+    {% if is_admin %}
+    <div class="rail-eyebrow">Admin</div>
+    <a href="/status" class="ri{{ ' on' if active == 'status' }}">{{ icon('status') }}<span>Status</span></a>
+    {% endif %}
+  </nav>
+  <div class="rail-foot">
+    {% set t = summary.last_tick %}
+    <div class="tick" style="padding: 0 10px 10px" title="Last data refresh">
+      <span class="dot {{ 'ok' if t and t.ok else 'bad' }}"></span>data {% if t %}{{ t.started_at|ago }}{% else %}not yet{% endif %}
+    </div>
+    {% if user %}
+    <div class="who">
+      <span class="avatar">{{ (display_name or 'A')[:1] }}{{ (display_name.split(' ')[1][:1] if display_name and ' ' in display_name else '') }}</span>
+      <div style="min-width:0">
+        <div class="name">{{ display_name }}</div>
+        <div class="sub">{{ 'owner' if is_admin else 'reader' }}</div>
+      </div>
+      <a href="/logout" class="out">Sign out</a>
+    </div>
+    {% endif %}
   </div>
-</nav>
+</aside>
+<div class="scrim" id="scrim"></div>
 {% endblock %}
-<main class="shell">{% block content %}{% endblock %}</main>
+<div class="panel"><main class="shell">{% block content %}{% endblock %}</main></div>
 <script>window.MIA_CHARTS = {{ charts_json|default("{}", true)|safe }};</script>{# default guards routes that bypass page(): login rendered "window.MIA_CHARTS = ;" and threw on every load. #}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <script src="{{ asset('charts.js') }}"></script>

@@ -1,76 +1,58 @@
 {% extends "base.html" %}
 {% block title %}Portfolio — Alfred{% endblock %}
 {% block scripts %}{% if waiting %}<script src="{{ asset('portfolio.js') }}" defer></script>{% endif %}{% endblock %}
+{% macro money(ccy, v, dp=0) %}{% if v is none or v is not defined %}—{% else %}{{ {'INR': '₹', 'AUD': 'A$', 'USD': 'US$'}.get(ccy, (ccy or '') ~ ' ') }}{{ ('{:,.' ~ dp ~ 'f}').format(v) }}{% endif %}{% endmacro %}
 {% block content %}
-<header class="ph">
-  <div class="eyebrow">Your accounts · read-only</div>
-  <h1>Portfolio</h1>
-  <p class="sub">
-    What you hold at each broker, pulled every 15 minutes. Alfred can read
-    these accounts but cannot place, change or cancel an order.
-  </p>
+<header class="ph ph-row">
+  <div>
+    <div class="eyebrow">Your accounts · read-only</div>
+    <h1>Portfolio</h1>
+    <p class="sub">Pulled every 15 minutes. Alfred can read these accounts; it cannot place, change or cancel an order.</p>
+  </div>
+  <form method="post" action="/portfolio/refresh"><button type="submit" class="btn-secondary btn-sm">Refresh now</button></form>
 </header>
 
-{% if notice %}<p class="hint" style="margin-bottom:18px">{{ notice }}</p>{% endif %}
+{% if notice %}<div class="notice notice-ok">{{ notice }}</div>{% endif %}
 
-<div class="ctl">
-  <div class="ctlrow">
-    <form method="post" action="/portfolio/refresh" style="display:inline">
-      <button type="submit" class="opt">Refresh now</button>
-    </form>
-  </div>
-</div>
-
-{% for b in brokers %}
-<section class="pf-broker" style="margin-top:32px">
-  <h2 style="margin-bottom:6px">{{ b.status.label }}</h2>
-  <p class="hint">
-    {% if not b.status.configured %}
-      Not configured — add its API keys to <code>.env</code>.
-    {% elif b.status.connected %}
-      <span class="dot ok"></span> connected{% if b.status.account %} · {{ b.status.account }}{% endif %}
-      {% if b.status.expires_at %} · session ends {{ b.status.expires_at[:16].replace('T', ' ') }}{% endif %}
-    {% elif b.status.attempt and b.status.attempt.state == 'waiting' %}
-      <span class="dot"></span> waiting for you to approve in the Webull app
-      · {{ b.status.attempt.waited }}s of 300s
-    {% else %}
-      <span class="dot bad"></span> not connected — {{ b.status.connect_hint }}
-      {% if b.status.broker == 'kite' %}<a class="opt" href="/brokers/kite/login">Log in with Zerodha</a>{% endif %}
-      {% if b.status.broker == 'webull' %}
-      <form method="post" action="/brokers/webull/connect" style="display:inline">
-        <button type="submit" class="opt">Connect Webull</button>
-      </form>
-      {% endif %}
+{% for b in brokers %}{% set got = b.data %}{% set f = (got.snapshot.funds if got and got.snapshot else {}) or {} %}
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>{{ b.status.label }}</h2>
+      <div class="hint" style="margin-top:2px">
+        {% if not b.status.configured %}Not configured — add its API keys to <code>.env</code>.
+        {% elif b.status.connected %}<span class="dot ok"></span>connected{% if b.status.account %} · {{ b.status.account }}{% endif %}{% if b.status.expires_at %} · session ends {{ b.status.expires_at[:16].replace('T', ' ') }}{% endif %}
+        {% elif b.status.attempt and b.status.attempt.state == 'waiting' %}<span class="dot"></span>waiting for you to approve in the Webull app · {{ b.status.attempt.waited }}s of 300s
+        {% else %}<span class="dot bad"></span>not connected{% endif %}
+      </div>
+    </div>
+    {% if b.status.configured and not b.status.connected and not (b.status.attempt and b.status.attempt.state == 'waiting') %}
+      {% if b.status.broker == 'kite' %}<a class="btn btn-sm" href="/brokers/kite/login">Log in with Zerodha</a>{% endif %}
+      {% if b.status.broker == 'webull' %}<form method="post" action="/brokers/webull/connect"><button type="submit" class="btn-sm">Connect Webull</button></form>{% endif %}
     {% endif %}
-  </p>
-  {% if b.status.attempt and b.status.attempt.state == 'failed' %}
-  <p class="hint" style="color:var(--down)">Last attempt: {{ b.status.attempt.error }}</p>
-  {% endif %}
+  </div>
 
-  {% set got = b.data %}
+  {% if b.status.attempt and b.status.attempt.state == 'failed' %}
+  <div class="card-body hint down">Last attempt: {{ b.status.attempt.error }}</div>
+  {% endif %}
   {% if got and got.failed %}
-  <p class="hint" style="color:var(--down)">
-    Last pull failed {{ got.failed.taken_at|ago }}: {{ got.failed.error }}
-  </p>
+  <div class="card-body hint down">Last pull failed {{ got.failed.taken_at|ago }}: {{ got.failed.error }}</div>
   {% endif %}
 
   {% if got and got.snapshot %}
-  <p class="hint">
-    As of {{ got.snapshot.taken_at|utc('%d %b · %H:%M') }}
-    {% set f = got.snapshot.funds or {} %}
-    {% if f.available is not none and f.available is defined %} · available {{ '{:,.0f}'.format(f.available) }} {{ f.currency }}{% endif %}
-    {% if f.cash is not none and f.cash is defined %} · cash {{ '{:,.0f}'.format(f.cash) }}{% endif %}
-  </p>
-  {% for cur, t in b.totals.items() %}
-  <p class="hint">
-    {{ cur }} · value {{ '{:,.0f}'.format(t.value) }} ·
-    unrealised <span class="{{ 'up' if t.pnl >= 0 else 'down' }}">{{ '{:+,.0f}'.format(t.pnl) }}</span>
-  </p>
-  {% endfor %}
-
+  <div class="stat-row" style="border-top:0;margin:0 16px">
+    {% for cur, t in b.totals.items() %}
+    <div class="kpi"><div class="kpi-label">Holdings · {{ cur }}</div>
+      <div class="kpi-value">{{ money(cur, t.value) }}</div>
+      <div class="kpi-hint"><span class="{{ 'up' if t.pnl >= 0 else 'down' }}">{{ '{:+,.0f}'.format(t.pnl) }}</span> unrealised</div></div>
+    {% endfor %}
+    <div class="kpi"><div class="kpi-label">Free cash</div>
+      <div class="kpi-value">{{ money(f.currency, f.available) }}</div>
+      <div class="kpi-hint">as of {{ got.snapshot.taken_at|ago }}</div></div>
+  </div>
   {% if got.lines %}
   <div class="tablewrap">
-    <table class="data mkt-table">
+    <table class="data">
       <thead><tr>
         <th>Symbol</th><th>Kind</th><th class="num">Qty</th><th class="num">Avg</th>
         <th class="num">Last</th><th class="num">Value</th><th class="num">P&amp;L</th><th class="num">Day</th>
@@ -78,8 +60,8 @@
       <tbody>
       {% for ln in got.lines %}
       <tr>
-        <td><strong>{{ ln.symbol }}</strong> <span class="hint">{{ ln.exchange or '' }}</span></td>
-        <td>{{ ln.kind }}{% if ln.product %} · {{ ln.product }}{% endif %}</td>
+        <td><strong>{{ ln.symbol }}</strong> <span class="muted">{{ ln.exchange or '' }}</span></td>
+        <td class="muted">{{ ln.kind }}{% if ln.product %} · {{ ln.product }}{% endif %}</td>
         <td class="num">{{ '{:,g}'.format(ln.quantity|float) }}</td>
         <td class="num">{{ '{:,.2f}'.format(ln.avg_price|float) if ln.avg_price is not none else '—' }}</td>
         <td class="num">{{ '{:,.2f}'.format(ln.last_price|float) if ln.last_price is not none else '—' }}</td>
@@ -92,11 +74,11 @@
     </table>
   </div>
   {% else %}
-  <p class="empty">No open holdings or positions.</p>
+  <div class="card-body muted">No open holdings or positions.</div>
   {% endif %}
   {% elif b.status.configured %}
-  <p class="empty">Nothing pulled yet.</p>
+  <div class="card-body muted">Nothing pulled yet.</div>
   {% endif %}
-</section>
+</div>
 {% endfor %}
 {% endblock %}

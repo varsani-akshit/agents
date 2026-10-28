@@ -233,7 +233,7 @@ def is_admin(request) -> bool:
 # machinery.
 # Holdings and broker sessions are the owner's alone, even if reader accounts
 # come back: they are listed here so re-enabling someone can never expose them.
-ADMIN_PATHS = ("/status", "/add", "/portfolio", "/brokers", "/ideas")
+ADMIN_PATHS = ("/status", "/add", "/portfolio", "/brokers", "/ideas", "/simulations")
 
 
 def is_admin_path(path: str) -> bool:

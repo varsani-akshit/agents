@@ -339,7 +339,9 @@ ADVISOR_JOBS = (
     ("advise_in", lambda: job_advise("IN"), dict(day_of_week="mon-fri", hour=10, minute=45)),
     ("advise_asx", lambda: job_advise("ASX"), dict(day_of_week="mon-fri", hour=6, minute=45)),
     ("advise_us", lambda: job_advise("US"), dict(day_of_week="mon-fri", hour=21, minute=45)),
-    ("retest", job_retest, dict(day_of_week="sun", hour=1, minute=0)),
+    # Nightly, after the US close (21:00 UTC at the latest) and before Asia
+    # opens: every simulation and account replay on the day's prices.
+    ("retest", job_retest, dict(hour=23, minute=15)),
 )
 
 

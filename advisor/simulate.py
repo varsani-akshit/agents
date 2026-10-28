@@ -247,7 +247,24 @@ def run(regions: list[str] | None = None) -> dict:
             baseline = summarize([t.r for t in base if t.filled >= cutoff])
             mc = monte_carlo([t.r for t in trades if t.filled >= cutoff])
             passed, fails = judge(older, recent, baseline, mc)
-            stats = {"all": summarize([t.r for t in trades]), "older": older, "recent": recent,
+            # Cumulative R by month of exit — the strategy's record as a line,
+            # for the Simulations page. Random entries ride along for contrast,
+            # scaled to the strategy's trade count so the slopes compare.
+            curve = {}
+            if trades:
+                cum = (pd.Series([t.r for t in trades], index=[t.exited for t in trades])
+                       .sort_index().resample("ME").sum().cumsum())
+                scale = len(trades) / max(len(base), 1)
+                rnd = (pd.Series([t.r * scale for t in base], index=[t.exited for t in base])
+                       .sort_index().resample("ME").sum().cumsum().reindex(cum.index).ffill())
+                curve = {"dates": [str(d.date()) for d in cum.index],
+                         "strategy": [round(float(v), 2) for v in cum],
+                         "random": [None if pd.isna(v) else round(float(v), 2) for v in rnd]}
+            reasons = {}
+            for t in trades:
+                reasons[t.reason] = reasons.get(t.reason, 0) + 1
+            stats = {"curve": curve, "exits": reasons,
+                     "all": summarize([t.r for t in trades]), "older": older, "recent": recent,
                      "random_recent": baseline, "monte_carlo": mc, "fails": fails,
                      "symbols": len(frames), "recent_from": str(cutoff.date()),
                      "through": str(last.date()), "label": strat.label}

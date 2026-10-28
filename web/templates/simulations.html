@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}Simulations — Alfred{% endblock %}
+{% macro pct(v, dp=0, sign=False) %}{% if v is none or v is not defined %}—{% else %}{{ ('{:' ~ ('+' if sign else '') ~ '.' ~ dp ~ 'f}%').format(v * 100) }}{% endif %}{% endmacro %}
+{% macro r(v) %}{% if v is none or v is not defined %}—{% else %}{{ '{:+.2f}R'.format(v) }}{% endif %}{% endmacro %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">Evidence · refreshed every night</div>
+  <h1>Simulations</h1>
+  <p class="sub">
+    Every strategy replayed over twelve years of daily prices, on every name it
+    could have traded, with costs. A strategy only sends you tickets once it
+    clears every test below — and the tests re-run nightly, so one that stops
+    working stops sending.
+  </p>
+</header>
+
+<div class="stat-row">
+  <div class="kpi"><div class="kpi-label">Last run</div>
+    <div class="kpi-value">{{ computed_at|ago if computed_at else 'never' }}</div>
+    <div class="kpi-hint">nightly, after the US close</div></div>
+  <div class="kpi"><div class="kpi-label">Names</div>
+    <div class="kpi-value">{{ '{:,}'.format(data.names or 0) }}</div>
+    <div class="kpi-hint">S&amp;P 500 · ASX 200 · NIFTY 50 · yours</div></div>
+  <div class="kpi"><div class="kpi-label">Daily bars</div>
+    <div class="kpi-value">{{ '{:,.1f}M'.format((data.bars or 0) / 1e6) }}</div>
+    <div class="kpi-hint">since {{ data.first.strftime('%b %Y') if data.first else '—' }}</div></div>
+  <div class="kpi"><div class="kpi-label">Passing</div>
+    <div class="kpi-value">{{ passing }} of {{ tested }}</div>
+    <div class="kpi-hint">strategy × market pairs</div></div>
+</div>
+
+<div class="section grid">
+  <div class="card">
+    <div class="card-head"><h2>How a simulation runs</h2></div>
+    <div class="card-body">
+      <ol class="steps">
+        <li><b>Prices</b>Daily open, high, low and close, adjusted for splits and dividends. Days a stock didn't trade, and prices that jump 50% and snap back (bad prints), are removed.</li>
+        <li><b>Rules, fixed in advance</b>Each strategy is a written rule with textbook parameters — nothing is tuned to the data, so the past can't be memorised.</li>
+        <li><b>Every signal becomes a ticket</b>A buy limit at the close. It fills only if a later day trades at or below it, within {{ cfg.validity_sessions }} sessions.</li>
+        <li><b>Exits lean against the strategy</b>If the stop and target fall in one day, the stop wins. A gap through the stop exits at the open. A rule's own exit is taken at the next open.</li>
+        <li><b>Costs come off every trade</b>Round trip: India {{ cfg.round_trip_cost_pct.NSE }}%, ASX {{ cfg.round_trip_cost_pct.ASX }}%, US {{ cfg.round_trip_cost_pct.US }}% (brokerage, taxes, slippage, currency).</li>
+        <li><b>Results in R</b>Profit divided by the risk planned at entry. +1R made what it risked; −1R is a clean stop-out.</li>
+        <li><b>Then as one account</b>All passing strategies together: at most {{ cfg.max_new_ideas_per_scan }} new tickets a day, {{ cfg.max_open_positions }} positions, {{ cfg.risk_per_trade_pct }}% risk each, cash spent once.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>The gate</h2><span class="hint">all must hold</span></div>
+    <ul class="list">
+      <li><div class="grow">At least {{ cfg.gate.min_trades_recent }} trades in the last {{ cfg.recent_period_years }} years</div></li>
+      <li><div class="grow">Average at least {{ '{:+.2f}R'.format(cfg.gate.min_expectancy_r) }} per trade, profit factor ≥ {{ cfg.gate.min_profit_factor }}</div></li>
+      <li><div class="grow">Profitable in the older period too, not just recently</div></li>
+      <li><div class="grow">Better than the same exits on random entry days</div></li>
+      <li><div class="grow">95% of 2,000 reshuffled 100-trade runs end profitable</div></li>
+      <li><div class="grow">The name itself: ≥ {{ cfg.gate.min_symbol_trades }} past trades, not a losing record</div></li>
+      <li><div class="grow">The market as one account beats its index on Sharpe <i>and</i> worst fall</div></li>
+    </ul>
+  </div>
+</div>
+
+<section class="section">
+  <h2>Strategies</h2>
+  <p class="lead-in">Cumulative R over twelve years, per market. <span style="color:var(--accent)">Green</span> passes the gate; grey doesn't. Dashed: random entries with the same exits, scaled to the same number of trades. The dotted rule marks where the recent period starts.</p>
+  {% for s in strategies %}
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>{{ s.label }}</h3>
+        <div class="muted" style="margin-top:2px;font-size:12.5px">{{ s.summary }}</div>
+      </div>
+      {% if s.passes %}<span class="badge badge-ok">passes in {{ s.passes }}</span>{% else %}<span class="badge">fails everywhere</span>{% endif %}
+    </div>
+    <div class="tablewrap">
+      <table class="data">
+        <thead><tr>
+          <th>Market</th><th class="num">Recent trades</th><th class="num">Win</th>
+          <th class="num">Per trade</th><th class="num">Older</th><th class="num">Random</th>
+          <th class="num">Profit factor</th><th class="num">100-trade loss</th><th>Verdict</th>
+        </tr></thead>
+        <tbody>
+        {% for row in s.rows %}{% set st = row.stats %}
+        <tr>
+          <td><strong>{{ row.region_name }}</strong></td>
+          <td class="num">{{ '{:,}'.format(st.recent.trades or 0) }}</td>
+          <td class="num">{{ pct(st.recent.win_rate) }}</td>
+          <td class="num {{ 'up' if (st.recent.expectancy_r or 0) > 0 else 'down' }}">{{ r(st.recent.expectancy_r) }}</td>
+          <td class="num">{{ r(st.older.expectancy_r) }}</td>
+          <td class="num muted">{{ r(st.random_recent.expectancy_r) }}</td>
+          <td class="num">{{ '{:.2f}'.format(st.recent.profit_factor) if st.recent.profit_factor else '—' }}</td>
+          <td class="num">{{ pct(st.monte_carlo.chance_of_loss) }}</td>
+          <td>{% if row.passed %}<span class="badge badge-ok">passes</span>{% else %}<span class="hint">{{ st.fails[0] if st.fails else '' }}{% if st.fails|length > 1 %} · +{{ st.fails|length - 1 }} more{% endif %}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="grid" style="padding:14px 16px 6px;gap:20px">
+      {% for row in s.rows %}
+      <div>
+        <div class="kpi-label" style="margin-bottom:6px">{{ row.region_name }} · {{ '{:+,.0f}R'.format(row.stats.all.total_r) if row.stats.all and row.stats.all.total_r is defined else '—' }} total</div>
+        {{ row.svg }}
+      </div>
+      {% endfor %}
+    </div>
+    <details class="more card-body">
+      <summary>Details: exits, best names, every failed test</summary>
+      <div class="grid" style="gap:20px">
+        {% for row in s.rows %}{% set st = row.stats %}
+        <div>
+          <div class="kpi-label" style="margin-bottom:8px">{{ row.region_name }}</div>
+          <div class="hint">Exits: {% for k, v in (st.exits or {}).items() %}{{ k }} {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</div>
+          <div class="hint">Worst run of 100 trades (1 in 20): {{ '{:+.1f}R'.format(st.monte_carlo.p5_total_r) if st.monte_carlo.p5_total_r is defined else '—' }} · {{ st.symbols }} names</div>
+          {% if st.fails %}<ul class="ticket-why">{% for f in st.fails %}<li>{{ f }}</li>{% endfor %}</ul>{% endif %}
+          {% if row.best %}
+          <div class="hint" style="margin-top:8px">Best names:
+            {% for b in row.best %}{{ b.symbol.split('.')[0] }} {{ r(b.stats.expectancy_r) }} ({{ b.stats.trades }}){% if not loop.last %} · {% endif %}{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+  {% else %}
+  <p class="empty">No simulation yet — run <code>mia advisor simulate</code>.</p>
+  {% endfor %}
+</section>
+
+<section class="section">
+  <h2>As one account</h2>
+  <p class="lead-in">
+    Following every email since late 2015. <span style="color:var(--accent)">Alfred</span> ·
+    index · random picks · <span style="white-space:nowrap">survivors (dashed)</span> — equal weight in today's
+    index members, which shows how much leaving out the companies that failed flatters every number here.
+  </p>
+  <div class="grid">
+  {% for a in accounts %}{% set st = a.stats %}
+  <div class="card">
+    <div class="card-head">
+      <h3>{{ a.name }}</h3>
+      {% if st.passed %}<span class="badge badge-ok">sends tickets</span>{% else %}<span class="badge badge-bad">sends nothing</span>{% endif %}
+    </div>
+    <div style="padding:12px 16px 0">{{ a.svg }}</div>
+    <div class="tablewrap">
+      <table class="data">
+        <thead><tr><th></th><th class="num">Per year</th><th class="num">Worst fall</th><th class="num">Sharpe</th></tr></thead>
+        <tbody>
+        {% for label, key in [('Alfred', 'strategy'), ('· recent', 'recent'), ('Random picks', 'random_picks'),
+                              (st.index_symbol, 'index'), ('Survivors', 'survivors')] %}{% set m = st[key] or {} %}
+        <tr>
+          <td>{% if key == 'strategy' %}<strong>{{ label }}</strong>{% else %}{{ label }}{% endif %}</td>
+          <td class="num">{{ pct(m.cagr, 1, True) }}</td>
+          <td class="num">{{ pct(m.max_drawdown) }}</td>
+          <td class="num">{{ '{:.2f}'.format(m.sharpe) if m.sharpe is defined and m.sharpe is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-body hint">{{ st.trades.trades }} trades · {{ pct(st.avg_exposure) }} invested on average{% if st.fails %} · {{ st.fails|join('; ') }}{% endif %}</div>
+  </div>
+  {% else %}
+  <p class="empty">No account replay yet — run <code>mia advisor portfolio</code>.</p>
+  {% endfor %}
+  </div>
+</section>
+
+<section class="section">
+  <h2>What these numbers can't tell you</h2>
+  <div class="card">
+    <ul class="list">
+      <li><div class="grow"><div class="t">Survivorship</div><div class="s">The universe is today's index members. Companies that collapsed and left since 2014 are missing, which flatters trend and momentum most. "Beat random entries" controls for part of it; the survivors line shows the size of the rest.</div></div></li>
+      <li><div class="grow"><div class="t">Costs are estimates</div><div class="s">Pessimistic by design, but they are not your actual contract notes. Edit them in <code>conf/advisor.yaml</code>.</div></div></li>
+      <li><div class="grow"><div class="t">The best-names filter</div><div class="s">Live tickets skip names with a losing record under the strategy. That record uses all of history, so it can't be replayed honestly and the account replay leaves it out.</div></div></li>
+      <li><div class="grow"><div class="t">The real test is forward</div><div class="s">Every ticket sent is tracked on the Ideas page by the same rules. If live results drift below these, it shows there first.</div></div></li>
+    </ul>
+  </div>
+</section>
+{% endblock %}
