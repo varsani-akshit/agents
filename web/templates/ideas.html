@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Ideas — Alfred{% endblock %}
+{% block content %}
+<header class="ph">
+  <div class="eyebrow">Advice only · you place every order</div>
+  <h1>Ideas</h1>
+  <p class="sub">
+    A strategy may only send ideas once its simulation — every name in the
+    market, twelve years, costs included — clears the gate. Each idea sent is
+    then tracked by the same rules, so the scoreboard is the live test of the
+    evidence.
+  </p>
+</header>
+
+<h2 style="margin-top:28px">The gate</h2>
+<div class="tablewrap">
+  <table class="data mkt-table">
+    <thead><tr>
+      <th>Strategy</th><th>Market</th><th class="num">Recent trades</th>
+      <th class="num">Per trade</th><th class="num">Win</th><th class="num">PF</th>
+      <th class="num">Older</th><th class="num">Random</th><th class="num">100-trade loss</th>
+      <th>Verdict</th>
+    </tr></thead>
+    <tbody>
+    {% for e in evidence %}{% set s = e.stats %}
+    <tr>
+      <td><strong>{{ s.label or e.strategy }}</strong></td>
+      <td>{{ e.market }}</td>
+      <td class="num">{{ s.recent.trades or 0 }}</td>
+      <td class="num {{ 'up' if (s.recent.expectancy_r or 0) > 0 else 'down' }}">{{ '{:+.2f}R'.format(s.recent.expectancy_r or 0) }}</td>
+      <td class="num">{{ '{:.0f}%'.format((s.recent.win_rate or 0) * 100) }}</td>
+      <td class="num">{{ '{:.2f}'.format(s.recent.profit_factor or 0) }}</td>
+      <td class="num">{{ '{:+.2f}R'.format(s.older.expectancy_r or 0) }}</td>
+      <td class="num">{{ '{:+.2f}R'.format(s.random_recent.expectancy_r or 0) }}</td>
+      <td class="num">{{ '{:.0f}%'.format((s.monte_carlo.chance_of_loss or 0) * 100) }}</td>
+      <td>{% if e.passed %}<span class="up">passes</span>{% else %}<span class="hint">{{ s.fails|join('; ') }}</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10" class="empty">No simulation yet — run <code>mia advisor simulate</code>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if evidence %}<p class="hint">Simulated {{ evidence[0].computed_at|ago }}, re-run every Sunday. Per trade is in R: profit ÷ the risk planned at entry.</p>{% endif %}
+
+<h2 style="margin-top:32px">Sent ideas</h2>
+{% set o = board.overall %}
+<p class="hint">
+  {% if o.trades %}{{ o.trades }} closed · {{ '{:+.2f}R'.format(o.expectancy_r) }} per trade · win {{ '{:.0f}%'.format(o.win_rate * 100) }}{% else %}None closed yet.{% endif %}
+  {% for k, v in board.counts.items() %} · {{ v }} {{ k }}{% endfor %}
+</p>
+<div class="tablewrap">
+  <table class="data mkt-table">
+    <thead><tr>
+      <th>Signal</th><th>Name</th><th>Strategy</th><th class="num">Limit</th><th class="num">Stop</th>
+      <th class="num">Qty</th><th>Status</th><th class="num">Result</th>
+    </tr></thead>
+    <tbody>
+    {% for i in ideas %}
+    <tr>
+      <td>{{ i.signal_date }}</td>
+      <td><strong>{{ i.symbol }}</strong> <span class="hint">{{ i.broker }}</span></td>
+      <td>{{ i.strategy }}</td>
+      <td class="num">{{ '{:,.2f}'.format(i.limit_price) }}</td>
+      <td class="num">{{ '{:,.2f}'.format(i.stop_price) }}</td>
+      <td class="num">{{ '{:g}'.format(i.quantity) if i.quantity is not none else '—' }}</td>
+      <td>{{ i.status }}{% if i.exit_reason %} · {{ i.exit_reason }}{% endif %}</td>
+      <td class="num {{ 'up' if (i.r_multiple or 0) > 0 else 'down' }}">{{ '{:+.2f}R'.format(i.r_multiple) if i.r_multiple is not none else '—' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="empty">No ideas sent yet. Nothing has cleared the gate.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

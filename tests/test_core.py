@@ -326,7 +326,7 @@ def test_utc_filter_converts_from_session_timezone():
 
 @pytest.mark.parametrize(
     "path", ["/", "/archive", "/ask", "/alerts", "/world", "/status", "/healthz",
-             "/api/latest", "/charts", "/graph", "/add", "/api/graph", "/portfolio"]
+             "/api/latest", "/charts", "/graph", "/add", "/api/graph", "/portfolio", "/ideas"]
 )
 def test_every_page_renders(path):
     """Smoke test across every route.
@@ -699,7 +699,7 @@ def test_portfolio_is_owner_only():
     auth.set_admin(TEST_USER, False)
     with TestClient(app) as client:
         _sign_in(client)
-        for path in ("/portfolio", "/brokers/kite/login"):
+        for path in ("/portfolio", "/brokers/kite/login", "/ideas"):
             r = client.get(path, follow_redirects=False)
             assert r.status_code == 303 and r.headers["location"] == "/", path
         auth.set_admin(TEST_USER, True)

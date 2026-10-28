@@ -1005,6 +1005,24 @@ async def portfolio(request: Request, notice: str = ""):
     })
 
 
+@app.get("/ideas", response_class=HTMLResponse)
+async def ideas(request: Request):
+    """Every idea sent and what became of it, plus the evidence table that
+    decides which strategies are allowed to send any."""
+    from advisor import ledger
+
+    def gather():
+        evidence = db.query(
+            """SELECT strategy, market, passed, stats, computed_at FROM strategy_evidence
+               WHERE symbol = '' ORDER BY market, strategy""")
+        rows = db.query("SELECT * FROM ideas ORDER BY created_at DESC LIMIT 100")
+        return evidence, rows, ledger.scoreboard()
+
+    evidence, rows, board = await asyncio.to_thread(gather)
+    return page(request, "ideas.html", {
+        "evidence": evidence, "ideas": rows, "board": board, "active": "ideas"})
+
+
 @app.post("/portfolio/refresh")
 async def portfolio_refresh():
     from brokers import portfolio as pf

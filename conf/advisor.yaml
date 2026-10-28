@@ -1,0 +1,68 @@
+# The advisor: what Alfred is allowed to recommend, and what it must prove first.
+#
+# Alfred never places orders. Everything here shapes the tickets it emails;
+# you place them yourself in Kite or Webull.
+
+# ── Sizing ───────────────────────────────────────────────────────────────────
+# Each idea risks this share of the broker account's value if its stop is hit.
+# 0.5% means a stopped-out trade costs half a percent of the account.
+risk_per_trade_pct: 0.5
+# No single position may be more than this share of the account.
+max_position_pct: 10
+# A limit order not filled within this many sessions is withdrawn.
+validity_sessions: 3
+
+# ── Costs ────────────────────────────────────────────────────────────────────
+# Round-trip cost as a percentage of the trade value: brokerage, taxes, fees
+# and slippage, both sides. Deliberately pessimistic — a strategy that only
+# works with cheap fills does not work. Edit to your actual charges.
+#   NSE/BSE: NRI brokerage + 0.1% STT each side + stamp/exchange/GST + slippage
+#   ASX:     Webull AU brokerage + spread on mid-caps
+#   US:      Webull AU, including the AUD↔USD conversion both ways
+round_trip_cost_pct:
+  NSE: 0.70
+  BSE: 0.80
+  ASX: 0.40
+  US: 0.60
+
+# ── The gate ─────────────────────────────────────────────────────────────────
+# A strategy may only send ideas in a market once its simulation clears every
+# bar below. History is split in two: the strategies have fixed, textbook
+# rules (nothing is tuned to the data), and both halves must stand on their own.
+gate:
+  min_trades_recent: 100          # trades in the recent period, pooled across the market
+  min_expectancy_r: 0.05          # average gain per trade, in units of the risk taken
+  min_profit_factor: 1.15         # gross wins / gross losses, recent period
+  both_periods_positive: true     # older and recent periods both profitable
+  beat_random_entries: true       # better than the same exits on random entry days
+  monte_carlo_p5_positive: true   # 95% of reshuffled 100-trade runs end positive
+  # The name itself must not have a losing record under the strategy.
+  min_symbol_trades: 6
+  min_symbol_expectancy_r: 0.0
+
+recent_period_years: 4            # the last N years are the "recent" half
+history_years: 12
+
+# ── Universe ─────────────────────────────────────────────────────────────────
+# Index members (S&P 500, ASX 200, NIFTY 50) and everything you hold are
+# always scanned. Add anything else here, as yfinance tickers.
+watchlist:
+  # India — gold, silver and broad index ETFs (in Kite)
+  - GOLDBEES.NS
+  - SILVERBEES.NS
+  - NIFTYBEES.NS
+  - BANKBEES.NS
+  # Australia — commodity and index ETFs (in Webull AU)
+  - PMGOLD.AX
+  - GOLD.AX
+  - QAU.AX
+  - ETPMAG.AX
+  - IOZ.AX
+  # US — commodity and broad ETFs (in Webull AU)
+  - GLD
+  - SLV
+  - GDX
+  - USO
+  - CPER
+  - SPY
+  - QQQ

@@ -318,6 +318,31 @@ def job_portfolio() -> dict:
     return {"brokers": results}
 
 
+def job_advise(region: str) -> dict:
+    """Trade ideas for one market, after it closes. Advice only."""
+    from advisor import jobs
+
+    return jobs.cycle(region)
+
+
+def job_retest() -> dict:
+    from advisor import jobs
+
+    return jobs.retest()
+
+
+# Each run lands after its market's close in either daylight-saving state:
+#   India 15:30 IST = 10:00 UTC (no DST)          → 10:45 UTC
+#   ASX   16:00 Sydney = 05:00 UTC (DST) / 06:00  → 06:45 UTC
+#   US    16:00 New York = 20:00 UTC (DST) / 21:00 → 21:45 UTC
+ADVISOR_JOBS = (
+    ("advise_in", lambda: job_advise("IN"), dict(day_of_week="mon-fri", hour=10, minute=45)),
+    ("advise_asx", lambda: job_advise("ASX"), dict(day_of_week="mon-fri", hour=6, minute=45)),
+    ("advise_us", lambda: job_advise("US"), dict(day_of_week="mon-fri", hour=21, minute=45)),
+    ("retest", job_retest, dict(day_of_week="sun", hour=1, minute=0)),
+)
+
+
 # ─────────────────────────────────── runner ─────────────────────────────────
 def build_scheduler() -> BlockingScheduler:
     sched = BlockingScheduler(
@@ -349,6 +374,8 @@ def build_scheduler() -> BlockingScheduler:
         id="portfolio",
         next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
     )
+    for job_id, fn, cron in ADVISOR_JOBS:
+        sched.add_job(lambda f=fn, i=job_id: _guard(i, f), CronTrigger(**cron), id=job_id)
     sched.add_job(
         lambda: _guard("daily_data", job_daily_data),
         CronTrigger(hour=2, minute=0),
@@ -389,6 +416,8 @@ def build_background_scheduler():
         ("maintenance", job_maintenance, CronTrigger(hour=3, minute=0)),
     ):
         sched.add_job(lambda f=fn, i=job_id: _guard(i, f), trigger, id=job_id)
+    for job_id, fn, cron in ADVISOR_JOBS:
+        sched.add_job(lambda f=fn, i=job_id: _guard(i, f), CronTrigger(**cron), id=job_id)
     return sched
 
 

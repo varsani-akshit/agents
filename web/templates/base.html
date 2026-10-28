@@ -15,7 +15,7 @@
 <body>
 {% set MARK %}<svg class="mark" viewBox="0 0 100 44" width="26" height="11" role="img" aria-label="Alfred"><polygon points="3,5 22,14 34,11 38,3 43,13 50,7 57,13 62,3 66,11 78,14 97,5 93,20 85,16 77,29 69,21 61,31 50,41 39,31 31,21 23,29 15,16 7,20" fill="currentColor"/></svg>{% endset %}
 {% set PRIMARY = [('/', 'latest', 'Brief'), ('/charts', 'charts', 'Charts'), ('/graph', 'graph', 'Graph'), ('/markets', 'markets', 'Markets'), ('/ask', 'ask', 'Ask')]
-   + ([('/portfolio', 'portfolio', 'Portfolio'), ('/add', 'add', 'Add')] if is_admin else []) %}
+   + ([('/portfolio', 'portfolio', 'Portfolio'), ('/ideas', 'ideas', 'Ideas'), ('/add', 'add', 'Add')] if is_admin else []) %}
 {# Status names the models and their cost; Add changes what Alfred ingests.
    Readers get the product, not the machinery — and the middleware refuses both
    paths anyway, so a hidden link is presentation, not the security boundary. #}

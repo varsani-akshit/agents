@@ -378,6 +378,59 @@ def cmd_email(args) -> int:
     return 0
 
 
+def cmd_advisor(args) -> int:
+    """Trade ideas: backfill history, simulate, scan, review. Advice only."""
+    from notify import out
+
+    if args.action == "backfill":
+        from advisor import bars
+
+        syms = bars.universe() + bars.FX_PAIRS
+        out.info(f"downloading {args.years} years of daily bars for {len(syms)} symbols…")
+        out.info(f"{bars.fetch(syms, period=f'{args.years}y'):,} rows")
+        return 0
+
+    if args.action == "simulate":
+        from advisor import simulate
+
+        rep = simulate.run([args.region] if args.region else None)
+        for (name, region), (ok, s) in rep.items():
+            r, mc = s["recent"], s["monte_carlo"]
+            out.info(f"  {name:<15} {region:<4} {r.get('trades', 0):>6} trades  "
+                     f"{r.get('expectancy_r', 0):+.3f}R  PF {(r.get('profit_factor') or 0):.2f}  "
+                     f"loss-chance {(mc.get('chance_of_loss') or 0) * 100:4.1f}%  "
+                     + ("PASS" if ok else "fail: " + "; ".join(s["fails"])))
+        return 0
+
+    if args.action == "scan":
+        from advisor import REGIONS, jobs, report, scan
+
+        for region in ([args.region] if args.region else list(REGIONS)):
+            if args.send:
+                out.info(f"{region}: {jobs.cycle(region)}")
+                continue
+            res = scan.scan(region, preview=args.preview)
+            composed = report.compose(res, scan.regime())
+            print(composed[1] if composed else
+                  f"{region}: nothing to act on (as of {res['as_of']})\n\n"
+                  + report.holdings_text(res["holdings"]))
+            print()
+        return 0
+
+    if args.action == "ideas":
+        from advisor import ledger
+
+        ledger.update()
+        rows = db.query("SELECT * FROM ideas ORDER BY created_at DESC LIMIT 40")
+        for r in rows:
+            res = f"{r['r_multiple']:+.2f}R" if r["r_multiple"] is not None else ""
+            out.info(f"  {r['signal_date']} {r['symbol']:<14} {r['strategy']:<15} "
+                     f"{r['status']:<8} {res}")
+        out.info(f"scoreboard: {ledger.scoreboard()['overall']}")
+        return 0
+    return 2
+
+
 def cmd_lockdown(args) -> int:
     """Back to one owner: disable every other account, revoke every share link.
 
@@ -529,6 +582,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("email-test", help="send a test email to MIA_EMAIL_TO").set_defaults(
         func=cmd_email)
+
+    ad = sub.add_parser("advisor", help="trade ideas — advice only, never orders")
+    ad.add_argument("action", choices=["backfill", "simulate", "scan", "ideas"])
+    ad.add_argument("--region", choices=["IN", "ASX", "US"])
+    ad.add_argument("--years", type=int, default=12, help="backfill depth")
+    ad.add_argument("--preview", action="store_true",
+                    help="scan ignoring the gate; shows tickets, stores and sends nothing")
+    ad.add_argument("--send", action="store_true",
+                    help="run the full cycle: refresh, settle, scan, store, email")
+    ad.set_defaults(func=cmd_advisor)
 
     lk = sub.add_parser("lockdown",
                         help="disable every account but the owner's and revoke share links")

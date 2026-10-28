@@ -382,3 +382,65 @@ CREATE TABLE IF NOT EXISTS portfolio_lines (
   raw            JSONB
 );
 CREATE INDEX IF NOT EXISTS portfolio_lines_snapshot_idx ON portfolio_lines (snapshot_id);
+
+-- ── Advisor ───────────────────────────────────────────────────────────────
+-- Daily OHLC, split- and dividend-adjusted, for everything the advisor scans.
+-- Separate from security_prices (closes only, one year, read by the macro
+-- beats): simulating a stop or a limit fill needs the day's high and low, and
+-- judging a strategy needs a decade, not a year.
+CREATE TABLE IF NOT EXISTS bars (
+  symbol TEXT NOT NULL,
+  d      DATE NOT NULL,
+  open   DOUBLE PRECISION NOT NULL,
+  high   DOUBLE PRECISION NOT NULL,
+  low    DOUBLE PRECISION NOT NULL,
+  close  DOUBLE PRECISION NOT NULL,
+  volume DOUBLE PRECISION,
+  PRIMARY KEY (symbol, d)
+);
+
+-- What each strategy has proven, per market (symbol NULL: pooled across the
+-- market) and per name. Rewritten whole on each simulation run, so a strategy
+-- that stops clearing the gate stops sending ideas the same day.
+CREATE TABLE IF NOT EXISTS strategy_evidence (
+  strategy    TEXT NOT NULL,
+  market      TEXT NOT NULL,
+  symbol      TEXT NOT NULL DEFAULT '',
+  passed      BOOLEAN NOT NULL,
+  stats       JSONB NOT NULL,
+  computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (strategy, market, symbol)
+);
+
+-- Every recommendation Alfred sends, and what then happened to it. The outcome
+-- is computed with the same fill/stop/exit rules as the simulation, so the
+-- scoreboard is the forward test of the evidence that justified the idea.
+CREATE TABLE IF NOT EXISTS ideas (
+  id           BIGSERIAL PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  signal_date  DATE NOT NULL,
+  strategy     TEXT NOT NULL,
+  symbol       TEXT NOT NULL,
+  market       TEXT NOT NULL,
+  broker       TEXT NOT NULL,
+  action       TEXT NOT NULL,
+  currency     TEXT,
+  limit_price  DOUBLE PRECISION NOT NULL,
+  stop_price   DOUBLE PRECISION NOT NULL,
+  target_price DOUBLE PRECISION,
+  quantity     DOUBLE PRECISION,
+  risk_amount  DOUBLE PRECISION,
+  valid_until  DATE NOT NULL,
+  reasons      JSONB NOT NULL DEFAULT '[]',
+  evidence     JSONB NOT NULL DEFAULT '{}',
+  status       TEXT NOT NULL DEFAULT 'open',  -- open | filled | expired | closed
+  fill_date    DATE,
+  fill_price   DOUBLE PRECISION,
+  exit_date    DATE,
+  exit_price   DOUBLE PRECISION,
+  exit_reason  TEXT,
+  r_multiple   DOUBLE PRECISION,
+  emailed_at   TIMESTAMPTZ,
+  UNIQUE (strategy, symbol, signal_date)
+);
+CREATE INDEX IF NOT EXISTS ideas_status_idx ON ideas (status, created_at DESC);
