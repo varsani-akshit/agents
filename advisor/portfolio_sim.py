@@ -254,6 +254,7 @@ def run(region: str, *, random_seeds: int = 5) -> dict | None:
         "from": str(cal[0].date()), "through": str(cal[-1].date()), "symbols": len(frames),
         "recent_from": str(cutoff.date()),
     }
+    stats["passed"], stats["fails"] = judge_account(stats)
     weekly = pd.DataFrame({"strategy": eq, "random": rand_mean, "survivors": surv,
                            "index": index if index is not None else np.nan}).resample("W").last()
     curve = {"dates": [str(d.date()) for d in weekly.index],
@@ -266,6 +267,32 @@ def run(region: str, *, random_seeds: int = 5) -> dict | None:
              curve = EXCLUDED.curve, computed_at = now()""",
         (region, json.dumps(_finite(stats), default=str), json.dumps(curve)))
     return stats
+
+
+def judge_account(stats: dict) -> tuple[bool, list[str]]:
+    """The region-level gate: did following Alfred beat holding the index?
+
+    Not on return — on risk. The account replays roughly matched each index's
+    return; what they can claim is getting it with less risk, so that is the
+    claim tested. A missing index is a failure, never a pass by default.
+    """
+    g = settings()["gate"]
+    me, idx = stats.get("strategy") or {}, stats.get("index") or {}
+    fails = []
+    if not idx:
+        return False, [f"no data for the index {stats.get('index_symbol')}"]
+    if g.get("account_beats_index_sharpe") and (me.get("sharpe") or 0) <= (idx.get("sharpe") or 0):
+        fails.append(f"Sharpe {me.get('sharpe') or 0:.2f} vs index {idx.get('sharpe') or 0:.2f}")
+    if g.get("account_beats_index_drawdown") and (me.get("max_drawdown") or -1) <= (idx.get("max_drawdown") or -1):
+        fails.append(f"worst fall {(me.get('max_drawdown') or 0) * 100:.0f}% vs index "
+                     f"{(idx.get('max_drawdown') or 0) * 100:.0f}%")
+    return not fails, fails
+
+
+def account(region: str) -> dict | None:
+    """The stored replay for a region, or None if there is none."""
+    row = db.one("SELECT stats, computed_at FROM portfolio_backtests WHERE region=%s", (region,))
+    return row and {**row["stats"], "computed_at": row["computed_at"]}
 
 
 def _finite(v):

@@ -115,7 +115,7 @@ def ticket(sym: str, strat, x, accts: dict, held: dict) -> dict:
     return t
 
 
-def _attach_evidence(t: dict, pooled: dict, own: dict | None) -> None:
+def _attach_evidence(t: dict, pooled: dict, own: dict | None, acct: dict | None = None) -> None:
     rec, mc = pooled["stats"]["recent"], pooled["stats"]["monte_carlo"]
     t["evidence"] = {
         "region_trades": rec.get("trades"), "win_rate": rec.get("win_rate"),
@@ -130,6 +130,15 @@ def _attach_evidence(t: dict, pooled: dict, own: dict | None) -> None:
         "name_expectancy_r": own and own["stats"].get("expectancy_r"),
         "passed": bool(pooled["passed"]),
     }
+    if acct:
+        me, idx = acct.get("strategy") or {}, acct.get("index") or {}
+        t["evidence"]["account"] = {
+            "since": acct.get("from"), "index": acct.get("index_symbol"),
+            "cagr": me.get("cagr"), "index_cagr": idx.get("cagr"),
+            "max_drawdown": me.get("max_drawdown"), "index_max_drawdown": idx.get("max_drawdown"),
+            "sharpe": me.get("sharpe"), "index_sharpe": idx.get("sharpe"),
+            "passed": bool(acct.get("passed")),
+        }
 
 
 # ───────────────────────────────── holdings ─────────────────────────────────
@@ -160,14 +169,25 @@ def _too_new(sym: str, h: dict, n: int) -> dict:
 
 
 # ─────────────────────────────────── scan ───────────────────────────────────
-def scan(region: str, *, preview: bool = False) -> dict:
-    """Signals for one region. Stores new ideas unless previewing."""
+def scan(region: str, *, preview: bool = False, store: bool = False) -> dict:
+    """Signals for one region.
+
+    Stores new ideas only when `store` is set — which only the scheduled
+    cycle does, right before emailing them. A stored idea counts as sent and
+    is not repeated, so a dry run that stored would swallow the real email.
+    """
     held = bars.holdings()
     accts = accounts()
     tickets, risks = [], []
     open_ideas = {(r["strategy"], r["symbol"]) for r in db.query(
         "SELECT strategy, symbol FROM ideas WHERE status IN ('open','filled')")}
     pooled = {name: evidence(name, region) for name in STRATEGIES}
+    from advisor import portfolio_sim
+
+    # The region-level gate: no replay, or a replay that did not beat holding
+    # the index on risk, and the region sends nothing.
+    acct = portfolio_sim.account(region)
+    account_ok = bool(acct and acct.get("passed"))
     syms = [s for s in bars.universe() if market_of(s) in REGIONS[region]]
     as_of = None
 
@@ -189,7 +209,7 @@ def scan(region: str, *, preview: bool = False) -> dict:
             risks.append(holding_risk(sym, x, held[sym]))
         for name, strat in STRATEGIES.items():
             ev = pooled.get(name)
-            if not ev or not (ev["passed"] or preview):
+            if not ev or not ((ev["passed"] and account_ok) or preview):
                 continue
             own = evidence(name, region, sym)
             if not preview and not (own and own["passed"]):
@@ -199,19 +219,20 @@ def scan(region: str, *, preview: bool = False) -> dict:
             if not strat.rules(x)["entry"].iloc[-1]:
                 continue
             t = ticket(sym, strat, x, accts, held)
-            _attach_evidence(t, ev, own)
-            t["preview"] = preview and not ev["passed"]
+            _attach_evidence(t, ev, own, acct)
+            t["preview"] = preview and not (ev["passed"] and account_ok)
             rank = x["mom_rank"].iloc[-1] if "mom_rank" in x else np.nan
             t["mom_rank"] = None if np.isnan(rank) else float(rank)
             tickets.append(t)
 
     tickets, left_out = select(tickets, settings().get("max_new_ideas_per_scan"))
 
-    stored = 0 if preview else _store(tickets)
+    stored = _store(tickets) if store and not preview else 0
     risks.sort(key=lambda r: (not r["newly_below"], not r["below_stop"], r["stop_gap_pct"]))
     return {"region": region, "as_of": as_of and as_of.date(), "tickets": tickets,
             "left_out": left_out, "holdings": risks, "stored": stored,
-            "gate": {n: bool(e and e["passed"]) for n, e in pooled.items()}}
+            "gate": {**{n: bool(e and e["passed"]) for n, e in pooled.items()},
+                     "account": account_ok}}
 
 
 def select(tickets: list[dict], cap: int | None) -> tuple[list[dict], int]:

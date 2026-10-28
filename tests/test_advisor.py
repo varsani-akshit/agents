@@ -331,3 +331,62 @@ def test_flat_market_cannot_make_money_from_nothing(monkeypatch):
         x["high"], x["low"] = 100.5, 99.5
     out = portfolio_sim.replay(frames, ["abs_momentum", "quiet_trend", "near_52w_high"])
     assert out["equity"].iloc[-1] <= 1.0 + 1e-9
+
+
+
+# ───────────────────────────── account gate ─────────────────────────────────
+def test_account_gate_needs_better_sharpe_and_shallower_falls(monkeypatch):
+    from advisor import portfolio_sim
+
+    monkeypatch.setattr(portfolio_sim, "settings", lambda: {"gate": {
+        "account_beats_index_sharpe": True, "account_beats_index_drawdown": True}})
+    idx = {"sharpe": 0.87, "max_drawdown": -0.34}
+    ok, _ = portfolio_sim.judge_account({"strategy": {"sharpe": 1.01, "max_drawdown": -0.23},
+                                         "index": idx})
+    assert ok
+    ok, fails = portfolio_sim.judge_account({"strategy": {"sharpe": 1.01, "max_drawdown": -0.40},
+                                             "index": idx})
+    assert not ok and "worst fall" in fails[0]
+    ok, fails = portfolio_sim.judge_account({"strategy": {"sharpe": 0.80, "max_drawdown": -0.20},
+                                             "index": idx})
+    assert not ok and "Sharpe" in fails[0]
+    ok, _ = portfolio_sim.judge_account({"strategy": {"sharpe": 2, "max_drawdown": -0.1},
+                                         "index": {}, "index_symbol": "SPY"})
+    assert not ok, "a missing index must fail, not pass by default"
+
+
+@pytest.mark.skipif(not _db_has_bars("SPY"), reason="no bars backfilled")
+def test_a_region_whose_account_fails_sends_nothing(monkeypatch):
+    from advisor import portfolio_sim, scan
+
+    monkeypatch.setattr(scan, "_store", lambda t: 0)
+    monkeypatch.setattr(portfolio_sim, "account", lambda region: {"passed": False})
+    res = scan.scan("US")
+    assert res["tickets"] == [] and res["gate"]["account"] is False
+    monkeypatch.setattr(portfolio_sim, "account", lambda region: None)
+    assert scan.scan("US")["tickets"] == [], "no replay must mean no tickets"
+
+
+def test_ticket_evidence_states_the_account_result_from_the_numbers():
+    from advisor.report import _account_line
+
+    a = {"since": "2015-12-08", "index": "SPY", "cagr": 0.141, "index_cagr": 0.147,
+         "max_drawdown": -0.225, "index_max_drawdown": -0.337, "sharpe": 1.01,
+         "index_sharpe": 0.87, "passed": True}
+    line = _account_line(a)
+    assert "+14.1% a year vs +14.7% for SPY" in line
+    assert "About the index's return, with smaller falls." in line
+    assert "more than the index" in _account_line({**a, "cagr": 0.20})
+
+
+@pytest.mark.skipif(not _db_has_bars("SPY"), reason="no bars backfilled")
+def test_a_dry_run_scan_stores_nothing(monkeypatch):
+    """A dry run once stored three tickets as sent, so the real run that
+    evening would have skipped them as duplicates and emailed nothing."""
+    from advisor import scan
+
+    stored = []
+    monkeypatch.setattr(scan, "_store", lambda t: stored.append(t) or len(t))
+    scan.scan("US")
+    scan.scan("US", preview=True, store=True)
+    assert stored == [], "a scan that was not asked to store, stored"

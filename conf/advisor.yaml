@@ -51,6 +51,12 @@ gate:
   # The name itself must not have a losing record under the strategy.
   min_symbol_trades: 6
   min_symbol_expectancy_r: 0.0
+  # And the region as a whole: replayed as one account (every passing
+  # strategy, the per-scan cap, the position limit, cash spent once), it must
+  # beat simply holding the index ETF on both return per unit of risk
+  # (Sharpe) and worst fall. A region that fails sends no tickets at all.
+  account_beats_index_sharpe: true
+  account_beats_index_drawdown: true
 
 recent_period_years: 4            # the last N years are the "recent" half
 history_years: 12

@@ -1,6 +1,7 @@
 """The advisor's scheduled work: one cycle per market close, one weekly re-test."""
 from __future__ import annotations
 
+import db
 from advisor import REGIONS, bars, ledger, report, scan, simulate
 
 
@@ -8,8 +9,11 @@ def cycle(region: str, *, send: bool = True) -> dict:
     """After a close: top up prices, settle open ideas, scan, email if needed."""
     fetched = bars.refresh(list(REGIONS[region]), period="1mo")
     settled = ledger.update()
-    result = scan.scan(region)
+    result = scan.scan(region, store=send)
     sent = report.send(result, scan.regime()) if send else None
+    ids = [t["id"] for t in result["tickets"] if t.get("id")]
+    if sent and ids:
+        db.execute("UPDATE ideas SET emailed_at = now() WHERE id = ANY(%s)", (ids,))
     return {"region": region, "bars": fetched, **settled,
             "tickets": len(result["tickets"]), "stored": result["stored"],
             "holdings_broke_stop": sum(h["newly_below"] for h in result["holdings"]),

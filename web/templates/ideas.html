@@ -55,6 +55,10 @@
 <section style="margin:22px 0 30px">
   <h3 style="margin-bottom:6px">{{ {'IN': 'India', 'ASX': 'Australia', 'US': 'United States'}[a.region] }}
     <span class="hint">· {{ s.strategies|join(', ') }}</span></h3>
+  <p class="hint">
+    {% if s.passed %}<span class="up">Sends tickets</span> — beat {{ s.index_symbol }} on Sharpe and worst fall.
+    {% else %}<span class="down">Sends nothing</span> — {{ (s.fails or ['not judged yet'])|join('; ') }}.{% endif %}
+  </p>
   {{ a.svg }}
   <div class="tablewrap">
     <table class="data mkt-table">

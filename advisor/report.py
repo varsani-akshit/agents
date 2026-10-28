@@ -33,9 +33,37 @@ def _evidence_line(e: dict) -> str:
             f"per trade, win rate {pct(e['win_rate'])}, profit factor "
             f"{(e['profit_factor'] or 0):.2f}; older period {e['older_expectancy_r']:+.2f}R; "
             f"random entries {e['random_expectancy_r']:+.2f}R. A 100-trade run lost money in "
-            f"{pct(e['chance_100_trade_loss'])} of reshuffles; worst-case drawdown "
-            f"~{(e['p95_drawdown_r'] or 0):.0f}R. On this name: "
-            f"{e['name_trades'] or 0} trades, {(e['name_expectancy_r'] or 0):+.2f}R.")
+            f"{pct(e['chance_100_trade_loss'])} of reshuffles. On this name: "
+            f"{e['name_trades'] or 0} trades, {(e['name_expectancy_r'] or 0):+.2f}R."
+            + _account_line(e.get("account")))
+
+
+def _account_line(a: dict | None) -> str:
+    """The account replay, which is the honest drawdown: trades that lose
+    together are counted together, unlike the per-trade reshuffle."""
+    if not a:
+        return ""
+
+    def p(v, fmt="{:+.1f}%"):
+        return fmt.format(v * 100) if v is not None else "—"
+
+    return (f" Followed as one account since {a['since']}: {p(a['cagr'])} a year vs "
+            f"{p(a['index_cagr'])} for {a['index']}, worst fall {p(a['max_drawdown'], '{:.0f}%')} "
+            f"vs {p(a['index_max_drawdown'], '{:.0f}%')}, Sharpe {a['sharpe'] or 0:.2f} vs "
+            f"{a['index_sharpe'] or 0:.2f}. " + _verdict(a))
+
+
+def _verdict(a: dict) -> str:
+    gap = (a["cagr"] or 0) - (a["index_cagr"] or 0)
+    if abs(gap) < 0.01:
+        ret = "About the index's return"
+    elif gap > 0:
+        ret = f"{gap * 100:.1f} points a year more than the index"
+    else:
+        ret = f"{-gap * 100:.1f} points a year less than the index"
+    falls = ("with smaller falls" if (a["max_drawdown"] or -1) > (a["index_max_drawdown"] or -1)
+             else "with deeper falls")
+    return f"{ret}, {falls}."
 
 
 def ticket_text(t: dict) -> str:
