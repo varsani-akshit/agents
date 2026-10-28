@@ -30,7 +30,51 @@ _HEADERS = {"user-agent": _UA, "accept": "application/rss+xml, application/xml, 
 
 
 def load_sources() -> list[dict]:
-    return yaml.safe_load(_CONF.read_text()) or []
+    return (yaml.safe_load(_CONF.read_text()) or []) + personal_sources()
+
+
+def personal_sources(batch: int = 6) -> list[dict]:
+    """News searches for what the reader holds and has been sent tickets on.
+
+    Built from the live portfolio each harvest, so a new holding is covered
+    from the next cycle without anyone editing a config file. Names, not
+    tickers, where the universe knows them: "Kotak Mahindra Bank" finds the
+    story, "KOTAKBANK" mostly finds price widgets.
+    """
+    from urllib.parse import quote_plus
+
+    try:
+        from advisor import bare, market_of
+        from advisor import bars as adv_bars
+
+        held = set(adv_bars.holdings())
+        held |= {r["symbol"] for r in db.query(
+            "SELECT symbol FROM ideas WHERE status IN ('open','filled')")}
+    except Exception as exc:  # noqa: BLE001 - news must not fail because brokers did
+        log.debug("no personal sources: %s", exc)
+        return []
+    names: dict[str, list[str]] = {"IN": [], "AU": [], "US": []}
+    known = {r["symbol"]: r["name"] for r in db.query(
+        "SELECT symbol, name FROM securities WHERE symbol = ANY(%s)",
+        (sorted({t.replace(".BO", ".NS") for t in held} | held),))}
+    for t in sorted(held):
+        region = {"NSE": "IN", "BSE": "IN", "ASX": "AU"}.get(market_of(t), "US")
+        name = known.get(t) or known.get(t.replace(".BO", ".NS")) or bare(t)
+        if name not in names[region]:
+            names[region].append(name)
+    out = []
+    locale = {"IN": ("en-IN", "IN"), "AU": ("en-AU", "AU"), "US": ("en-US", "US")}
+    for region, items in names.items():
+        hl, gl = locale[region]
+        for i in range(0, len(items), batch):
+            q = " OR ".join(f'"{n}"' for n in items[i:i + batch])
+            out.append({
+                "name": f"Your names — {region} {i // batch + 1} (proxy)",
+                "url": (f"https://news.google.com/rss/search?q={quote_plus(q)}+when:3d"
+                        f"&hl={hl}&gl={gl}&ceid={gl}:en"),
+                "tier": 2, "proxy": True, "personal": True,
+            })
+    return out
 
 
 def _clean_html(raw: str) -> str:

@@ -27,6 +27,10 @@ from signals import chartdata, stats
 log = logging.getLogger("mia.pipeline")
 
 MAX_USD = 1.50  # hard stop for one brief; the design target is under $1
+# Standing figures still offered beside the story charts: broad boards that
+# fit many windows. The rest stay on the Charts page, not in the brief.
+STANDING_OFFERED = ("cross_asset_performance", "fx_performance", "global_equities",
+                    "returns_heatmap")
 SCOUT_WORKERS = 4
 ANALYST_WORKERS = 3  # Gemini Pro rate limits are tighter than Flash
 
@@ -91,11 +95,19 @@ def run(hours: int = 12) -> dict:
 
         last = db.one("SELECT title FROM analyses WHERE kind='digest' ORDER BY created_at DESC LIMIT 1")
 
+        # The reader's own book: holdings, tickets, names near a trigger. The
+        # Marshal ranks stories by it and the Editor writes "Your money" from it.
+        from brain.pipeline import personal
+
+        with observe.stage("personal.book", kind="retrieval") as p:
+            book = personal.as_text(personal.book())
+            p.set_output({"chars": len(book)})
+
         # ── Marshal: exactly one model call, so the llm span IS the stage —
         # no wrapper around a single child.
         marshal_out, marshal_spec = stages.marshal(
             hours=hours, slim=slim, dlines=dlines, prior_wm=prior_wm,
-            triggers=triggers, last_headline=last["title"] if last else None)
+            triggers=triggers, last_headline=last["title"] if last else None, book=book)
         north_star = stages.north_star_text(marshal_out)
 
         # ── Scouts, in parallel ──────────────────────────────────────────────
@@ -162,6 +174,27 @@ def run(hours: int = 12) -> dict:
             rec.set_output({"ok": False, "error": "no beat produced findings"})
             return {"ok": False, "error": "no beat produced findings"}
 
+        # ── Story charts: what the Marshal's stories and the Analysts' findings
+        # asked to see, built from measured data. They lead the catalogue the
+        # Editor sees; of the standing figures only a few broad boards follow.
+        with observe.stage("charts.story", kind="tool") as p:
+            requests = []
+            for st in marshal_out.get("stories") or []:
+                if st.get("chart"):
+                    requests.append({**st["chart"], "story": st.get("headline")})
+            for payload in findings.values():
+                for f in payload.get("findings", []):
+                    if f.get("chart_request"):
+                        requests.append({**f["chart_request"], "story": f.get("title")})
+            from signals import storycharts
+
+            story_charts = storycharts.build_many(requests, limit=8)
+            p.set_output({"requested": len(requests), "built": sorted(story_charts)})
+        chart_manifest = {**story_charts, **chart_manifest}
+        offered = {**story_charts, **{k: v for k, v in chart_manifest.items()
+                                      if k in STANDING_OFFERED}}
+        chart_lines = digest.chart_link_lines(offered)
+
         # ── Editor: the single writer ────────────────────────────────────────
         citations = []
         seen = set()
@@ -181,7 +214,7 @@ def run(hours: int = 12) -> dict:
         text, editor_spec, editor_usd = stages.editor(
             findings_by_beat=findings, north_star=north_star, slim=slim,
             chart_lines=chart_lines, prior_wm=prior_wm, hours=hours,
-            citation_urls=citations[:60], role=digest.ROLE, fmt=digest.FORMAT)
+            citation_urls=citations[:60], role=digest.ROLE, fmt=digest.FORMAT, book=book)
         if not text.strip():
             rec.set_output({"ok": False, "error": "editor returned nothing"})
             return {"ok": False, "error": "editor returned nothing"}

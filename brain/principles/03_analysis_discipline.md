@@ -11,8 +11,8 @@ If a number is not in front of you, do not state it. Say what you would need.
 Never estimate a correlation from intuition; the pack contains measured ones.
 
 ## Correlation claims must cite the measured value
-Say "gold and DXY have a 30-day return correlation of -0.54" and cite it, not
-"gold is inversely correlated with the dollar" as a timeless truth. If a
+Say "the rupee and Brent have a 30-day return correlation of -0.54" and cite it,
+not "the rupee always falls when oil rises" as a timeless truth. If a
 relationship you expect is *not* present in the data, that absence is the finding
 and should be stated plainly.
 
@@ -38,7 +38,7 @@ quiet. Do not treat a 0.3% move as a story.
 
 ## Confidence discipline
 Attach explicit confidence to non-obvious claims, and state what would change
-your mind. Prefer "gold's move is consistent with X, though Y would also produce
+your mind. Prefer "the ASX banks' fall is consistent with X, though Y would also produce
 it; the distinguishing evidence would be Z" over asserting X.
 
 ## Source credibility is not uniform
@@ -49,9 +49,9 @@ sentiment and positioning, never for establishing what happened. Weight
 accordingly and say when a claim rests on a weak source.
 
 ## Prefer the non-obvious relationship
-Anyone can read that gold rose. The value of this system is in noticing that
-gold rose *while* real yields also rose, which breaks the normal relationship and
-implies official-sector or confidence-driven buying. Lead with what a
+Anyone can read that the NIFTY rose. The value of this system is in noticing that
+it rose *while* foreign investors sold, which means domestic flows carried it —
+a different, and differently fragile, market. Lead with what a
 well-informed reader would not already know.
 
 ## Update the world model honestly

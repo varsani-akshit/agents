@@ -44,6 +44,23 @@
   url: https://www.boj.or.jp/en/rss/whatsnew.xml
   tier: 1
   official: true
+# The reader's own central banks: India and Australia. Verified 2026-10-28.
+- name: Reserve Bank of India — press releases
+  url: https://www.rbi.org.in/pressreleases_rss.xml
+  tier: 1
+  official: true
+- name: Reserve Bank of India — notifications
+  url: https://www.rbi.org.in/notifications_rss.xml
+  tier: 1
+  official: true
+- name: Reserve Bank of Australia — media releases
+  url: https://www.rba.gov.au/rss/rss-cb-media-releases.xml
+  tier: 1
+  official: true
+- name: Reserve Bank of Australia — speeches
+  url: https://www.rba.gov.au/rss/rss-cb-speeches.xml
+  tier: 1
+  official: true
 
 # Official bodies without a usable feed — proxied, so tier 2 not 1.
 - name: US Treasury (proxy)
@@ -75,20 +92,12 @@
   url: https://news.google.com/rss/search?q=%22Federal+Reserve%22+OR+%22FOMC%22+OR+%22Powell%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
-- name: Gold market coverage (proxy)
-  url: https://news.google.com/rss/search?q=gold+price+OR+%22central+bank+gold%22+OR+bullion+when:7d&hl=en-US&gl=US&ceid=US:en
-  tier: 2
-  proxy: true
-- name: Silver market coverage (proxy)
-  url: https://news.google.com/rss/search?q=silver+price+OR+%22silver+squeeze%22+OR+%22industrial+silver%22+when:7d&hl=en-US&gl=US&ceid=US:en
+- name: Precious metals (proxy)
+  url: https://news.google.com/rss/search?q=gold+price+OR+silver+price+OR+%22central+bank+gold%22+when:3d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 - name: Sovereign debt coverage (proxy)
   url: https://news.google.com/rss/search?q=%22Treasury+yields%22+OR+%22sovereign+debt%22+OR+%22bond+auction%22+when:7d&hl=en-US&gl=US&ceid=US:en
-  tier: 2
-  proxy: true
-- name: Currency / debasement coverage (proxy)
-  url: https://news.google.com/rss/search?q=%22dollar+debasement%22+OR+%22currency+devaluation%22+OR+%22de-dollarization%22+when:7d&hl=en-US&gl=US&ceid=US:en
   tier: 2
   proxy: true
 
@@ -104,13 +113,6 @@
 - name: CoinDesk
   url: https://www.coindesk.com/arc/outboundfeeds/rss/
   tier: 3
-- name: Cointelegraph
-  url: https://cointelegraph.com/rss
-  tier: 3
-
-- name: ZeroHedge
-  url: https://feeds.feedburner.com/zerohedge/feed
-  tier: 4
 
 # Business and market press for the three covered exchanges. The market beats
 # need domestic coverage: an ASX earnings story rarely reaches a global wire,
@@ -127,6 +129,79 @@
 - name: Moneycontrol Markets (IN)
   url: https://www.moneycontrol.com/rss/marketreports.xml
   tier: 2
-- name: MarketWatch Top Stories (US)
-  url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+
+# ── Added 2026-10-28: the brief leads with the news, so it reads the world ──
+# Every URL verified live that day. Balanced so no region or asset class owns
+# the corpus: India and Australia (the reader's markets), China, Japan,
+# Europe, earnings, and energy, alongside the US.
+- name: Economic Times — economy (IN)
+  url: https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms
   tier: 2
+- name: Business Standard — economy (IN)
+  url: https://www.business-standard.com/rss/economy-102.rss
+  tier: 2
+- name: Business Standard — markets (IN)
+  url: https://www.business-standard.com/rss/markets-106.rss
+  tier: 2
+- name: Mint — economy (IN)
+  url: https://www.livemint.com/rss/economy
+  tier: 2
+- name: Mint — companies (IN)
+  url: https://www.livemint.com/rss/companies
+  tier: 2
+- name: Sydney Morning Herald — business (AU)
+  url: https://www.smh.com.au/rss/business.xml
+  tier: 2
+- name: CNBC — world
+  url: https://www.cnbc.com/id/100727362/device/rss/rss.html
+  tier: 2
+- name: CNBC — earnings
+  url: https://www.cnbc.com/id/15839135/device/rss/rss.html
+  tier: 2
+- name: Financial Times — world
+  url: https://www.ft.com/world?format=rss
+  tier: 2
+- name: BBC — business
+  url: https://feeds.bbci.co.uk/news/business/rss.xml
+  tier: 2
+- name: Guardian — business
+  url: https://www.theguardian.com/uk/business/rss
+  tier: 2
+- name: Nikkei Asia
+  url: https://asia.nikkei.com/rss/feed/nar
+  tier: 2
+- name: South China Morning Post — economy
+  url: https://www.scmp.com/rss/12/feed
+  tier: 2
+- name: India markets and RBI (proxy)
+  url: https://news.google.com/rss/search?q=Sensex+OR+Nifty+OR+RBI+OR+rupee+when:2d&hl=en-IN&gl=IN&ceid=IN:en
+  tier: 2
+  proxy: true
+- name: Australia markets and RBA (proxy)
+  url: https://news.google.com/rss/search?q=ASX+OR+RBA+OR+%22Australian+dollar%22+when:2d&hl=en-AU&gl=AU&ceid=AU:en
+  tier: 2
+  proxy: true
+- name: China economy (proxy)
+  url: https://news.google.com/rss/search?q=%22China+economy%22+OR+PBOC+OR+yuan+OR+%22Chinese+stocks%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Europe economy (proxy)
+  url: https://news.google.com/rss/search?q=ECB+OR+eurozone+OR+%22European+stocks%22+OR+Bund+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Japan economy (proxy)
+  url: https://news.google.com/rss/search?q=%22Bank+of+Japan%22+OR+yen+OR+Nikkei+OR+JGB+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Oil and energy (proxy)
+  url: https://news.google.com/rss/search?q=OPEC+OR+%22crude+oil%22+OR+Brent+OR+LNG+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Earnings and guidance (proxy)
+  url: https://news.google.com/rss/search?q=earnings+OR+guidance+OR+%22quarterly+results%22+when:2d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true
+- name: Fiscal policy and budgets (proxy)
+  url: https://news.google.com/rss/search?q=budget+deficit+OR+%22fiscal+policy%22+OR+%22government+spending%22+OR+tariffs+when:3d&hl=en-US&gl=US&ceid=US:en
+  tier: 2
+  proxy: true

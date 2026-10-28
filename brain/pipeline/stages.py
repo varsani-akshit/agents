@@ -51,6 +51,35 @@ def _loose_json(text: str) -> dict | None:
 
 
 # ─────────────────────────────────── marshal ────────────────────────────────
+# A chart a story needs, built from measured data by signals/storycharts.py.
+_CHART_REQUEST = {
+    "type": "object",
+    "description": "optional: the one chart that would show this story; omit if none helps",
+    "properties": {
+        "kind": {"type": "string", "enum": ["price", "compare", "performance"]},
+        "symbols": {"type": "array", "items": {"type": "string"},
+                    "description": "macro instruments or Yahoo tickers, e.g. INDIA, USDINR, OIL, COALINDIA.NS, BHP.AX, NVDA"},
+        "days": {"type": "integer", "description": "trading sessions: 21 ≈ a month, 126 ≈ six months, 252 ≈ a year"},
+        "title": {"type": "string"},
+        "why": {"type": "string", "description": "what the chart should show the reader"},
+    },
+}
+
+
+def chart_catalogue() -> str:
+    """What a chart request may name — told to every agent that can ask."""
+    try:
+        from signals import storycharts
+
+        macro = ", ".join(storycharts.instruments())
+    except Exception:  # noqa: BLE001
+        macro = "GOLD, OIL, US10Y, DXY, USDINR, AUDUSD, SPX, INDIA"
+    return (f"Macro instruments: {macro}. Or any Yahoo ticker: Indian names end .NS "
+            "(RELIANCE.NS), Australian .AX (BHP.AX), US plain (NVDA), Japan .T, Hong Kong .HK. "
+            "kind=price for one series' level; compare for 2-5 series rebased to 0%; "
+            "performance for 3-12 series' % change as bars.")
+
+
 _MARSHAL_SCHEMA = {
     "type": "object",
     "properties": {
@@ -74,8 +103,26 @@ _MARSHAL_SCHEMA = {
         },
         "carry_forward": {"type": "string",
                           "description": "threads from the previous brief that need resolution"},
+        "stories": {
+            "type": "array",
+            "description": "the 5-8 stories the brief will be built around, most important first",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "headline": {"type": "string", "description": "the development, stated as a finding"},
+                    "why_it_matters": {"type": "string"},
+                    "lens": {"type": "string", "description": "central banks|fiscal|earnings|markets|currencies|commodities|credit|geopolitics|India|Australia|other"},
+                    "regions": {"type": "array", "items": {"type": "string"}},
+                    "touches_reader": {"type": "array", "items": {"type": "string"},
+                                       "description": "the reader's holdings, tickets or markets it reaches; empty if none"},
+                    "beats": {"type": "array", "items": {"type": "string"}},
+                    "chart": _CHART_REQUEST,
+                },
+                "required": ["headline", "why_it_matters"],
+            },
+        },
     },
-    "required": ["window_summary", "priorities"],
+    "required": ["window_summary", "priorities", "stories"],
 }
 
 
@@ -99,11 +146,21 @@ def recent_coverage(limit: int = 3) -> str:
 
 
 def marshal(*, hours: int, slim: dict, dlines: list[str], prior_wm: str,
-            triggers: list[dict], last_headline: str | None) -> tuple[dict, str]:
-    """The run brief: the north star every downstream agent is steered by."""
-    user = f"""You are the Marshal of a macro research team. A brief covering the last
-{hours} hours is about to be produced by beat Scouts and Analysts. Write their
-marching orders.
+            triggers: list[dict], last_headline: str | None,
+            book: str = "") -> tuple[dict, str]:
+    """The run brief: the north star every downstream agent is steered by.
+
+    News first: the Marshal reads the window and picks the stories the brief
+    is built around — whatever moved the world's money, in any domain — ranked
+    by how much they touch the reader's own holdings and markets. The beats
+    then research those stories; they no longer decide the brief's shape.
+    """
+    user = f"""You are the Marshal of a research desk. A brief covering the last
+{hours} hours is about to be produced by Scouts and Analysts. Read the window,
+choose the stories it will be built around, and write their marching orders.
+
+# The reader's own book — rank stories by how much they touch this
+{book or '(no portfolio on file)'}
 
 # Already reported in recent briefs — do NOT commission these again
 {recent_coverage()}
@@ -129,21 +186,38 @@ Previous brief headline: {last_headline or '(none)'}
 # Prior world model
 {prior_wm[:4000]}
 
-Set 3-6 priorities: the developments this window that most deserve deep
-investigation, each with why and which beats it touches (keys: monetary,
-fiscal, geopolitics, energy, equities, digital, currencies, real_assets).
-Add one sentence of beat_guidance for any beat needing specific direction —
-including what the previous brief left unresolved (carry_forward)."""
+Choose 5-8 STORIES: the developments in this window that matter most, from
+ANY domain — central banks, governments and budgets, companies and earnings,
+currencies, commodities, credit, geopolitics, India, Australia, China, Europe,
+Japan, the US. There is no default topic: gold, the dollar and US Treasuries
+appear only if something genuinely happened to them. Rank by (1) how directly
+the story reaches the reader's holdings, tickets and markets above, then (2)
+how much it moves markets generally. At least one story should concern India
+and one Australia when anything happened there. For each, give the lens, the
+regions, which of the reader's names or markets it touches, and — where one
+chart would show it — a chart request built from this catalogue:
+{chart_catalogue()}
+
+Then set 3-6 priorities for the beat researchers (keys: monetary, fiscal,
+geopolitics, energy, equities, digital, currencies, us_equities, australia,
+india, real_assets), each tied to a story, and one sentence of beat_guidance
+for any beat needing direction — including what the previous brief left
+unresolved (carry_forward)."""
     payload, spec = router.complete_json(
-        "deep", system="You direct macro research coverage. Be specific; name the "
-        "development, not the topic.", user=user, schema=_MARSHAL_SCHEMA,
+        "deep", system="You direct a markets research desk for one reader. Be specific; "
+        "name the development, not the topic.", user=user, schema=_MARSHAL_SCHEMA,
         purpose="brief.marshal", max_tokens=6000,
     )
     return payload, spec
 
 
 def north_star_text(marshal_out: dict) -> str:
-    lines = [f"Window summary: {marshal_out.get('window_summary', '')}", "Priorities:"]
+    lines = [f"Window summary: {marshal_out.get('window_summary', '')}", "Stories the brief is built around:"]
+    for i, st in enumerate(marshal_out.get("stories") or [], 1):
+        touches = ", ".join(st.get("touches_reader") or [])
+        lines.append(f"{i}. {st.get('headline')} — {st.get('why_it_matters')}"
+                     + (f" [touches: {touches}]" if touches else ""))
+    lines.append("Priorities:")
     for p in marshal_out.get("priorities", []):
         lines.append(f"- {p.get('focus')} — {p.get('why')} (beats: {', '.join(p.get('beats') or [])})")
     if marshal_out.get("carry_forward"):
@@ -257,6 +331,7 @@ _ANALYST_SCHEMA = {
                                  "description": "2-5 sentences: mechanism, evidence, the non-obvious implication"},
                     "numbers_used": {"type": "array", "items": {"type": "string"}},
                     "chart_keys": {"type": "array", "items": {"type": "string"}},
+                    "chart_request": _CHART_REQUEST,
                     "related_beats": {"type": "array", "items": {"type": "string"},
                                       "description": "other beat keys this connects to, with the connection stated in analysis"},
                     "sources": {"type": "array", "items": {"type": "string"}},
@@ -346,6 +421,11 @@ Your beat: {beat['section']}
 # Chart keys you may cite in chart_keys
 {', '.join(chart_keys)}
 
+# Or request the chart your finding needs (chart_request), from:
+{chart_catalogue()}
+Request one only when a picture would show the finding better than words —
+a holding against its index, a currency against the commodity driving it.
+
 Turn the leads into findings. Each title states the conclusion with its
 number. On a market beat, name the specific stocks the argument rests on with
 their measured figures — the level, the move, the multiple — and state the
@@ -369,17 +449,18 @@ out to be noise. British English, no American colloquialism."""
 # ─────────────────────────────────── editor ─────────────────────────────────
 def editor(*, findings_by_beat: dict[str, dict], north_star: str, slim: dict,
            chart_lines: str, prior_wm: str, hours: int,
-           citation_urls: list[dict], role: str, fmt: str) -> tuple[str, str, float]:
+           citation_urls: list[dict], role: str, fmt: str,
+           book: str = "") -> tuple[str, str, float]:
     """The single writer. Sees every beat's findings; writes the whole brief."""
     # The movers table is a measurement, so it is computed here rather than
     # left to the writer to remember and recall.
     perf = [r for r in (slim.get("performance") or [])
             if r.get("chg_1d_pct") is not None]
-    movers = sorted(perf, key=lambda r: -abs(float(r.get("chg_1d_pct") or 0)))[:10]
+    movers = sorted(perf, key=lambda r: -abs(float(r.get("chg_1d_pct") or 0)))[:14]
 
-    # The Direction table is the brief's answer to "where does capital go
-    # next", so the writer is handed the measured cross-asset state rather
-    # than asked to remember it.
+    # Markets at a glance is a measurement, so the writer is handed the
+    # measured cross-asset state and each exchange's breadth and movers
+    # rather than asked to remember them.
     direction_inputs = {
         k: slim.get(k) for k in
         ("cross_asset_board", "fx_board", "regime_score", "yield_curve",
@@ -410,19 +491,21 @@ Timestamp: {datetime.now(timezone.utc).isoformat()}
 # Findings, by beat (already verified against measured data; ranked)
 {chr(10).join(sections)[:60000]}
 
-# Compact measured state (for the Signals section and any number you add)
+# The reader's book — the raw material for "Your money" and "Opportunities"
+{book or '(no portfolio on file)'}
+
+# Compact measured state (for any number you add)
 {json.dumps({k: slim.get(k) for k in ('performance', 'intraday_moves', 'yield_curve', 'regime_score', 'net_liquidity', 'correlation_flips', 'ratios', 'historical_analogues')}, default=str)[:20000]}
 
-# Charts available — EMBED at least three of these with
-# ![title](charts/KEY.png), each under the development it evidences; link the
-# rest in prose with [text](/charts#KEY)
+# Charts available — the story charts first; embed each with
+# ![title](charts/KEY.png) beneath the story it was made for
 {chart_lines}
 
-# Biggest movers this window — the raw material for the Signals table
+# Biggest movers this window — the raw material for "Markets at a glance"
 {json.dumps(movers, default=str)[:4000]}
 
-# Cross-asset board and market breadth — the raw material for the Direction
-# table. Every row you write must trace to a number here or to a finding above.
+# Cross-asset board and each exchange's breadth and movers — also for
+# "Markets at a glance". Every row must trace to a number here.
 {json.dumps(direction_inputs, default=str)[:9000]}
 
 # Source URLs your researchers actually saw (cite only from this list)
@@ -431,10 +514,12 @@ Timestamp: {datetime.now(timezone.utc).isoformat()}
 # Prior world model — reconcile and then replace via the world_model block
 {prior_wm[:5000]}
 
-You are writing from completed research, not researching. Weave the findings
-into the required structure: developments keep their titled-finding form, and
-every cross-beat connection your Analysts flagged becomes an explicit
-cross-reference between sections. Cut anything that does not earn its place.
+You are writing from completed research, not researching. Build the brief
+around the stories in the marching orders: each becomes a `###` story under
+"The stories", drawing its evidence from whichever beats researched it. A
+strong finding that fits no chosen story may become its own story if it
+outranks the weakest; otherwise it is cut. Every cross-story connection your
+Analysts flagged becomes an explicit cross-reference.
 
 Every development you file must rest on something that happened INSIDE this
 window and be datable to it. A paragraph whose substance would have been equally
@@ -443,10 +528,10 @@ subject: that is background, and the reader has it. Where a standing story
 returns, the title states what advanced ("Bank of Japan lifts the policy rate to
 0.75%"), never the standing condition ("Bank of Japan remains under pressure").
 
-The word budget is a hard ceiling, not a target: with seven beats reporting you
-will have more findings than fit, and the discipline is to DROP the weakest
-developments entirely — never to compress everything until it all just fits.
-A brief of 2,400 sharp words beats 3,200 thorough ones."""
+The word budget is a hard ceiling, not a target: you will have more findings
+than fit, and the discipline is to DROP the weakest entirely — never to
+compress everything until it all just fits. Write for one reader who holds the
+book above: every story should end somewhere they can feel it."""
     text, spec, usd = router.complete_text(
         "premium", premium_site="editor",
         system=role + "\n\n---\n\n" + fmt,
