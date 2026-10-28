@@ -448,6 +448,33 @@ def cmd_advisor(args) -> int:
     return 2
 
 
+def cmd_models(args) -> int:
+    """Which model does each job, and does every one of them answer?"""
+    from brain import llm, router
+    from notify import out
+
+    out.info(f"Azure configured: {'yes' if config.AZURE_READY else 'no — every role runs on Gemini'}")
+    specs = []
+    for role in ("bulk", "workhorse", "reason", "search", "deep", "premium"):
+        chain = router._roles()[role]
+        live = router.chain_for(role, premium_site="editor" if role == "premium" else None)
+        out.info(f"  {role:<10} {' → '.join(chain)}"
+                 + ("" if live == chain else f"   (usable now: {' → '.join(live)})"))
+        specs += [c for c in live if c not in specs]
+    if not args.probe:
+        return 0
+    bad = 0
+    for spec in specs:
+        try:
+            llm.complete_text(spec, system="Reply with one word.", user="Say ok.",
+                              purpose="probe.models", max_tokens=200, fallback=spec)
+            out.info(f"  ok    {spec}")
+        except Exception as exc:  # noqa: BLE001
+            bad += 1
+            out.error(f"{spec}: {str(exc)[:160]}")
+    return 1 if bad else 0
+
+
 def cmd_lockdown(args) -> int:
     """Back to one owner: disable every other account, revoke every share link.
 
@@ -609,6 +636,10 @@ def build_parser() -> argparse.ArgumentParser:
     ad.add_argument("--send", action="store_true",
                     help="run the full cycle: refresh, settle, scan, store, email")
     ad.set_defaults(func=cmd_advisor)
+
+    md = sub.add_parser("models", help="which model does each job; --probe pings every one")
+    md.add_argument("--probe", action="store_true", help="send each model a one-word test")
+    md.set_defaults(func=cmd_models)
 
     lk = sub.add_parser("lockdown",
                         help="disable every account but the owner's and revoke share links")

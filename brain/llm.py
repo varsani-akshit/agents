@@ -1,10 +1,10 @@
 """Multi-provider router for structured-JSON tasks.
 
-Not every call needs Claude. Classification and edge extraction are high-volume,
-narrow, schema-constrained tasks — a fast cheap model does them well. Digests and
-`ask` need deep reasoning, tool use, and prompt caching, so they stay on Claude.
-Routing by task requirement rather than by preference is what keeps the running
-cost proportional to the value of each call.
+Not every call needs the strongest model. Classification and edge extraction are
+high-volume, narrow, schema-constrained tasks — a fast cheap model does them well;
+the brief's single writer gets the best one. Routing by task requirement rather
+than by preference keeps the running cost proportional to the value of each call.
+Providers in use: Gemini (direct) and Azure AI Foundry.
 
 Model specs are "provider:model", e.g.
     anthropic:claude-haiku-4-5
@@ -14,7 +14,7 @@ Model specs are "provider:model", e.g.
 
 Every provider is normalised to the same contract: given a system prompt, a user
 payload, and a JSON schema, return a parsed dict. Any provider failure falls back
-to the Anthropic model so a routing choice can never take the pipeline down.
+to FALLBACK_SPEC (Gemini Flash) so a routing choice can never take the pipeline down.
 """
 from __future__ import annotations
 
@@ -35,21 +35,17 @@ log = logging.getLogger("mia.llm")
 # USD per million tokens (input, output). Used for the ledger; non-Anthropic
 # providers are cheap enough that these are guardrails, not accounting.
 PRICING: dict[str, tuple[float, float]] = {
-    "anthropic:claude-opus-5": (5.0, 25.0),
-    "anthropic:claude-sonnet-5": (3.0, 15.0),
-    "anthropic:claude-haiku-4-5": (1.0, 5.0),
     "gemini:gemini-flash-latest": (0.30, 2.50),
     "gemini:gemini-flash-lite-latest": (0.10, 0.40),
     "gemini:gemini-pro-latest": (1.25, 10.0),
-    "groq:openai/gpt-oss-20b": (0.10, 0.50),
-    "openai:gpt-4o-mini": (0.15, 0.60),
-    # Azure Foundry deployments. Estimates on the conservative side — the
-    # ledger treats these as guardrails; Azure's invoice is the accounting.
-    "azure:gpt-5.4": (2.50, 20.0),
+    # Azure Foundry. Conservative estimates — the ledger treats these as
+    # guardrails for the spend caps; Azure's invoice is the accounting.
+    # Matched by model family, so a deployment named "gpt-5.5-prod" still
+    # prices as GPT-5.5 rather than as an unknown.
+    "azure:gpt-5.5": (5.0, 30.0),
     "azure:gpt-5.4-mini": (0.45, 3.60),
-    "azure:gpt-4.1-nano": (0.10, 0.40),
-    "azure:Llama-4-Maverick-17B-128E-Instruct-FP8": (0.35, 1.40),
-    "azure:gpt-oss-120b": (0.15, 0.60),
+    "azure:deepseek-v3.2": (0.60, 1.70),
+    "azure:llama-4-maverick": (0.35, 1.40),
 }
 
 
@@ -69,7 +65,13 @@ def parse_spec(spec: str) -> tuple[str, str]:
 
 
 def price(spec: str, in_tok: int, out_tok: int) -> float:
-    inp, out = PRICING.get(spec, (1.0, 5.0))
+    rate = PRICING.get(spec)
+    if rate is None:
+        provider, model = parse_spec(spec)
+        rate = next((v for k, v in PRICING.items()
+                     if k.startswith(provider + ":") and k.split(":", 1)[1] in model.lower()),
+                    (5.0, 30.0))   # unknown: assume expensive, so the caps stay safe
+    inp, out = rate
     return in_tok * inp / 1e6 + out_tok * out / 1e6
 
 
@@ -94,6 +96,13 @@ def _azure_base() -> tuple[str, dict]:
     model families ("API version not supported"), so it is not used.
     """
     ep = os.environ["AZURE_FOUNDRY_ENDPOINT"].rstrip("/")
+    # Accept whichever form the portal shows: the resource endpoint, a
+    # project endpoint (…/api/projects/<name>), or one already ending in
+    # /openai/v1. They all serve the same v1 route.
+    if ep.endswith("/openai/v1"):
+        return ep, {"api-key": os.environ["AZURE_FOUNDRY_API_KEY"]}
+    if "/api/projects/" in ep:
+        ep = ep.split("/api/projects/")[0]
     return f"{ep}/openai/v1", {"api-key": os.environ["AZURE_FOUNDRY_API_KEY"]}
 
 

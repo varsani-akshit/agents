@@ -1,4 +1,4 @@
-"""Delivery. Console + durable file outbox now; Slack behind a flag for later.
+"""Delivery: console and a durable file outbox. Email goes through notify/email.py.
 
 Platform choice is deferred, so nothing above this module knows or cares where
 output lands. Adding a destination means adding a sink here, not touching the
@@ -11,7 +11,6 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -46,17 +45,6 @@ def _write_file(kind: str, title: str, body: str, meta: dict | None = None) -> P
     return path
 
 
-def _slack(webhook: str, text: str) -> bool:
-    if not (config.NOTIFY_SLACK and webhook):
-        return False
-    try:
-        r = httpx.post(webhook, json={"text": text[:38000]}, timeout=15)
-        return r.status_code == 200
-    except Exception as exc:  # noqa: BLE001
-        log.warning("slack post failed: %s", exc)
-        return False
-
-
 # ─────────────────────────────────── public ─────────────────────────────────
 def alert(payload: dict) -> Path:
     """Deliver a critical alert."""
@@ -78,7 +66,6 @@ def alert(payload: dict) -> Path:
 
     body = f"**{payload['title']}**\n\n{payload['text']}\n\n`{detail_line}`"
     path = _write_file("alert", payload["title"], body, {"rule": payload.get("rule")})
-    _slack(config.SLACK_WEBHOOK_CRITICAL, f":rotating_light: *{payload['title']}*\n{payload['text']}")
     return path
 
 
@@ -104,7 +91,6 @@ def digest(result: dict) -> Path:
             "world_model_version": result.get("world_model_version"),
         },
     )
-    _slack(config.SLACK_WEBHOOK_DIGESTS, f"*{result['title']}*\n\n{result['body'][:3500]}")
     return path
 
 

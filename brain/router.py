@@ -27,42 +27,27 @@ def _azure(env_key: str, default: str) -> str:
 
 
 def _roles() -> dict[str, list[str]]:
+    """Roles, not models. Every chain ends on Gemini, so a missing or closed
+    Azure account degrades the work to Gemini instead of failing it — the old
+    account closed in September and classification simply stopped."""
+    gpt55 = _azure("AZURE_DEPLOY_GPT55", "gpt-5.5")
+    mini = _azure("AZURE_DEPLOY_GPT54_MINI", "gpt-5.4-mini")
+    deepseek = _azure("AZURE_DEPLOY_DEEPSEEK", "DeepSeek-V3.2")
+    maverick = _azure("AZURE_DEPLOY_MAVERICK", "Llama-4-Maverick-17B-128E-Instruct-FP8")
     return {
         # Mechanical bulk: triage, classification, dedupe. Cheapest first.
-        "bulk": [
-            _azure("AZURE_DEPLOY_NANO", "gpt-4.1-nano"),
-            "gemini:gemini-flash-latest",
-        ],
+        "bulk": [maverick, "gemini:gemini-flash-latest"],
         # High-volume comprehension: article compression, entity extraction.
-        "workhorse": [
-            _azure("AZURE_DEPLOY_MAVERICK", "Llama-4-Maverick-17B-128E-Instruct-FP8"),
-            "gemini:gemini-flash-latest",
-        ],
-        # Strict structured reasoning: the Verifier's claim audit. gpt-5.4-mini
-        # leads: gpt-oss-120b is the cheaper reasoner but times out on
-        # audit-sized prompts (measured: >180s on a 60KB draft+data payload),
-        # so it serves as the fallback rather than the first choice.
-        "reason": [
-            _azure("AZURE_DEPLOY_GPT54_MINI", "gpt-5.4-mini"),
-            _azure("AZURE_DEPLOY_OSS", "gpt-oss-120b"),
-        ],
+        "workhorse": [maverick, "gemini:gemini-flash-latest"],
+        # Strict structured reasoning: the Verifier's claim audit.
+        "reason": [mini, deepseek, "gemini:gemini-pro-latest"],
         # Grounded web search is a Gemini-only capability; no cross-provider
         # escape exists, so the chain stays within the family.
-        "search": [
-            "gemini:gemini-flash-latest",
-            "gemini:gemini-flash-lite-latest",
-        ],
+        "search": ["gemini:gemini-flash-latest", "gemini:gemini-flash-lite-latest"],
         # Interpretation: Analysts, Marshal, sub-researchers.
-        "deep": [
-            "gemini:gemini-pro-latest",
-            _azure("AZURE_DEPLOY_GPT54_MINI", "gpt-5.4-mini"),
-            "gemini:gemini-flash-latest",
-        ],
+        "deep": ["gemini:gemini-pro-latest", deepseek, mini, "gemini:gemini-flash-latest"],
         # The two single-writer moments. See PREMIUM_SITES.
-        "premium": [
-            _azure("AZURE_DEPLOY_GPT54", "gpt-5.4"),
-            "gemini:gemini-pro-latest",
-        ],
+        "premium": [gpt55, "gemini:gemini-pro-latest"],
     }
 
 

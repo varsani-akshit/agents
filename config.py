@@ -43,7 +43,16 @@ ALERT_SPEC = os.getenv("MIA_ALERT_SPEC", "gemini:gemini-flash-latest")
 # which silently became "anthropic:gemini-flash-latest" the moment
 # classification moved to Gemini — a fallback that 404s is worse than none,
 # because it only fires when something is already wrong.
-FALLBACK_SPEC = os.getenv("MIA_FALLBACK_SPEC", "anthropic:claude-haiku-4-5")
+FALLBACK_SPEC = os.getenv("MIA_FALLBACK_SPEC", "gemini:gemini-flash-latest")
+
+# Azure AI Foundry: one endpoint, one key, a deployment per model. When it is
+# configured, the high-volume tasks run on Llama 4 Maverick there; otherwise
+# on Gemini Flash. brain/router.py maps the rest of the roles.
+AZURE_READY = bool(os.getenv("AZURE_FOUNDRY_ENDPOINT") and os.getenv("AZURE_FOUNDRY_API_KEY"))
+_MAVERICK = "azure:" + os.getenv("AZURE_DEPLOY_MAVERICK", "Llama-4-Maverick-17B-128E-Instruct-FP8")
+if AZURE_READY:
+    CLASSIFY_SPEC = os.getenv("MIA_CLASSIFY_SPEC", _MAVERICK)
+    EXTRACT_SPEC = os.getenv("MIA_EXTRACT_SPEC", _MAVERICK)
 
 # Hard spend guards (USD). The ledger refuses calls once these are reached.
 DAILY_USD_CAP = _f("MIA_DAILY_USD_CAP", 0.60)
@@ -60,10 +69,6 @@ AUTONOMOUS_USD_CAP = _f("MIA_AUTONOMOUS_USD_CAP", TOTAL_USD_CAP * 0.75)
 # per-person figure lives on users.monthly_usd.
 READER_MONTHLY_USD = _f("MIA_READER_MONTHLY_USD", 5.00)
 
-# Output routing. Slack stays off until a platform is chosen.
-NOTIFY_SLACK = os.getenv("MIA_NOTIFY_SLACK", "false").lower() in {"1", "true", "yes"}
-SLACK_WEBHOOK_CRITICAL = os.getenv("SLACK_WEBHOOK_CRITICAL", "")
-SLACK_WEBHOOK_DIGESTS = os.getenv("SLACK_WEBHOOK_DIGESTS", "")
 
 # Private mode. The owner is the one account `mia lockdown` leaves standing.
 # Share links are off unless switched back on: a link is a credential, and a
