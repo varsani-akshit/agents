@@ -243,7 +243,17 @@ def sim_index() -> dict:
                               candidates, seconds, error FROM sim_runs
                        ORDER BY started_at DESC LIMIT 84""")
     latest = next((r for r in runs if r["finished_at"] and not r["error"]), None)
-    out = {"runs": runs, "latest": latest, "running": any(not r["finished_at"] for r in runs)}
+    from datetime import datetime, timedelta, timezone
+
+    from advisor.runs import STALE_MINUTES
+
+    # Only a recent unfinished run is "running"; an older one was interrupted
+    # and must not keep the page reloading or the Run now button disabled.
+    fresh = datetime.now(timezone.utc) - timedelta(minutes=STALE_MINUTES)
+    for r in runs:
+        r["interrupted"] = not r["finished_at"] and r["started_at"] < fresh
+    out = {"runs": runs, "latest": latest,
+           "running": any(not r["finished_at"] and not r["interrupted"] for r in runs)}
     if latest:
         out.update(sim_run(latest["id"], top_only=True))
     return out

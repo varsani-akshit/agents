@@ -24,7 +24,22 @@ log = logging.getLogger("alfred.runs")
 KEEP_DAYS = 14
 
 
+# A run takes 2-5 minutes. One with no finish after this long was killed
+# mid-way (a scheduler restart does that) and will never finish.
+STALE_MINUTES = 20
+
+
+def close_interrupted() -> int:
+    """Mark runs that were killed part-way as failed, so nothing waits on them."""
+    return db.execute(
+        """UPDATE sim_runs SET finished_at = now(),
+                 error = 'interrupted: the process stopped before the run finished'
+           WHERE finished_at IS NULL
+             AND started_at < now() - make_interval(mins => %s)""", (STALE_MINUTES,))
+
+
 def run(trigger: str = "schedule", refresh: bool = True) -> dict:
+    close_interrupted()
     t0 = time.time()
     row = db.one("INSERT INTO sim_runs (trigger) VALUES (%s) RETURNING id", (trigger,))
     run_id = row["id"]

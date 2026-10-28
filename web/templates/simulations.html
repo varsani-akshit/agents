@@ -53,7 +53,7 @@
         <td class="num">{{ '{:,}'.format(r.candidates) if r.candidates is not none else '—' }}</td>
         <td class="muted">{{ (r.bars_through or {}).values()|select|max if (r.bars_through or {}).values()|select|list else '—' }}</td>
         <td class="num">{{ '%.0fs'|format(r.seconds) if r.seconds else '—' }}</td>
-        <td>{% if r.error %}<span class="badge badge-bad" title="{{ r.error }}">failed</span>{% elif not r.finished_at %}<span class="badge badge-warn">running</span>{% else %}<a href="/simulations/{{ r.id }}" style="color:var(--atext)">open →</a>{% endif %}</td>
+        <td>{% if r.error %}<span class="badge badge-bad" title="{{ r.error }}">failed</span>{% elif r.interrupted %}<span class="badge badge-bad">interrupted</span>{% elif not r.finished_at %}<span class="badge badge-warn">running</span>{% else %}<a href="/simulations/{{ r.id }}" style="color:var(--atext)">open →</a>{% endif %}</td>
       </tr>
       {% else %}
       <tr><td colspan="8" class="muted" style="padding:20px 16px">No runs yet — press Run now.</td></tr>

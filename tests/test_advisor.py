@@ -470,3 +470,20 @@ def test_a_stored_run_opens_with_its_gate_and_candidates():
     # Non-passing signals are kept and labelled, not hidden.
     for row in ctx["candidates"]["missed"]["rows"]:
         assert row["passed_gate"] is False
+
+
+
+def test_an_interrupted_run_is_closed_not_left_running():
+    """A scheduler restart killed run #3 mid-way; it stayed 'running' forever,
+    which disabled Run now and kept the page reloading."""
+    import db
+    from advisor import runs
+
+    row = db.one("INSERT INTO sim_runs (trigger, started_at) VALUES ('pytest', now() - interval '2 hours') "
+                 "RETURNING id")
+    try:
+        assert runs.close_interrupted() >= 1
+        got = db.one("SELECT finished_at, error FROM sim_runs WHERE id=%s", (row["id"],))
+        assert got["finished_at"] is not None and "interrupted" in got["error"]
+    finally:
+        db.execute("DELETE FROM sim_runs WHERE id=%s", (row["id"],))
