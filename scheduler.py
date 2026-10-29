@@ -375,6 +375,21 @@ def job_data_daily() -> dict:
     return {"feeds": sync.daily()}
 
 
+def job_watch() -> dict:
+    """The heartbeat: limits reached, stops and targets touched, shock moves
+    and bad news on what you hold — emailed within five minutes."""
+    from advisor import watch
+
+    return watch.beat()
+
+
+def job_weekly() -> dict:
+    """The weekly review: scorecard, gate changes, markets, the week ahead."""
+    from advisor import review
+
+    return review.send()
+
+
 def job_story() -> dict:
     """Record the latest run's signals as calls, settle every open call, and
     give the new ones their Story read. Advice only."""
@@ -391,6 +406,11 @@ DATA_JOBS = (
     ("data_daily", job_data_daily, dict(hour=1, minute=30)),
     # After each two-hourly retest (:20, about fifteen minutes long).
     ("story", job_story, dict(hour="*/2", minute=50)),
+    # Every five minutes, every day: markets that are closed are skipped
+    # inside the beat, crypto never closes.
+    ("watch", job_watch, dict(minute="*/5")),
+    # Sunday 21:00 UTC = Monday 08:00 in Melbourne (07:00 in winter).
+    ("weekly", job_weekly, dict(day_of_week="sun", hour=21, minute=0)),
 )
 
 

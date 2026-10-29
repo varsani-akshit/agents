@@ -694,3 +694,21 @@ CREATE INDEX IF NOT EXISTS calls_story_idx ON calls (story_at) WHERE story IS NU
 -- Which exchange a US name actually trades on (NYSE, Nasdaq …), from Yahoo,
 -- so a ticket can say where to find it.
 ALTER TABLE name_cache ADD COLUMN IF NOT EXISTS exchange TEXT;
+
+-- ───────────────────────────── the heartbeat's alerts ───────────────────────
+-- One row per thing worth telling you between closes: a ticket's limit
+-- reached, its stop or target hit, a holding's shock move, bad news on a
+-- name you hold. The unique key means each is emailed once.
+CREATE TABLE IF NOT EXISTS alerts (
+  id         BIGSERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind       TEXT NOT NULL,            -- fill | stop | target | shock | news
+  symbol     TEXT NOT NULL,
+  ref        TEXT NOT NULL DEFAULT '', -- idea id, document id …
+  day        DATE NOT NULL,
+  text       TEXT NOT NULL,
+  detail     JSONB NOT NULL DEFAULT '{}',
+  emailed_at TIMESTAMPTZ,
+  UNIQUE (kind, symbol, ref, day)
+);
+CREATE INDEX IF NOT EXISTS alerts_recent_idx ON alerts (created_at DESC);

@@ -254,3 +254,13 @@ Each step ships on its own and is visible on the site when it lands.
   −23%, Sharpe 0.62) does not beat holding Bitcoin (+41%/yr, worst −84%,
   Sharpe 0.71) on Sharpe, so crypto sends no tickets yet; it is simulated
   and scored every two hours.
+- **Step 5, cadence** — 2026-10-29. advisor/watch.py, every five minutes:
+  a ticket's limit reached, a filled ticket's stop or target touched, a
+  holding moving 2.5 daily ranges from yesterday's close (core holdings get
+  no action suggested), and news the matcher reads as bad for a name you
+  hold or have a ticket on — stored once, emailed together, closed markets
+  skipped. advisor/review.py, Sunday 21:00 UTC: the scorecard by gate and
+  by news read, tickets, gate changes over the week, which markets send,
+  how their conditions moved, and the week ahead for your names. Hourly
+  *trading* scans were not added: the hourly strategies still lose after
+  costs, and the daily ones decide on finished bars.
