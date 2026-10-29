@@ -44,6 +44,10 @@ def collect(region: str) -> list[dict]:
     acct = portfolio_sim.account(region)
     account_ok = bool(acct and acct.get("passed"))
     pooled = {name: evidence(name, region) for name in STRATEGIES}
+    from advisor import regime
+
+    states = regime.today_states(region)
+    live = {name: regime.on_today(ev, region, states, acct or {}) for name, ev in pooled.items()}
 
     frames = {}
     for sym in (s for s in bars.universe() if market_of(s) in REGIONS[region]):
@@ -60,7 +64,8 @@ def collect(region: str) -> list[dict]:
             if not ev:
                 continue
             own = evidence(name, region, sym)
-            gate = bool(ev["passed"] and account_ok)
+            on, why = live[name]
+            gate = bool(on and account_ok)
             name_ok = bool(own and own["passed"])
             base = {
                 "region": region, "symbol": sym, "display": bare(sym), "strategy": name,
@@ -68,6 +73,7 @@ def collect(region: str) -> list[dict]:
                 "currency": CURRENCY[market_of(sym)], "close": float(last["close"]),
                 "as_of": str(x.index[-1].date()), "mom_rank": _rank(x),
                 "strategy_passed": bool(ev["passed"]), "market_sending": account_ok,
+                "regime_on": on, "regime_why": why,
                 "name_record_ok": name_ok,
                 "name_trades": (own or {}).get("stats", {}).get("trades"),
                 "name_expectancy_r": (own or {}).get("stats", {}).get("expectancy_r"),

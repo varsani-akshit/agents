@@ -77,6 +77,10 @@ _CLOSE = {
 
 def session_closed(market: str, d, now: datetime | None = None) -> bool:
     """Whether the session dated `d` in `market` has finished."""
+    if market == "CRYPTO":
+        # Crypto never closes; Coinbase's daily bar is the UTC day.
+        utc = (now or datetime.now(ZoneInfo("UTC"))).astimezone(ZoneInfo("UTC"))
+        return d < utc.date()
     tz, close = _CLOSE[market]
     local = (now or datetime.now(ZoneInfo(tz))).astimezone(ZoneInfo(tz))
     if d < local.date():

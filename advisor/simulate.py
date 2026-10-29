@@ -224,10 +224,13 @@ def run(regions: list[str] | None = None) -> dict:
     """Simulate every strategy on every name, store the evidence, apply the gate."""
     cfg = settings()
     report = {}
+    from advisor import regime
+
     for market in regions or list(REGIONS):
         frames = _frames(market)
         if not frames:
             continue
+        states = regime.history(market)
         last = max(df.index[-1] for df in frames.values())
         cutoff = last - pd.DateOffset(years=cfg["recent_period_years"])
         for name, strat in STRATEGIES.items():
@@ -269,11 +272,13 @@ def run(regions: list[str] | None = None) -> dict:
                      "all": summarize([t.r for t in trades]), "older": older, "recent": recent,
                      "random_recent": baseline, "monte_carlo": mc, "fails": fails,
                      "symbols": len(frames), "recent_from": str(cutoff.date()),
-                     "through": str(last.date()), "label": strat.label}
+                     "through": str(last.date()), "label": strat.label,
+                     "conditions": regime.condition(trades, base, cutoff, passed, states)}
             _store(name, market, passed, stats, rows)
             report[(name, market)] = (passed, stats)
-            log.info("%s %s: %s %s", name, market, "PASS" if passed else "fail",
-                     fails or f"{recent.get('expectancy_r', 0):+.3f}R")
+            log.info("%s %s: %s %s · conditions: %s", name, market, "PASS" if passed else "fail",
+                     fails or f"{recent.get('expectancy_r', 0):+.3f}R",
+                     stats["conditions"].get("verdict"))
     return report
 
 

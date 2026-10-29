@@ -46,13 +46,67 @@ from advisor.strategies import STRATEGIES
 log = logging.getLogger("alfred.portfolio_sim")
 
 
-def _passing(region: str) -> list[str]:
-    return [n for n in STRATEGIES if (ev := evidence(n, region)) and ev["passed"]]
+def _passing(region: str, conditions: bool = True) -> dict[str, pd.DatetimeIndex | None]:
+    """The strategies the live scan would use, each with the days its
+    conditions allow it to trade (None: every day). A strategy that passes
+    the gate only in certain conditions trades only on those days — so the
+    account is replayed under the same rule the scan applies.
+
+    `conditions=False` is the plain gate: passing strategies, every day."""
+    from advisor import regime
+
+    out = {}
+    for n in STRATEGIES:
+        ev = evidence(n, region)
+        if not ev:
+            continue
+        cond = (ev["stats"] or {}).get("conditions") or {}
+        if ev["passed"]:
+            out[n] = regime.allowed_days(ev, region) if conditions else None
+        elif conditions and cond.get("use"):
+            out[n] = regime.allowed_days(ev, region)
+    return out
 
 
-def replay(frames: dict[str, pd.DataFrame], strategies: list[str], *,
+def _sharpe_from(r: dict) -> float:
+    eq = r["equity"]
+    start = eq.index[min(WARMUP + 60, len(eq) - 1)]
+    return metrics(eq.loc[start:] / eq.loc[start]).get("sharpe") or 0.0
+
+
+def _choose(frames: dict, region: str) -> tuple[dict, dict | None, dict]:
+    """Conditions or the plain gate, whichever the account does better with.
+
+    A strategy can pass on its own and still make the account worse — its
+    trades take position slots from better ones. So the condition rules are
+    used in a market only if replaying the account with them is at least as
+    good, on Sharpe, as replaying it without."""
+    plain = _passing(region, conditions=False)
+    cond = _passing(region)
+    if set(cond) == set(plain) and all(d is None for d in cond.values()):
+        return plain, None, {"used": False, "reason": "no condition rule applies here"}
+    r_cond = replay(frames, cond, rank="momentum") if cond else None
+    r_plain = replay(frames, plain, rank="momentum") if plain else None
+    s_cond = _sharpe_from(r_cond) if r_cond else None
+    s_plain = _sharpe_from(r_plain) if r_plain else None
+    check = {"sharpe_with": s_cond, "sharpe_without": s_plain,
+             "switched_on": [n for n in cond if n not in plain],
+             "filtered": [n for n in cond if n in plain and cond[n] is not None]}
+    if r_plain is None or (r_cond is not None and s_cond >= s_plain):
+        return cond, r_cond, {**check, "used": True}
+    return plain, r_plain, {**check, "used": False,
+                            "reason": f"the account did worse with them (Sharpe {s_cond:.2f} "
+                                      f"vs {s_plain:.2f} without)"}
+
+
+def replay(frames: dict[str, pd.DataFrame], strategies: list[str] | dict, *,
            rank: str = "momentum", seed: int = 0) -> dict:
-    """Run the account. Returns the daily equity curve and trade log."""
+    """Run the account. Returns the daily equity curve and trade log.
+
+    `strategies` is a list, or a dict of name → the days it may trade."""
+    allow = strategies if isinstance(strategies, dict) else {n: None for n in strategies}
+    allow_sets = {n: (None if d is None else set(d.normalize())) for n, d in allow.items()}
+    strategies = list(allow)
     cfg = settings()
     risk_pct = cfg["risk_per_trade_pct"] / 100
     max_pos = cfg["max_position_pct"] / 100
@@ -76,7 +130,10 @@ def replay(frames: dict[str, pd.DataFrame], strategies: list[str], *,
             signals[(sym, name)] = sig
             ok = sig["entry"].to_numpy() & np.isfinite(sig["stop"].to_numpy())
             ok[:WARMUP] = False
+            days = allow_sets[name]
             for i in np.flatnonzero(ok):
+                if days is not None and x.index[i].normalize() not in days:
+                    continue
                 candidates.setdefault(x.index[i], []).append((sym, name))
 
     cash, equity = 1.0, 1.0
@@ -217,12 +274,12 @@ def _period(eq: pd.Series, start=None, end=None) -> dict:
 def run(region: str, *, random_seeds: int = 5) -> dict | None:
     cfg = settings()
     frames = _frames(region)
-    strategies = _passing(region)
+    strategies, main, conditions = _choose(frames, region) if frames else ({}, None, {})
     if not frames or not strategies:
         db.execute("DELETE FROM portfolio_backtests WHERE region = %s", (region,))
         return None
 
-    main = replay(frames, strategies, rank="momentum")
+    main = main or replay(frames, strategies, rank="momentum")
     eq = main["equity"]
     # Start the clock when the first strategy could act: before that the
     # account is cash by construction, which would flatter its drawdown.
@@ -242,7 +299,9 @@ def run(region: str, *, random_seeds: int = 5) -> dict | None:
 
     rs = [t["r"] for t in main["trades"] if t["filled"] >= start]
     stats = {
-        "strategies": strategies,
+        "strategies": list(strategies),
+        "conditional": [n for n, d in strategies.items() if d is not None],
+        "conditions_used": bool(conditions.get("used")), "conditions_check": conditions,
         "strategy": metrics(eq), "older": _period(eq, end=cutoff), "recent": _period(eq, start=cutoff),
         "random_picks": metrics(rand_mean),
         "random_picks_each": [metrics(r).get("cagr") for r in rand],

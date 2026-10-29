@@ -68,6 +68,14 @@
             {% if c.passed %}<span class="badge badge-ok">passes</span>{% else %}<span class="badge">fails</span>{% endif %}
             {% if c.was is not none and c.was != c.passed %}<span class="badge badge-warn">{{ 'new' if c.passed else 'dropped' }}</span>{% endif %}
             {% if st.fails %}<div class="muted" style="font-size:11.5px;margin-top:4px;white-space:normal">{{ st.fails|join(' · ') }}</div>{% endif %}
+            {% set cd = st.conditions or {} %}
+            {% if cd.verdict %}<div style="font-size:11.5px;margin-top:4px;white-space:normal">
+              {% if cd.use %}<span class="badge badge-ok">conditions used</span>{% endif %}
+              <span class="muted">Conditions: {{ cd.verdict }}.</span>
+              {% for rl in (cd.rules or {}).get('avoid', []) %}<div class="muted">avoid · {{ rl.dim }} {{ rl.state }}: {{ r(rl.expectancy_r) }} over {{ rl.trades }} older trades (rest {{ r(rl.rest_expectancy_r) }})</div>{% endfor %}
+              {% for rl in (cd.rules or {}).get('favour', []) %}<div class="muted">favour · {{ rl.dim }} {{ rl.state }}: {{ r(rl.expectancy_r) }} over {{ rl.trades }} older trades (rest {{ r(rl.rest_expectancy_r) }})</div>{% endfor %}
+              {% if cd.recent_after %}<div class="muted">recent years, rule applied: {{ r(cd.recent_after.expectancy_r) }} over {{ cd.recent_after.trades }} trades (all trades {{ r(cd.recent_before.expectancy_r) }})</div>{% endif %}
+            </div>{% endif %}
           </td>
         </tr>
         {% endif %}{% endfor %}
@@ -96,7 +104,10 @@
         <td class="num">{{ '{:.2f}'.format(m.sharpe) if m.sharpe is defined and m.sharpe is not none else '—' }}</td></tr>
       {% endfor %}
       </tbody></table></div>
-    <div class="card-body hint">{{ st.trades.trades }} trades · {{ pct(st.avg_exposure) }} invested · strategies: {{ (st.strategies or [])|join(', ') }}</div>
+    <div class="card-body hint">{{ st.trades.trades }} trades · {{ pct(st.avg_exposure) }} invested · strategies: {{ (st.strategies or [])|join(', ') }}
+      {% set ck = st.conditions_check or {} %}
+      {% if ck.sharpe_with is defined and ck.sharpe_with is not none %}<div style="margin-top:4px">Conditions {{ 'used' if st.conditions_used else 'not used' }}: Sharpe {{ '%.2f'|format(ck.sharpe_with) }} with them, {{ '%.2f'|format(ck.sharpe_without) if ck.sharpe_without is not none else '—' }} without{% if ck.switched_on %} · switched on {{ ck.switched_on|join(', ') }}{% endif %}{% if ck.filtered %} · filtered {{ ck.filtered|join(', ') }}{% endif %}.</div>{% endif %}
+    </div>
   </div>
   {% endfor %}
   </div>

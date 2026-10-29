@@ -17,6 +17,7 @@ from advisor import settings, ticker_for
 log = logging.getLogger("alfred.bars")
 
 FX_PAIRS = ["AUDUSD=X", "AUDINR=X"]
+STABLECOINS = {"USDC", "USDT", "DAI", "PYUSD"}
 
 
 def universe() -> list[str]:
@@ -40,7 +41,9 @@ def holdings() -> dict[str, dict]:
            FROM portfolio_lines l JOIN portfolio_snapshots s ON s.id = l.snapshot_id
            WHERE s.id IN (SELECT max(id) FROM portfolio_snapshots WHERE ok GROUP BY broker)
              AND l.kind = 'holding' AND l.quantity > 0""")
-    return {_best_listing(r["symbol"], r["exchange"]): r for r in rows}
+    # Stablecoins are cash parked in crypto, not a position with a price to watch.
+    return {_best_listing(r["symbol"], r["exchange"]): r for r in rows
+            if not (r["broker"] == "coinbase" and r["symbol"] in STABLECOINS)}
 
 
 def _best_listing(symbol: str, exchange: str | None) -> str:

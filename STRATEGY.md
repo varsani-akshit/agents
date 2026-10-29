@@ -204,3 +204,19 @@ pauses and Alfred emails why. Akshit restarts it.
 6. **Today page**: cases with their three reads; the scorecard.
 
 Each step ships on its own and is visible on the site when it lands.
+
+## Progress
+
+- **Step 1, data layer** — shipped 2026-10-29 (dce7a3d). Binance futures
+  refuses US addresses, so on the server Hyperliquid alone supplies funding
+  and open interest. GDELT throttles far below its documented rate; the tone
+  feed waits, skips and resumes.
+- **Step 2, conditions** — shipped 2026-10-29. advisor/regime.py: seven to
+  nine conditions per market; rules learnt on the older years, tested on the
+  last four, kept only if the market's account replay is no worse with them.
+  First real run: rules held out of sample for momentum rotation on the ASX
+  and the US, and switched the 55-day breakout on for India in fearful,
+  falling-dollar conditions — but India's account did worse with it (Sharpe
+  0.74 vs 0.92), so India stays on the plain gate. Only the ASX uses its
+  rules today. Crypto becomes a market in step 4, with its own costs
+  (Coinbase ≈ 1.2% a round trip at this volume).

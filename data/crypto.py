@@ -104,8 +104,19 @@ def derivatives() -> dict:
     ts = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     meta, ctxs = get(HYPERLIQUID, method="POST", body={"type": "metaAndAssetCtxs"})
     n = store_derivatives(hyperliquid_rows(meta, ctxs, ts))
-    # Binance: funding for every perp in one call, open interest one call each.
-    prem = {p["symbol"]: p for p in get(f"{BINANCE_FUT}/fapi/v1/premiumIndex")}
+    try:
+        b = _binance(ts)
+    except Exception as exc:  # noqa: BLE001 - Binance refuses US addresses (HTTP 451)
+        return {"rows": n, "hyperliquid": len(ctxs), "binance": 0, "binance_error": str(exc)[:120]}
+    return {"rows": n + b, "hyperliquid": len(ctxs), "binance": b}
+
+
+def _binance(ts: datetime) -> int:
+    """Binance perps as a second venue, where Binance answers at all: it
+    blocks US addresses, and the production server is in the US. Hyperliquid
+    alone covers every coin Alfred watches."""
+    # Funding for every perp in one call, open interest one call each.
+    prem = {p["symbol"]: p for p in get(f"{BINANCE_FUT}/fapi/v1/premiumIndex", tries=1)}
     rows = []
     for coin in perps():
         p = prem.get(f"{coin}USDT")
@@ -119,8 +130,7 @@ def derivatives() -> dict:
                          if float(p.get("indexPrice") or 0) else None))
         except Exception:  # noqa: BLE001 - one coin missing is not a failure
             continue
-    n += store_derivatives(rows)
-    return {"rows": n, "hyperliquid": len(ctxs), "binance": len(rows)}
+    return store_derivatives(rows)
 
 
 # ─────────────────────────────── market size ────────────────────────────────
@@ -137,7 +147,10 @@ def market() -> dict:
 
 def sync(backfill: bool = False) -> dict:
     out = bars(backfill)
-    out["derivatives"] = derivatives()["rows"]
+    d = derivatives()
+    out["derivatives"] = d["rows"]
+    if d.get("binance_error"):
+        out["binance_skipped"] = d["binance_error"]
     out["market"] = market()["rows"]
     out["rows"] += out["derivatives"] + out["market"]
     return out

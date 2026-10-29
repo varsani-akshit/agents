@@ -253,9 +253,38 @@ def sim_index() -> dict:
     for r in runs:
         r["interrupted"] = not r["finished_at"] and r["started_at"] < fresh
     out = {"runs": runs, "latest": latest,
-           "running": any(not r["finished_at"] and not r["interrupted"] for r in runs)}
+           "running": any(not r["finished_at"] and not r["interrupted"] for r in runs),
+           "conditions": conditions_now()}
     if latest:
         out.update(sim_run(latest["id"], top_only=True))
+    return out
+
+
+def conditions_now() -> list[dict]:
+    """Each market's conditions today, and which strategies they switch on
+    or pause — from the latest stored evidence."""
+    from advisor import portfolio_sim, regime
+    from advisor.simulate import evidence
+    from advisor.strategies import STRATEGIES
+
+    out = []
+    for region in REGIONS:
+        try:
+            now = regime.now(region)
+        except Exception:  # noqa: BLE001 - the page must load without it
+            continue
+        states = {s["key"]: s["state"] for s in now["states"]}
+        acct = portfolio_sim.account(region) or {}
+        changed = []
+        for name, strat in STRATEGIES.items():
+            ev = evidence(name, region)
+            if not ev:
+                continue
+            on, why = regime.on_today(ev, region, states, acct)
+            if on != bool(ev["passed"]):
+                changed.append({"label": strat.label, "on": on, "why": why})
+        out.append({**now, "name": REGION_NAME.get(region, region), "changed": changed,
+                    "check": acct.get("conditions_check") or {}})
     return out
 
 

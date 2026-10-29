@@ -123,3 +123,56 @@ def test_crypto_pairs_are_a_market_of_their_own():
     assert market_of("BTC-USD") == "CRYPTO" and market_of("NVDA") == "US"
     assert ticker_for("BTC", "COINBASE") == "BTC-USD"
     assert BROKER["CRYPTO"] == "coinbase" and CURRENCY["CRYPTO"] == "USD"
+
+
+def test_crypto_sessions_close_at_utc_midnight():
+    from datetime import date, datetime, timezone
+
+    from advisor import session_closed
+
+    late = datetime(2026, 10, 29, 23, 59, tzinfo=timezone.utc)
+    assert session_closed("CRYPTO", date(2026, 10, 28), late)
+    assert not session_closed("CRYPTO", date(2026, 10, 29), late)
+
+
+def test_tone_waits_out_refusals_then_skips_the_window(monkeypatch):
+    import pytest
+
+    calls, slept = [], []
+
+    def refuse(q, s, e):
+        calls.append(1)
+        raise tone.RateLimited("429")
+
+    monkeypatch.setattr(tone, "_once", refuse)
+    with pytest.raises(tone.RateLimited):
+        tone.fetch("q", date(2020, 1, 1), date(2020, 12, 31), sleep=slept.append)
+    assert len(calls) == len(tone.BACKOFF) + 1 and slept == list(tone.BACKOFF)
+
+
+def test_tone_backfill_skips_years_already_stored(monkeypatch):
+    full = {2017, 2018}
+    monkeypatch.setattr(tone, "stored_days",
+                        lambda name, s, e: 365 if s.year in full else 0)
+    monkeypatch.setattr(tone, "last_day", lambda name: None)
+    w = tone.windows("x", True, date(2020, 6, 1))
+    assert [s.year for s, _ in w] == [2019, 2020]
+
+
+def test_tone_feed_fails_only_if_every_window_was_refused(monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(tone, "queries", lambda: {"a": "x", "b": "y"})
+    monkeypatch.setattr(tone, "windows", lambda name, b, t: [(date(2026, 1, 1), date(2026, 1, 2))])
+    monkeypatch.setattr(tone, "store", lambda name, pts: len(pts))
+
+    def some(q, s, e, sleep):
+        if q == "x":
+            raise tone.RateLimited("429")
+        return [(s, 1.0)]
+    monkeypatch.setattr(tone, "fetch", some)
+    assert tone.sync() == {"rows": 1, "windows": 1, "refused": 1}
+
+    monkeypatch.setattr(tone, "fetch", lambda *a, **k: (_ for _ in ()).throw(tone.RateLimited("x")))
+    with pytest.raises(RuntimeError):
+        tone.sync()

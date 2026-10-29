@@ -202,12 +202,18 @@ def scan(region: str, *, preview: bool = False, store: bool = False) -> dict:
     open_ideas = {(r["strategy"], r["symbol"]) for r in db.query(
         "SELECT strategy, symbol FROM ideas WHERE status IN ('open','filled')")}
     pooled = {name: evidence(name, region) for name in STRATEGIES}
-    from advisor import portfolio_sim
+    from advisor import portfolio_sim, regime
 
     # The region-level gate: no replay, or a replay that did not beat holding
     # the index on risk, and the region sends nothing.
     acct = portfolio_sim.account(region)
     account_ok = bool(acct and acct.get("passed"))
+
+    # Each strategy's verdict today: the gate, adjusted by the conditions it
+    # was tested in where that test held on years it never saw — and where
+    # the market's account did at least as well with them.
+    states = regime.today_states(region)
+    live = {name: regime.on_today(ev, region, states, acct or {}) for name, ev in pooled.items()}
     syms = [s for s in bars.universe() if market_of(s) in REGIONS[region]]
     as_of = None
 
@@ -229,7 +235,8 @@ def scan(region: str, *, preview: bool = False, store: bool = False) -> dict:
             risks.append(holding_risk(sym, x, held[sym]))
         for name, strat in STRATEGIES.items():
             ev = pooled.get(name)
-            if not ev or not ((ev["passed"] and account_ok) or preview):
+            on, why = live[name]
+            if not ev or not ((on and account_ok) or preview):
                 continue
             own = evidence(name, region, sym)
             if not preview and not (own and own["passed"]):
@@ -237,7 +244,7 @@ def scan(region: str, *, preview: bool = False, store: bool = False) -> dict:
             if (name, sym) in open_ideas:
                 continue
             if not strat.rules(x)["entry"].iloc[-1]:
-                if ev["passed"] and account_ok:
+                if on and account_ok:
                     n = near_trigger(name, x)
                     if n:
                         near.append({"symbol": sym, "strategy": name, "label": strat.label,
@@ -247,7 +254,10 @@ def scan(region: str, *, preview: bool = False, store: bool = False) -> dict:
                 continue
             t = ticket(sym, strat, x, accts, held)
             _attach_evidence(t, ev, own, acct)
-            t["preview"] = preview and not (ev["passed"] and account_ok)
+            t["conditions"] = {"on": on, "why": why}
+            if on and not ev["passed"]:
+                t["reasons"].append(f"Conditions: this strategy {why}.")
+            t["preview"] = preview and not (on and account_ok)
             t["mom_rank"] = _rank(x)
             tickets.append(t)
 
@@ -260,7 +270,7 @@ def scan(region: str, *, preview: bool = False, store: bool = False) -> dict:
     return {"region": region, "as_of": as_of and as_of.date(), "tickets": tickets,
             "left_out": left_out, "also": also[:15], "near": near[:20],
             "holdings": risks, "stored": stored,
-            "gate": {**{n: bool(e and e["passed"]) for n, e in pooled.items()},
+            "gate": {**{n: live[n][0] for n in pooled},
                      "account": account_ok}}
 
 

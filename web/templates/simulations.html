@@ -30,6 +30,40 @@
     <div class="kpi-hint">latest finished session</div></div>
 </div>
 
+{% if conditions %}
+<section class="section">
+  <h2>Conditions now</h2>
+  <p class="lead-in">What kind of world each market is in today. Each strategy is tested in every one of these conditions; where the older years showed it losing (or only working) in one, and the recent years confirmed it, that switches it off (or on).</p>
+  <div class="grid">
+  {% for m in conditions %}
+  <div class="card">
+    <div class="card-head"><h3>{{ m.name }}</h3><span class="hint">as of {{ m.as_of or '—' }}</span></div>
+    <div class="tablewrap"><table class="data">
+      <tbody>
+      {% for s in m.states %}
+      <tr><td style="width:34%"><strong>{{ s.label }}</strong></td>
+          <td style="white-space:normal">{{ s.words }} <span class="muted" style="font-size:11.5px">· since {{ s.since.strftime('%d %b %Y') }}</span></td></tr>
+      {% else %}
+      <tr><td class="muted">No condition data yet — the macro and tone feeds are still loading.</td></tr>
+      {% endfor %}
+      {% for s in m.stale %}
+      <tr><td style="width:34%" class="muted">{{ s.label }}</td>
+          <td class="muted">no fresh reading{% if s.last %} since {{ s.last.strftime('%d %b %Y') }}{% endif %} — left out today</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% if m.changed or m.check.reason %}
+    <div class="card-body hint">
+      {% for c in m.changed %}<div><span class="badge {{ 'badge-ok' if c.on else 'badge-warn' }}">{{ 'on' if c.on else 'paused' }}</span> {{ c.label }} — {{ c.why }}</div>{% endfor %}
+      {% if m.check.reason and m.check.sharpe_with is defined %}<div>Condition rules not used here: {{ m.check.reason }}.</div>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="section">
   <h2>Top candidates, latest run</h2>
   <p class="lead-in">Signals that fired on the last close, best first. Those that did not pass the gate are shown for your own judgement — they are not recommendations.</p>
