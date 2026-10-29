@@ -87,7 +87,6 @@
 {% endif %}
 
 {# ── Today's cases ────────────────────────────────────────────────────── #}
-{% if cases %}
 <section class="section">
   <h2>Today's cases</h2>
   <p class="lead-in">Every setup that passed the gate on the last close, with its three reads. The ones the news contradicts are held back from the email; the rest become tickets at the next scan.</p>
@@ -103,11 +102,12 @@
           {% if c.story and c.story.direction %}{{ news_read(c.story) }}{% else %}<div class="s muted" style="margin-top:2px">News · not read yet</div>{% endif %}
         </div>
       </li>
+      {% else %}
+      <li class="muted">No setup passed the gate on the last close. Alfred re-checks every two hours; the Watch list below is what is closest.</li>
       {% endfor %}
     </ul>
   </div>
 </section>
-{% endif %}
 
 {# ── Watch ────────────────────────────────────────────────────────────── #}
 <section class="section">
