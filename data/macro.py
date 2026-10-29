@@ -90,8 +90,51 @@ def flows() -> dict:
     return {"rows": n}
 
 
+GPR_URL = "https://www.matteoiacoviello.com/gpr_files/data_gpr_daily_recent.xls"
+
+
+def gpr_points(df) -> dict[str, list[tuple[date, float]]]:
+    """Caldara & Iacoviello's daily Geopolitical Risk index: the share of
+    articles in ten newspapers about war, terrorism and geopolitical
+    tension, since 1985 — total, threats, and acts."""
+    out: dict[str, list] = {"gpr.daily": [], "gpr.threats": [], "gpr.acts": []}
+    for r in df.itertuples():
+        try:
+            d = datetime.strptime(str(int(r.DAY)), "%Y%m%d").date()
+        except (TypeError, ValueError):
+            continue
+        for key, col in (("gpr.daily", "GPRD"), ("gpr.threats", "GPRD_THREAT"),
+                         ("gpr.acts", "GPRD_ACT")):
+            v = getattr(r, col)
+            if v == v:          # not NaN
+                out[key].append((d, float(v)))
+    return out
+
+
+def gpr(backfill: bool = False) -> dict:
+    import io
+
+    import httpx
+    import pandas as pd
+
+    r = httpx.get(GPR_URL, timeout=60, follow_redirects=True)
+    r.raise_for_status()
+    df = pd.read_excel(io.BytesIO(r.content), engine="xlrd")
+    since = None if backfill else date.today() - timedelta(days=90)
+    n = 0
+    for series, pts in gpr_points(df).items():
+        n += upsert_series(series, [(d, v) for d, v in pts if since is None or d >= since])
+    return {"rows": n}
+
+
 def sync(backfill: bool = False) -> dict:
     out = fred_series(backfill)
+    try:
+        out["gpr"] = gpr(backfill)["rows"]
+    except Exception as exc:  # noqa: BLE001 - one file host down is not all macro
+        out["gpr_error"] = str(exc)[:200]
+        out["gpr"] = 0
+    out["rows"] += out["gpr"]
     out["proxies"] = proxies(backfill)["rows"]
     out["releases"] = releases()["rows"]
     out["meetings"] = meetings()["rows"]

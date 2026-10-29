@@ -7,9 +7,11 @@ on average may work in some. This module measures that — honestly.
 **The conditions.** Each market gets about ten dimensions, each a small set
 of named states computed day by day from data that existed on that day:
 the market's own trend, fear (VIX, India VIX), the dollar, US yields, credit
-spreads, oil, the local currency, China, and the tone of world and local news
-(GDELT, since 2017). Published-later data is lagged: FRED and GDELT by a day,
-CFTC positioning by four.
+spreads, oil, the local currency, China, speculators' positioning, and the
+news — measured by newspaper-based indices with decades of history:
+geopolitical risk (Caldara & Iacoviello), stock-market and policy
+uncertainty (Baker, Bloom & Davis). Published-later data is lagged: daily
+FRED series a day, the GPR file two, CFTC four, monthly indices forty.
 
 **The rules are learnt on the older years and judged on the recent ones.**
 For each strategy, every trade is labelled with the states on its signal
@@ -65,19 +67,21 @@ def _close(symbol: str) -> pd.Series:
     return df["close"].astype(float) if not df.empty else pd.Series(dtype=float)
 
 
-def _fred(series_id: str) -> pd.Series:
+def _fred(series_id: str, lag: int = 1) -> pd.Series:
+    """A FRED series, usable `lag` days after its date: most daily series post
+    the next morning; a monthly index for September appears in October."""
     rows = db.query("SELECT ts, value FROM fred_series WHERE series_id = %s ORDER BY ts",
                     (series_id,))
     s = pd.Series([float(r["value"]) for r in rows],
                   index=pd.DatetimeIndex([r["ts"] for r in rows]), dtype=float)
-    return _lag(s, 1)           # FRED posts most daily series the next morning
+    return _lag(s, lag)
 
 
-def _tone(query: str) -> pd.Series:
-    rows = db.query("SELECT d, tone FROM tone WHERE query = %s ORDER BY d", (query,))
-    s = pd.Series([float(r["tone"]) for r in rows],
+def _series(name: str, lag: int = 1) -> pd.Series:
+    rows = db.query("SELECT d, value FROM macro_series WHERE series = %s ORDER BY d", (name,))
+    s = pd.Series([float(r["value"]) for r in rows],
                   index=pd.DatetimeIndex([r["d"] for r in rows]), dtype=float)
-    return _lag(s, 1)
+    return _lag(s, lag)
 
 
 def _cftc(market: str) -> pd.Series:
@@ -112,11 +116,17 @@ def direction(s: pd.Series, up: str, down: str, *, level: bool = False) -> pd.Se
     return pd.Series(np.where(ch > 0, up, down), index=s.index).where(ch.notna())
 
 
-def thirds(s: pd.Series, low: str, mid: str, high: str) -> pd.Series:
-    """Where today's value sits among the last three years'."""
-    pct = s.rolling(PCT_WINDOW, min_periods=PCT_WINDOW // 2).rank(pct=True)
+def thirds(s: pd.Series, low: str, mid: str, high: str, window: int = PCT_WINDOW) -> pd.Series:
+    """Where today's value sits among the last three years' (`window`
+    observations: 756 trading days, or 36 months)."""
+    pct = s.rolling(window, min_periods=window // 2).rank(pct=True)
     return pd.Series(np.select([pct < 1 / 3, pct > 2 / 3], [low, high], mid),
                      index=s.index).where(pct.notna())
+
+
+def month_avg(s: pd.Series) -> pd.Series:
+    """A noisy daily news index as its trailing month's average."""
+    return s.rolling("30D", min_periods=15).mean() if not s.empty else s
 
 
 def mood(s: pd.Series, good: str, usual: str, bad: str) -> pd.Series:
@@ -134,6 +144,7 @@ class Dimension:
     label: str
     build: Callable[[], pd.Series]
     states: dict[str, str]          # state → plain words for the page and the email
+    max_age: int = STALE_DAYS       # days a reading is carried before it counts as stale
 
 
 def _dims(region: str) -> list[Dimension]:
@@ -161,11 +172,20 @@ def _dims(region: str) -> list[Dimension]:
                    "tightening": "high-yield spreads tighter than three months ago"}),
         Dimension("oil", "Oil", lambda: direction(_close("CL=F"), "rising", "falling"),
                   {"rising": "oil up over three months", "falling": "oil down over three months"}),
-        Dimension("world_news", "World news",
-                  lambda: mood(_tone("geopolitics"), "calmer", "usual", "tenser"),
-                  {"calmer": "war and sanctions coverage calmer than the past year",
-                   "usual": "war and sanctions coverage as usual",
-                   "tenser": "war and sanctions coverage tenser than the past year"}),
+        # News, measured the way economists do: the share of newspaper
+        # articles about geopolitical risk (Caldara & Iacoviello) and about
+        # stock-market uncertainty (Baker, Bloom & Davis), as a month's
+        # average against the last three years. Decades of history, one method.
+        Dimension("world_news", "War and geopolitics in the news",
+                  lambda: thirds(month_avg(_series("gpr.daily", lag=2)), "calm", "usual", "tense"),
+                  {"calm": "geopolitical-risk coverage in its lowest third of three years",
+                   "usual": "geopolitical-risk coverage in its middle third",
+                   "tense": "geopolitical-risk coverage in its highest third of three years"}),
+        Dimension("market_news", "Market worry in the news",
+                  lambda: thirds(month_avg(_fred("WLEMUINDXD")), "quiet", "usual", "loud"),
+                  {"quiet": "stock-market uncertainty in the news in its lowest third of three years",
+                   "usual": "stock-market uncertainty in the news in its middle third",
+                   "loud": "stock-market uncertainty in the news in its highest third of three years"}),
     ]
     if region == "IN":
         dims += [
@@ -173,11 +193,12 @@ def _dims(region: str) -> list[Dimension]:
                       lambda: direction(_close("INR=X"), "weakening", "strengthening"),
                       {"weakening": "rupee weaker against the dollar than three months ago",
                        "strengthening": "rupee stronger against the dollar than three months ago"}),
-            Dimension("local_news", "India news",
-                      lambda: mood(_tone("india_economy"), "upbeat", "usual", "gloomy"),
-                      {"upbeat": "Indian economic news more upbeat than the past year",
-                       "usual": "Indian economic news as usual",
-                       "gloomy": "Indian economic news gloomier than the past year"}),
+            Dimension("local_news", "India policy uncertainty",
+                      lambda: thirds(_fred("INDEPUINDXM", lag=40), "low", "usual", "high", window=36),
+                      {"low": "Indian policy uncertainty in the press in its lowest third of three years",
+                       "usual": "Indian policy uncertainty in the press in its middle third",
+                       "high": "Indian policy uncertainty in the press in its highest third of three years"},
+                      max_age=75),
         ]
     if region == "ASX":
         dims += [
@@ -188,11 +209,14 @@ def _dims(region: str) -> list[Dimension]:
             Dimension("china", "China", lambda: trend(_close("000001.SS")),
                       {"up": "Shanghai Composite above its 200-day average",
                        "down": "Shanghai Composite below its 200-day average"}),
-            Dimension("local_news", "Australia news",
-                      lambda: mood(_tone("australia_economy"), "upbeat", "usual", "gloomy"),
-                      {"upbeat": "Australian economic news more upbeat than the past year",
-                       "usual": "Australian economic news as usual",
-                       "gloomy": "Australian economic news gloomier than the past year"}),
+            # No Australian index exists; trade-policy uncertainty is the
+            # news that moves a China-facing, commodity-exporting market.
+            Dimension("local_news", "Trade-policy uncertainty",
+                      lambda: thirds(_fred("EPUTRADE", lag=40), "low", "usual", "high", window=36),
+                      {"low": "trade-policy uncertainty in the press in its lowest third of three years",
+                       "usual": "trade-policy uncertainty in the press in its middle third",
+                       "high": "trade-policy uncertainty in the press in its highest third of three years"},
+                      max_age=75),
         ]
     if region == "US":
         dims += [
@@ -201,11 +225,11 @@ def _dims(region: str) -> list[Dimension]:
                       {"short": "speculators' S&P futures position in its lowest third of three years",
                        "neutral": "speculators' S&P futures position in its middle third",
                        "crowded": "speculators' S&P futures position in its highest third (crowded long)"}),
-            Dimension("local_news", "US news",
-                      lambda: mood(_tone("us_economy"), "upbeat", "usual", "gloomy"),
-                      {"upbeat": "US economic news more upbeat than the past year",
-                       "usual": "US economic news as usual",
-                       "gloomy": "US economic news gloomier than the past year"}),
+            Dimension("local_news", "US policy uncertainty",
+                      lambda: thirds(month_avg(_fred("USEPUINDXD")), "low", "usual", "high"),
+                      {"low": "US policy uncertainty in the press in its lowest third of three years",
+                       "usual": "US policy uncertainty in the press in its middle third",
+                       "high": "US policy uncertainty in the press in its highest third of three years"}),
         ]
     return dims
 
@@ -227,14 +251,17 @@ def _history_cached(region: str, stamp: str) -> pd.DataFrame:
             cols[d.key] = s
     if not cols:
         return pd.DataFrame()
-    # One row per calendar day, carried forward: weekends, holidays and the
-    # weekly CFTC report keep their last known state until the next one — but
-    # for two weeks at most. A feed that has gone quiet drops out rather than
-    # freezing a stale reading into today.
+    # One row per calendar day, carried forward: weekends, holidays, the
+    # weekly CFTC report and monthly indices keep their last known state until
+    # the next one — but no longer than the dimension's max_age (two weeks for
+    # daily data). A feed that has gone quiet drops out rather than freezing a
+    # stale reading into today.
+    ages = {d.key: d.max_age for d in _dims(region)}
     start = min(s.dropna().index.min() for s in cols.values())
     end = max(s.index.max() for s in cols.values())
     days = pd.date_range(start, end, freq="D")
-    frame = pd.DataFrame({k: s[~s.index.duplicated(keep="last")].reindex(days).ffill(limit=STALE_DAYS)
+    frame = pd.DataFrame({k: s[~s.index.duplicated(keep="last")].reindex(days)
+                          .ffill(limit=ages.get(k, STALE_DAYS))
                           for k, s in cols.items()})
     return frame
 

@@ -22,6 +22,7 @@ PyJWT[crypto]==2.15.1          # Coinbase CDP keys sign a JWT per request (read-
 pandas==3.0.5
 numpy==2.5.2
 yfinance==1.6.0
+xlrd==2.0.1                   # the Geopolitical Risk index ships as .xls
 feedparser==6.0.14
 beautifulsoup4==4.15.0
 lxml==6.1.2

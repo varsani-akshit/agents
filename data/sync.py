@@ -15,25 +15,24 @@ def hourly() -> list[dict]:
 
 
 def daily() -> list[dict]:
-    """Once a day: news tone, macro series and proxies, calendars, positioning,
-    the second opinion on closes."""
-    from data import finnhub, macro, positioning, tone, twelve
+    """Once a day: macro series and proxies (with the news-based uncertainty
+    and geopolitical-risk indices), calendars, positioning, the second
+    opinion on closes. GDELT tone is not scheduled — see conf/data.yaml."""
+    from data import finnhub, macro, positioning, twelve
 
-    return [run("tone", tone.sync),
-            run("macro", macro.sync),
+    return [run("macro", macro.sync),
             run("positioning", positioning.sync),
             run("earnings", finnhub.earnings),
             run("twelve", twelve.sync)]
 
 
 def backfill() -> list[dict]:
-    """History for the feeds that have it. Slow (tone alone is ~20 minutes)."""
-    from data import crypto, macro, positioning, tone
+    """History for the feeds that have it."""
+    from data import crypto, macro, positioning
 
     return [run("crypto", crypto.sync, backfill=True),
             run("macro", macro.sync, backfill=True),
-            run("positioning", positioning.sync, backfill=True),
-            run("tone", tone.sync, backfill=True)]
+            run("positioning", positioning.sync, backfill=True)]
 
 
 SOURCES = {

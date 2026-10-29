@@ -220,6 +220,14 @@ Each step ships on its own and is visible on the site when it lands.
   0.74 vs 0.92), so India stays on the plain gate. Only the ASX uses its
   rules today. Crypto becomes a market in step 4, with its own costs
   (Coinbase ≈ 1.2% a round trip at this volume).
+- **News conditions, revised** — 2026-10-29. GDELT's API refuses the
+  server (and any address that backfills), so the regime's news conditions
+  now use newspaper-based indices with decades of history: geopolitical risk
+  (Caldara & Iacoviello, daily since 1985), stock-market and US policy
+  uncertainty (daily), India and trade-policy uncertainty (monthly, lagged
+  40 days). Of 71 news rules the older years suggested, almost none held on
+  the recent four; none made an account better. News enters decisions
+  through the Story read, judged forward, not through backtested rules.
 - **Step 3, Story read and scorecard** — shipped 2026-10-29. advisor/story.py:
   every signal from every run is a call, settled by the same play() as the
   ledger; each new call gets a Story read (GPT-5.4 mini over a code-built

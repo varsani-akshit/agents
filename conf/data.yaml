@@ -13,7 +13,9 @@ crypto:
 
 # ── News tone (GDELT) ────────────────────────────────────────────────────────
 # Average tone of world English-language news per day, per query, since 2017.
-# One request every six seconds; backfill runs in yearly windows.
+# Not scheduled: GDELT's API refuses the server's address (and soon any
+# address that backfills). Run by hand with `cli.py data tone`. The regime's
+# news conditions use the newspaper-based EPU and GPR indices instead.
 tone:
   india_economy: '(India OR Indian) (economy OR markets OR Sensex OR Nifty OR rupee OR RBI)'
   india_politics: 'India (Modi OR election OR parliament OR BJP OR Congress party)'
@@ -58,6 +60,16 @@ macro:
     DEXUSAL: AUD/USD
     DEXCHUS: USD/CNY
     DEXJPUS: USD/JPY
+    # News-based indices: articles about uncertainty, counted in newspapers
+    # (Baker, Bloom & Davis). Decades of history on one method — the honest
+    # base for "what the world is talking about" in a backtest.
+    USEPUINDXD: US economic policy uncertainty (daily)
+    WLEMUINDXD: Equity-market uncertainty in the news (daily)
+    INDEPUINDXM: India economic policy uncertainty (monthly)
+    EPUTRADE: Trade policy uncertainty (monthly)
+    GEPUCURRENT: Global economic policy uncertainty (monthly)
+    EUEPUINDXM: Europe economic policy uncertainty (monthly)
+    UKEPUINDXM: UK economic policy uncertainty (monthly)
   # Traded proxies, daily, into `bars` (Yahoo). What the regime is built from.
   yahoo: ['^VIX', '^INDIAVIX', 'DX-Y.NYB', 'CL=F', 'BZ=F', 'GC=F', 'SI=F', 'HG=F',
           'INR=X', 'AUDUSD=X', 'JPY=X', 'CNH=X', '^N225', '000001.SS', '^HSI',
