@@ -98,7 +98,9 @@ def fetch(symbols: list[str], period: str = "1mo", batch: int = 80) -> int:
 def refresh(markets: list[str] | None = None, period: str = "1mo") -> int:
     from advisor import market_of
 
-    syms = [s for s in universe() if not markets or market_of(s) in markets]
+    # Crypto bars come from Coinbase (data/crypto.py), not Yahoo: never here.
+    syms = [s for s in universe()
+            if (market_of(s) in markets if markets else market_of(s) != "CRYPTO")]
     return fetch(syms + FX_PAIRS, period=period)
 
 

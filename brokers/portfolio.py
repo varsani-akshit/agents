@@ -11,11 +11,11 @@ import json
 import logging
 
 import db
-from brokers import NotConnected, available, kite, webull
+from brokers import NotConnected, available, coinbase, kite, webull
 
 log = logging.getLogger("alfred.portfolio")
 
-ADAPTERS = {"kite": kite, "webull": webull}
+ADAPTERS = {"kite": kite, "webull": webull, "coinbase": coinbase}
 
 
 def pull(broker: str) -> dict:

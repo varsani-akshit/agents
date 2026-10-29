@@ -87,6 +87,15 @@ WEBULL_APP_KEY = os.getenv("WEBULL_APP_KEY", "")
 WEBULL_APP_SECRET = os.getenv("WEBULL_APP_SECRET", "")
 # "au" for Webull Australia, "us" for Webull US. The SDK picks the host from it.
 WEBULL_REGION = os.getenv("WEBULL_REGION", "au").strip().lower()
+# Coinbase: a CDP key made with View permission only. Alfred checks the key's
+# permissions on connect and refuses one that can trade.
+COINBASE_API_KEY_ID = os.getenv("COINBASE_API_KEY_ID", "").strip()
+COINBASE_API_PRIVATE_KEY = os.getenv("COINBASE_API_PRIVATE_KEY", "").strip()
+
+# Data feeds that are not brokers (all free tiers; see conf/data.yaml).
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "").strip()
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "").strip()
 
 # Email, send-only via Resend. The key should be created with "Sending access",
 # not "Full access". Until a domain is verified in Resend, mail can only go

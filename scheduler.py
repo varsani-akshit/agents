@@ -358,6 +358,29 @@ ADVISOR_JOBS = (
 )
 
 
+def job_data_hourly() -> dict:
+    """Crypto bars and funding, company news, filings — the feeds that move."""
+    from data import sync
+
+    return {"feeds": sync.hourly()}
+
+
+def job_data_daily() -> dict:
+    """News tone, macro, positioning, calendars, the second opinion on closes."""
+    from data import sync
+
+    return {"feeds": sync.daily()}
+
+
+# The feeds in conf/data.yaml. Hourly at :05 so the two-hourly retest at :20
+# sees fresh crypto bars; daily at 01:30 UTC, after the US close and before
+# the night's retest.
+DATA_JOBS = (
+    ("data_hourly", job_data_hourly, dict(minute=5)),
+    ("data_daily", job_data_daily, dict(hour=1, minute=30)),
+)
+
+
 # ─────────────────────────────────── runner ─────────────────────────────────
 def build_scheduler() -> BlockingScheduler:
     sched = BlockingScheduler(
@@ -389,7 +412,7 @@ def build_scheduler() -> BlockingScheduler:
         id="portfolio",
         next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
     )
-    for job_id, fn, cron in ADVISOR_JOBS:
+    for job_id, fn, cron in ADVISOR_JOBS + DATA_JOBS:
         sched.add_job(lambda f=fn, i=job_id: _guard(i, f), CronTrigger(**cron), id=job_id)
     sched.add_job(
         lambda: _guard("daily_data", job_daily_data),
@@ -431,7 +454,7 @@ def build_background_scheduler():
         ("maintenance", job_maintenance, CronTrigger(hour=3, minute=0)),
     ):
         sched.add_job(lambda f=fn, i=job_id: _guard(i, f), trigger, id=job_id)
-    for job_id, fn, cron in ADVISOR_JOBS:
+    for job_id, fn, cron in ADVISOR_JOBS + DATA_JOBS:
         sched.add_job(lambda f=fn, i=job_id: _guard(i, f), CronTrigger(**cron), id=job_id)
     return sched
 

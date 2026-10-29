@@ -16,6 +16,7 @@ pgvector==0.5.0
 # Models
 anthropic==1.0.0
 httpx==0.28.1                 # the OpenAI and Gemini paths call REST directly
+PyJWT[crypto]==2.15.1          # Coinbase CDP keys sign a JWT per request (read-only)
 
 # Data
 pandas==3.0.5

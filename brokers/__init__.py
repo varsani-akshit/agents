@@ -97,4 +97,6 @@ def available() -> list[str]:
         out.append("kite")
     if config.WEBULL_APP_KEY and config.WEBULL_APP_SECRET:
         out.append("webull")
+    if config.COINBASE_API_KEY_ID and config.COINBASE_API_PRIVATE_KEY:
+        out.append("coinbase")
     return out

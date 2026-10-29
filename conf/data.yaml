@@ -1,0 +1,107 @@
+# Data feeds that are not brokers. Every one is a free tier; keys (where a
+# source needs one) live in .env. Nothing here can place an order.
+
+# ── Crypto ───────────────────────────────────────────────────────────────────
+crypto:
+  # Coinbase products, the venue Akshit buys on. Daily bars go to `bars`,
+  # hourly to `bars_1h`, under these symbols, so the simulator treats them
+  # like any other instrument.
+  pairs: [BTC-USD, ETH-USD, SOL-USD, XRP-USD, DOGE-USD, XLM-USD, ADA-USD,
+          LINK-USD, AVAX-USD, LTC-USD, DOT-USD, BCH-USD, SUI-USD, HBAR-USD]
+  # Binance perps to keep funding/OI history for (Hyperliquid covers all).
+  perps: [BTC, ETH, SOL, XRP, DOGE, XLM, ADA, LINK]
+
+# ── News tone (GDELT) ────────────────────────────────────────────────────────
+# Average tone of world English-language news per day, per query, since 2017.
+# One request every six seconds; backfill runs in yearly windows.
+tone:
+  india_economy: '(India OR Indian) (economy OR markets OR Sensex OR Nifty OR rupee OR RBI)'
+  india_politics: 'India (Modi OR election OR parliament OR BJP OR Congress party)'
+  australia_economy: '(Australia OR Australian) (economy OR ASX OR RBA OR "Reserve Bank")'
+  us_economy: '"United States" (economy OR "Federal Reserve" OR inflation OR jobs report)'
+  us_markets: '("Wall Street" OR "S&P 500" OR Nasdaq) (stocks OR shares)'
+  china_economy: 'China (economy OR stimulus OR property OR exports OR PBOC)'
+  china_us_trade: '(tariff OR tariffs OR "trade war") (China OR Beijing)'
+  japan_economy: 'Japan (economy OR "Bank of Japan" OR yen OR Nikkei)'
+  europe_economy: '(eurozone OR ECB OR "European Central Bank") (economy OR rates)'
+  oil: '(oil prices OR OPEC OR crude oil OR Brent)'
+  gold: '(gold price OR gold prices OR bullion)'
+  crypto: '(bitcoin OR cryptocurrency OR crypto market)'
+  banks: '(banking OR banks) (crisis OR stress OR deposits OR bad loans)'
+  tech_ai: '(artificial intelligence OR AI) (chips OR Nvidia OR data centres OR capex)'
+  it_services: '(TCS OR Infosys OR Wipro OR "IT services") (outsourcing OR layoffs OR deal)'
+  energy_india: '(Coal India OR Adani OR "Reliance Industries") (energy OR gas OR power)'
+  retail_australia: '(Woolworths OR Coles OR "Australian retail") (sales OR consumer)'
+  geopolitics: '(war OR conflict OR sanctions OR ceasefire) (Russia OR Ukraine OR Israel OR Iran OR Taiwan)'
+  disasters: '(earthquake OR cyclone OR flood OR wildfire OR drought) (economy OR damage)'
+  rates: '(interest rates OR rate cut OR rate hike) (central bank OR Fed OR RBI OR RBA)'
+
+# ── Macro ────────────────────────────────────────────────────────────────────
+macro:
+  # Extra FRED series beyond conf/instruments.yaml, into fred_series.
+  fred:
+    DFF: Fed funds effective
+    ECBDFR: ECB deposit rate
+    T10Y2Y: US 10y–2y curve
+    T10Y3M: US 10y–3m curve
+    BAMLH0A0HYM2: US high-yield spread
+    BAMLC0A0CM: US investment-grade spread
+    VIXCLS: VIX
+    DTWEXBGS: Broad dollar index
+    DCOILWTICO: WTI crude
+    DCOILBRENTEU: Brent crude
+    IRLTLT01AUM156N: Australia 10y
+    IRLTLT01JPM156N: Japan 10y
+    IRLTLT01DEM156N: Germany 10y
+    T5YIE: US 5y breakeven
+    DEXINUS: USD/INR
+    DEXUSAL: AUD/USD
+    DEXCHUS: USD/CNY
+    DEXJPUS: USD/JPY
+  # Traded proxies, daily, into `bars` (Yahoo). What the regime is built from.
+  yahoo: ['^VIX', '^INDIAVIX', 'DX-Y.NYB', 'CL=F', 'BZ=F', 'GC=F', 'SI=F', 'HG=F',
+          'INR=X', 'AUDUSD=X', 'JPY=X', 'CNH=X', '^N225', '000001.SS', '^HSI',
+          '^KS11', '^STOXX50E', '^FTSE', 'EEM', 'FXI', 'INDA', 'EWA', 'EWJ',
+          'HYG', 'LQD', 'TLT', 'SHY', 'IEF', 'XLE', 'XLF', 'XLK', 'XLV', 'XLI',
+          'XLU', 'XLP', 'XLY', 'XLB', 'XLRE', 'GLD', 'SLV', 'USO', 'UUP',
+          '^NSEI', '^BSESN', '^AXJO', '^GSPC', '^IXIC', '^DJI', '^RUT', '^TNX']
+  # FRED releases that move markets; the rest are stored as low importance.
+  releases_high: [Consumer Price Index, Employment Situation, Gross Domestic Product,
+                  Personal Income and Outlays, Producer Price Index, Retail Trade,
+                  FOMC Press Release, H.15 Selected Interest Rates]
+  # Central-bank decisions, hand-kept (none of the free APIs list them).
+  meetings:
+    - {key: US, event: FOMC decision, dates: [2026-11-05, 2026-12-17]}
+    - {key: IN, event: RBI MPC decision, dates: [2026-12-05]}
+    - {key: AU, event: RBA decision, dates: [2026-11-03, 2026-12-15]}
+    - {key: EU, event: ECB decision, dates: [2026-12-10]}
+    - {key: JP, event: BoJ decision, dates: [2026-12-18]}
+
+# ── Positioning (CFTC) ───────────────────────────────────────────────────────
+# contract_market_name in the legacy futures-only report → our short name.
+positioning:
+  "S&P 500 Consolidated": us_equity
+  "NASDAQ-100 Consolidated": us_tech
+  "GOLD": gold
+  "SILVER": silver
+  "COPPER- #1": copper
+  "CRUDE OIL, LIGHT SWEET-WTI": oil
+  "USD INDEX": dollar
+  "AUSTRALIAN DOLLAR": aud
+  "JAPANESE YEN": jpy
+  "BITCOIN": bitcoin
+  "NIKKEI STOCK AVERAGE YEN DENOM": nikkei
+  "10-YEAR U.S. TREASURY NOTES": us_10y
+
+# ── Finnhub ──────────────────────────────────────────────────────────────────
+finnhub:
+  news_days: 3                 # company news lookback per hourly run
+  earnings_days_ahead: 21
+  max_names: 40                # company-news calls per hourly run (one a second)
+  # US names always covered, beyond holdings and open cases.
+  watch: [SPY, QQQ, NVDA, AAPL, MSFT, AMZN, GOOGL, META, TSLA, JPM, XOM]
+
+# ── Twelve Data ──────────────────────────────────────────────────────────────
+twelve:
+  # Free plan: 8 requests a minute, 800 a day, US only. Checks the names in play.
+  max_symbols_per_run: 40

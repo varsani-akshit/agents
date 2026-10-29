@@ -21,12 +21,13 @@ import yaml
 
 import config
 
-# yfinance suffix → market. US tickers carry no suffix.
-_SUFFIX = {".NS": "NSE", ".BO": "BSE", ".AX": "ASX"}
-CURRENCY = {"NSE": "INR", "BSE": "INR", "ASX": "AUD", "US": "USD"}
+# yfinance suffix → market. US tickers carry no suffix. Crypto pairs are
+# Coinbase products (BTC-USD), priced in USD whatever the account's currency.
+_SUFFIX = {".NS": "NSE", ".BO": "BSE", ".AX": "ASX", "-USD": "CRYPTO"}
+CURRENCY = {"NSE": "INR", "BSE": "INR", "ASX": "AUD", "US": "USD", "CRYPTO": "USD"}
 # Where you would place the order. Indian listings go through Kite; ASX and
-# US listings through Webull AU.
-BROKER = {"NSE": "kite", "BSE": "kite", "ASX": "webull", "US": "webull"}
+# US listings through Webull AU; crypto through Coinbase.
+BROKER = {"NSE": "kite", "BSE": "kite", "ASX": "webull", "US": "webull", "CRYPTO": "coinbase"}
 # Evidence is pooled per region, not per exchange: a BSE listing is an Indian
 # company like any NSE one, and six BSE names alone cannot prove anything.
 REGIONS = {"IN": ("NSE", "BSE"), "ASX": ("ASX",), "US": ("US",)}
@@ -58,7 +59,8 @@ def bare(ticker: str) -> str:
 
 def ticker_for(symbol: str, exchange: str | None) -> str:
     """A broker holding as a yfinance ticker."""
-    suffix = {"NSE": ".NS", "BSE": ".BO", "ASX": ".AX"}.get((exchange or "").upper(), "")
+    suffix = {"NSE": ".NS", "BSE": ".BO", "ASX": ".AX",
+              "COINBASE": "-USD"}.get((exchange or "").upper(), "")
     return symbol + suffix
 
 

@@ -559,3 +559,99 @@ CREATE TABLE IF NOT EXISTS bars_1h (
   volume DOUBLE PRECISION,
   PRIMARY KEY (symbol, ts)
 );
+
+-- ───────────────────────────── data feeds (not brokers) ─────────────────────
+-- One row per feed: when it last ran, when it last succeeded, and why not.
+-- The Status page reads this; a feed that goes quiet shows as stale.
+CREATE TABLE IF NOT EXISTS data_sources (
+  source        TEXT PRIMARY KEY,
+  last_run      TIMESTAMPTZ,
+  last_ok       TIMESTAMPTZ,
+  ok            BOOLEAN,
+  rows          INT NOT NULL DEFAULT 0,
+  seconds       DOUBLE PRECISION,
+  error         TEXT,
+  detail        JSONB NOT NULL DEFAULT '{}'
+);
+
+-- Perp funding and open interest: crypto positioning read as sentiment.
+CREATE TABLE IF NOT EXISTS derivatives (
+  venue         TEXT NOT NULL,            -- hyperliquid | binance
+  symbol        TEXT NOT NULL,            -- BTC, ETH …
+  ts            TIMESTAMPTZ NOT NULL,
+  funding       DOUBLE PRECISION,         -- rate per funding period, as a fraction
+  open_interest DOUBLE PRECISION,         -- in coins
+  mark          DOUBLE PRECISION,
+  volume_24h    DOUBLE PRECISION,         -- USD notional
+  premium       DOUBLE PRECISION,
+  PRIMARY KEY (venue, symbol, ts)
+);
+
+-- GDELT average news tone per query per day, since 2017.
+CREATE TABLE IF NOT EXISTS tone (
+  query  TEXT NOT NULL,
+  d      DATE NOT NULL,
+  tone   DOUBLE PRECISION NOT NULL,
+  PRIMARY KEY (query, d)
+);
+
+-- Scalar daily series that are not FRED and not prices (crypto market cap,
+-- NSE FII/DII flows …). FRED stays in fred_series.
+CREATE TABLE IF NOT EXISTS macro_series (
+  series TEXT NOT NULL,
+  d      DATE NOT NULL,
+  value  DOUBLE PRECISION NOT NULL,
+  PRIMARY KEY (series, d)
+);
+
+-- CFTC speculative positioning, weekly.
+CREATE TABLE IF NOT EXISTS positioning (
+  market        TEXT NOT NULL,            -- our short name: us_equity, gold …
+  report_date   DATE NOT NULL,
+  longs         DOUBLE PRECISION NOT NULL,
+  shorts        DOUBLE PRECISION NOT NULL,
+  open_interest DOUBLE PRECISION,
+  PRIMARY KEY (market, report_date)
+);
+
+-- Exchange and regulator filings for names Alfred cares about.
+CREATE TABLE IF NOT EXISTS filings (
+  id         BIGSERIAL PRIMARY KEY,
+  source     TEXT NOT NULL,               -- sec | nse | asx
+  symbol     TEXT NOT NULL,               -- yfinance ticker
+  kind       TEXT NOT NULL,               -- 8-K, Form 4, "Board meeting" …
+  title      TEXT NOT NULL,
+  url        TEXT NOT NULL,
+  filed_at   TIMESTAMPTZ,
+  sensitive  BOOLEAN NOT NULL DEFAULT false,
+  raw        JSONB NOT NULL DEFAULT '{}',
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (source, url)
+);
+CREATE INDEX IF NOT EXISTS filings_symbol_idx ON filings (symbol, filed_at DESC);
+
+-- What is scheduled: earnings dates, data releases, central-bank meetings.
+CREATE TABLE IF NOT EXISTS calendar (
+  id         BIGSERIAL PRIMARY KEY,
+  kind       TEXT NOT NULL,               -- earnings | release | meeting
+  key        TEXT NOT NULL,               -- symbol, or country code
+  event      TEXT NOT NULL,
+  at         TIMESTAMPTZ NOT NULL,
+  estimate   DOUBLE PRECISION,
+  actual     DOUBLE PRECISION,
+  prior      DOUBLE PRECISION,
+  importance TEXT,                        -- high | medium | low
+  raw        JSONB NOT NULL DEFAULT '{}',
+  UNIQUE (kind, key, event, at)
+);
+CREATE INDEX IF NOT EXISTS calendar_at_idx ON calendar (at);
+
+-- Second opinion on closes: Yahoo vs Twelve Data for the names in play.
+CREATE TABLE IF NOT EXISTS price_checks (
+  symbol   TEXT NOT NULL,
+  d        DATE NOT NULL,
+  yahoo    DOUBLE PRECISION,
+  twelve   DOUBLE PRECISION,
+  diff_pct DOUBLE PRECISION,
+  PRIMARY KEY (symbol, d)
+);

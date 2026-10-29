@@ -448,6 +448,38 @@ def cmd_advisor(args) -> int:
     return 2
 
 
+def cmd_data(args) -> int:
+    """Run or inspect the non-broker data feeds."""
+    import data
+    from data import sync
+
+    what = args.what
+    if what == "status":
+        rows = data.freshness()
+        if not rows:
+            print("no feed has run yet")
+        for r in rows:
+            state = "ok " if r["ok"] else "BAD"
+            print(f"{state} {r['source']:<12} rows {r['rows']:>8,}  last good "
+                  f"{(r['last_ok'] or '—')!s:.16}  {r['error'] or ''}")
+        return 0
+    if what in ("hourly", "daily", "backfill"):
+        results = getattr(sync, what)()
+    elif what in sync.SOURCES:
+        results = [sync.one(what, backfill=args.backfill)]
+    else:
+        print(f"unknown feed {what!r}; one of: hourly, daily, backfill, "
+              + ", ".join(sync.SOURCES))
+        return 2
+    for r in results:
+        if r.get("ok"):
+            extra = {k: v for k, v in r.items() if k not in ("source", "ok", "rows", "seconds")}
+            print(f"ok  {r['source']:<12} {r['rows']:>8,} rows  {r.get('seconds', 0)}s  {extra}")
+        else:
+            print(f"BAD {r['source']:<12} {r.get('error')}")
+    return 0 if all(r.get("ok") for r in results) else 1
+
+
 def cmd_models(args) -> int:
     """Which model does each job, and does every one of them answer?"""
     from brain import llm, router
@@ -636,6 +668,12 @@ def build_parser() -> argparse.ArgumentParser:
     ad.add_argument("--send", action="store_true",
                     help="run the full cycle: refresh, settle, scan, store, email")
     ad.set_defaults(func=cmd_advisor)
+
+    dt = sub.add_parser("data", help="the data feeds that are not brokers (conf/data.yaml)")
+    dt.add_argument("what", nargs="?", default="status",
+                    help="status | hourly | daily | backfill | one feed's name")
+    dt.add_argument("--backfill", action="store_true", help="with a feed name: load its history")
+    dt.set_defaults(func=cmd_data)
 
     md = sub.add_parser("models", help="which model does each job; --probe pings every one")
     md.add_argument("--probe", action="store_true", help="send each model a one-word test")

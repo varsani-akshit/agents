@@ -48,6 +48,27 @@
   </section>
 </div>
 
+<section class="block" style="margin-bottom:8px">
+  <h2>Data feeds</h2>
+  <p class="hint" style="margin:-6px 0 14px">
+    The sources Alfred reasons from, none of them a broker. Hourly: crypto,
+    Finnhub, filings. Daily: tone, macro, positioning, earnings, Twelve Data.
+  </p>
+  <div class="tablewrap"><table class="data">
+    <tr><th>Feed</th><th>Last run</th><th>Last good</th><th class="num">Rows</th><th class="num">Took</th><th>Problem</th></tr>
+    {% for f in feeds %}
+    <tr><td><strong>{{ f.source }}</strong></td>
+        <td class="dim">{{ f.last_run|ago if f.last_run else '—' }}</td>
+        <td class="{{ 'ok' if f.ok else 'bad' }}">{{ f.last_ok|ago if f.last_ok else 'never' }}</td>
+        <td class="num">{{ '{:,}'.format(f.rows or 0) }}</td>
+        <td class="num dim">{{ '%.0fs'|format(f.seconds) if f.seconds else '—' }}</td>
+        <td class="dim" style="white-space:normal">{{ f.error or '' }}</td></tr>
+    {% else %}
+    <tr><td colspan="6" class="dim">No feed has run yet — <code>cli.py data sync hourly</code>.</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+
 <div class="grid2" style="margin-bottom:8px">
   <section class="block">
     <h2>Recent jobs</h2>

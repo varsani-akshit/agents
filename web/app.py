@@ -895,11 +895,13 @@ async def world(request: Request):
 
 @app.get("/status", response_class=HTMLResponse)
 async def status(request: Request):
+    import data
     from brain import extract, llm
     from ingest import feeds
 
     return page(request, "status.html", {
         "sources": feeds.source_health(),
+        "feeds": data.freshness(),
         "routing": llm.routing_table(),
         "graph": extract.graph_stats(),
         "jobs": db.query(
