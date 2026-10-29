@@ -655,3 +655,38 @@ CREATE TABLE IF NOT EXISTS price_checks (
   diff_pct DOUBLE PRECISION,
   PRIMARY KEY (symbol, d)
 );
+
+-- ───────────────────────────── every call, scored ──────────────────────────
+-- Every signal a simulation run surfaced — one per name, strategy and signal
+-- day, taken or not, passing the gate or not — followed to its exit at the
+-- prices Alfred named, by the same play() the backtest and the ledger use.
+-- `story` is the Story read: what the news said about the setup at the time.
+CREATE TABLE IF NOT EXISTS calls (
+  id           BIGSERIAL PRIMARY KEY,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  run_id       BIGINT,
+  region       TEXT NOT NULL,
+  symbol       TEXT NOT NULL,
+  strategy     TEXT NOT NULL,
+  signal_date  DATE NOT NULL,
+  limit_price  DOUBLE PRECISION NOT NULL,
+  stop_price   DOUBLE PRECISION NOT NULL,
+  target_price DOUBLE PRECISION,
+  passed_gate  BOOLEAN NOT NULL,
+  regime_on    BOOLEAN,
+  score        DOUBLE PRECISION,
+  detail       JSONB NOT NULL DEFAULT '{}',
+  story        JSONB,
+  story_at     TIMESTAMPTZ,
+  status       TEXT NOT NULL DEFAULT 'pending',   -- pending | filled | closed | expired
+  fill_date    DATE,
+  fill_price   DOUBLE PRECISION,
+  exit_date    DATE,
+  exit_price   DOUBLE PRECISION,
+  exit_reason  TEXT,
+  r            DOUBLE PRECISION,
+  settled_at   TIMESTAMPTZ,
+  UNIQUE (symbol, strategy, signal_date)
+);
+CREATE INDEX IF NOT EXISTS calls_open_idx ON calls (status) WHERE status IN ('pending', 'filled');
+CREATE INDEX IF NOT EXISTS calls_story_idx ON calls (story_at) WHERE story IS NULL;

@@ -84,8 +84,21 @@ def ticket_text(t: dict) -> str:
         *[f"   - {r}" for r in t["reasons"]],
         *[f"   ! {n}" for n in t["notes"]],
         f"  Evidence: {_evidence_line(t['evidence'])}",
+        *_story_lines(t.get("story")),
     ]
     return "\n".join(lines)
+
+
+def _story_lines(s: dict | None) -> list[str]:
+    """What the news says about the setup — a read, not a gate (yet)."""
+    if not s or not s.get("direction"):
+        return []
+    out = [f"  News: {s['direction'].upper()} (strength {s.get('strength', 0):.1f}) — {s.get('thesis', '')}"]
+    if s.get("risk"):
+        out.append(f"  Watch for: {s['risk']}")
+    if s.get("event_risk") and s.get("events"):
+        out.append(f"  Inside the hold: {'; '.join(s['events'][:3])}")
+    return out
 
 
 def holdings_text(risks: list[dict]) -> str:

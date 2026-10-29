@@ -289,6 +289,7 @@ def conditions_now() -> list[dict]:
 
 
 def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = False) -> dict:
+    from advisor import story
     from advisor.strategies import STRATEGIES
 
     run = db.one("SELECT * FROM sim_runs WHERE id=%s", (run_id,))
@@ -348,7 +349,7 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
                             ORDER BY score DESC LIMIT %s""", params + [limit])
         total = db.one(f"SELECT count(*) AS n FROM sim_candidates WHERE {' AND '.join(where)} AND {cond}",
                        params)["n"]
-        cand[key] = {"title": title, "rows": rows, "total": total}
+        cand[key] = {"title": title, "rows": story.attach(rows), "total": total}
     return {"run": run, "prev": prev, "matrix": order, "changes": changes, "accounts": accounts,
             "candidates": cand, "region": region, "show": show,
             "regions": [(k, REGION_NAME[k]) for k in REGIONS]}

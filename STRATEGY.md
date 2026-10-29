@@ -220,3 +220,14 @@ Each step ships on its own and is visible on the site when it lands.
   0.74 vs 0.92), so India stays on the plain gate. Only the ASX uses its
   rules today. Crypto becomes a market in step 4, with its own costs
   (Coinbase ≈ 1.2% a round trip at this volume).
+- **Step 3, Story read and scorecard** — shipped 2026-10-29. advisor/story.py:
+  every signal from every run is a call, settled by the same play() as the
+  ledger; each new call gets a Story read (GPT-5.4 mini over a code-built
+  dossier: the company's news — matched, or naming it, never a bare Finnhub
+  tag — filings, earnings and central-bank dates inside the hold, the
+  market's conditions, the brief's top line) plus a Decision-1 probability.
+  About $0.002 a read. Tickets email the read; the Ideas page scores calls
+  by gate and by read. The read informs, it does not yet decide: that waits
+  for the scorecard to show supported calls beating contradicted ones.
+  First reads flagged CoStar (fell 14% on earnings), Zoetis and AJG
+  (earnings inside the hold) — three of the tickets v1 sent blind.

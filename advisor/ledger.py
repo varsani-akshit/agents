@@ -30,7 +30,6 @@ def update() -> dict:
     is still actionable. `closed`: ideas that finished this run (stop, target,
     time, or yesterday's exit signal), for the record.
     """
-    cfg = settings()
     changed = 0
     exit_due, closed = [], []
     for idea in db.query("SELECT * FROM ideas WHERE status IN ('open', 'filled')"):
@@ -42,16 +41,10 @@ def update() -> dict:
         if strat.name == "momentum_rotation":
             # Its exit depends on the name's rank within the region that day.
             x = _with_rank(idea["symbol"], x)
-        try:
-            i = x.index.get_loc(pd.Timestamp(idea["signal_date"]))
-        except KeyError:
+        out = replay_one(idea["symbol"], x, strat, idea["signal_date"], idea["limit_price"],
+                         idea["stop_price"], idea["target_price"])
+        if out is None:
             continue
-        sig = strat.rules(x)
-        cost = cfg["round_trip_cost_pct"][market_of(idea["symbol"])] / 100
-        out = play(x["open"].to_numpy(), x["high"].to_numpy(), x["low"].to_numpy(),
-                   x["close"].to_numpy(), sig["exit"].to_numpy(), i,
-                   idea["limit_price"], idea["stop_price"], idea["target_price"],
-                   cfg["validity_sessions"], strat.max_days, cost)
         status = _STATUS[out.status]
         d = lambda k: x.index[k].date() if k is not None else None  # noqa: E731
         db.execute(
@@ -68,6 +61,23 @@ def update() -> dict:
         elif status == "closed" and idea["status"] != "closed":
             closed.append({**brief, "reason": out.reason, "exit_price": out.exit, "r": out.r})
     return {"updated": changed, "exit_due": exit_due, "closed": closed}
+
+
+def replay_one(symbol: str, x: pd.DataFrame, strat, signal_date, limit: float, stop: float,
+               target: float | None):
+    """One ticket through play(), from its signal day: the single accounting
+    the backtest, the ledger and the call record share. None if the signal
+    day is not in the bars."""
+    cfg = settings()
+    try:
+        i = x.index.get_loc(pd.Timestamp(signal_date))
+    except KeyError:
+        return None
+    sig = strat.rules(x)
+    cost = cfg["round_trip_cost_pct"][market_of(symbol)] / 100
+    return play(x["open"].to_numpy(), x["high"].to_numpy(), x["low"].to_numpy(),
+                x["close"].to_numpy(), sig["exit"].to_numpy(), i, limit, stop, target,
+                cfg["validity_sessions"], strat.max_days, cost)
 
 
 def scoreboard() -> dict:

@@ -13,7 +13,12 @@
         <div class="muted" style="font-size:11.5px">last {{ '{:,.2f}'.format(d.close) if d.close is not none else '—' }}</div></td>
       <td style="white-space:normal">{% if c.kind == 'signal' %}<strong>Buy</strong> limit {{ '{:,.2f}'.format(d.limit) }} · stop {{ '{:,.2f}'.format(d.stop) }} <span class="muted">({{ '{:+.1f}%'.format(d.stop_pct) }})</span>{% if d.quantity %}<span class="muted"> · qty {{ '{:g}'.format(d.quantity) }}</span>{% endif %}
           {% else %}Buy if {{ d.waiting }}{% endif %}</td>
-      <td style="white-space:normal">{{ d.label }}{% if c.kind == 'signal' and d.reasons %}<div class="muted" style="font-size:11.5px">{{ d.reasons[0] }}</div>{% endif %}</td>
+      <td style="white-space:normal">{{ d.label }}{% if c.kind == 'signal' and d.reasons %}<div class="muted" style="font-size:11.5px">{{ d.reasons[0] }}</div>{% endif %}
+        {% if c.story and c.story.direction %}{% set s = c.story %}
+        <div style="font-size:11.5px;margin-top:4px" title="Watch for: {{ s.risk }}">
+          <span class="badge {{ 'badge-ok' if s.direction == 'supports' else ('badge-bad' if s.direction == 'contradicts' else '') }}">news {{ s.direction }}</span>
+          {{ s.thesis }}{% if s.event_risk and s.events %} <span class="muted">· inside the hold: {{ s.events[:2]|join('; ') }}</span>{% endif %}
+        </div>{% endif %}</td>
       <td class="num">{% if d.evidence %}<span class="{{ 'up' if (d.evidence.expectancy_r or 0) > 0 else 'down' }}">{{ '{:+.2f}R'.format(d.evidence.expectancy_r or 0) }}</span>{% else %}—{% endif %}
         {% if d.name_expectancy_r is not none %}<div class="muted" style="font-size:11.5px">this name {{ '{:+.2f}R'.format(d.name_expectancy_r) }} ({{ d.name_trades }})</div>{% endif %}</td>
       <td>

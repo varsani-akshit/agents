@@ -372,12 +372,22 @@ def job_data_daily() -> dict:
     return {"feeds": sync.daily()}
 
 
+def job_story() -> dict:
+    """Record the latest run's signals as calls, settle every open call, and
+    give the new ones their Story read. Advice only."""
+    from advisor import story
+
+    return story.cycle()
+
+
 # The feeds in conf/data.yaml. Hourly at :05 so the two-hourly retest at :20
 # sees fresh crypto bars; daily at 01:30 UTC, after the US close and before
 # the night's retest.
 DATA_JOBS = (
     ("data_hourly", job_data_hourly, dict(minute=5)),
     ("data_daily", job_data_daily, dict(hour=1, minute=30)),
+    # After each two-hourly retest (:20, about fifteen minutes long).
+    ("story", job_story, dict(hour="*/2", minute=50)),
 )
 
 

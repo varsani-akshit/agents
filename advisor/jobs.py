@@ -10,6 +10,14 @@ def cycle(region: str, *, send: bool = True) -> dict:
     fetched = bars.refresh(list(REGIONS[region]), period="1mo")
     settled = ledger.update()
     result = scan.scan(region, store=send)
+    # The Story read for each ticket, so the email says what the news says.
+    from advisor import story
+
+    for t in result["tickets"]:
+        try:
+            t["story"] = story.for_ticket(t, region)
+        except Exception:  # noqa: BLE001 - a ticket goes out without its read
+            t["story"] = None
     # Exits matter only for what you actually hold: an idea you never placed
     # needs no sell email.
     held = set(bars.holdings())

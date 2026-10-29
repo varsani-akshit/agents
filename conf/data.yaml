@@ -66,9 +66,10 @@ macro:
           'XLU', 'XLP', 'XLY', 'XLB', 'XLRE', 'GLD', 'SLV', 'USO', 'UUP',
           '^NSEI', '^BSESN', '^AXJO', '^GSPC', '^IXIC', '^DJI', '^RUT', '^TNX']
   # FRED releases that move markets; the rest are stored as low importance.
+  # (FOMC decisions are under `meetings`: FRED's "FOMC Press Release" and
+  # "H.15" entries are data-update dates, listed almost every day.)
   releases_high: [Consumer Price Index, Employment Situation, Gross Domestic Product,
-                  Personal Income and Outlays, Producer Price Index, Retail Trade,
-                  FOMC Press Release, H.15 Selected Interest Rates]
+                  Personal Income and Outlays, Producer Price Index, Retail Trade]
   # Central-bank decisions, hand-kept (none of the free APIs list them).
   meetings:
     - {key: US, event: FOMC decision, dates: [2026-11-05, 2026-12-17]}

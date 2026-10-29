@@ -1119,13 +1119,15 @@ async def ideas(request: Request):
                             FROM sim_candidates WHERE run_id = %s AND kind = 'signal'
                             ORDER BY passed_gate DESC, score DESC LIMIT 15""",
                          (run["id"],)) if run else []
-        return (rows, ledger.scoreboard(), {r["region"]: r["passed"] == "true" for r in regions},
-                run, cands)
+        from advisor import story
 
-    rows, board, sending, run, cands = await asyncio.to_thread(gather)
+        return (rows, ledger.scoreboard(), {r["region"]: r["passed"] == "true" for r in regions},
+                run, story.attach(cands), story.scorecard())
+
+    rows, board, sending, run, cands, calls = await asyncio.to_thread(gather)
     return page(request, "ideas.html", {
         "ideas": rows, "board": board, "sending": sending, "run": run, "cands": cands,
-        "active": "ideas"})
+        "calls": calls, "active": "ideas"})
 
 
 def holding_verdicts() -> dict[str, dict]:
