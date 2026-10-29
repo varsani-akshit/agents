@@ -690,3 +690,7 @@ CREATE TABLE IF NOT EXISTS calls (
 );
 CREATE INDEX IF NOT EXISTS calls_open_idx ON calls (status) WHERE status IN ('pending', 'filled');
 CREATE INDEX IF NOT EXISTS calls_story_idx ON calls (story_at) WHERE story IS NULL;
+
+-- Which exchange a US name actually trades on (NYSE, Nasdaq …), from Yahoo,
+-- so a ticket can say where to find it.
+ALTER TABLE name_cache ADD COLUMN IF NOT EXISTS exchange TEXT;

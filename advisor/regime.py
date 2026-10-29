@@ -148,9 +148,9 @@ class Dimension:
 
 
 def _dims(region: str) -> list[Dimension]:
-    index = {"IN": "^NSEI", "ASX": "^AXJO", "US": "^GSPC"}[region]
+    index = {"IN": "^NSEI", "ASX": "^AXJO", "US": "^GSPC", "CRYPTO": "BTC-USD"}[region]
     vix = "^INDIAVIX" if region == "IN" else "^VIX"
-    market = {"IN": "Nifty 50", "ASX": "ASX 200", "US": "S&P 500"}[region]
+    market = {"IN": "Nifty 50", "ASX": "ASX 200", "US": "S&P 500", "CRYPTO": "Bitcoin"}[region]
     fear = "India VIX" if region == "IN" else "VIX"
     dims = [
         Dimension("trend", "Market trend", lambda: trend(_close(index)),
@@ -217,6 +217,14 @@ def _dims(region: str) -> list[Dimension]:
                        "usual": "trade-policy uncertainty in the press in its middle third",
                        "high": "trade-policy uncertainty in the press in its highest third of three years"},
                       max_age=75),
+        ]
+    if region == "CRYPTO":
+        dims += [
+            Dimension("positioning", "Speculators",
+                      lambda: thirds(_cftc("bitcoin"), "short", "neutral", "crowded"),
+                      {"short": "speculators' Bitcoin futures position in its lowest third of three years",
+                       "neutral": "speculators' Bitcoin futures position in its middle third",
+                       "crowded": "speculators' Bitcoin futures position in its highest third (crowded long)"}),
         ]
     if region == "US":
         dims += [

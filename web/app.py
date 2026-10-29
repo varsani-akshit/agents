@@ -1147,6 +1147,13 @@ def holding_verdicts() -> dict[str, dict]:
         if len(df) < 260:
             continue
         r = scan.holding_risk(t, indicators(df), h)
+        if r["core"]:
+            tr = r["trim"]
+            out[bare(t)] = ({"verb": "Trim", "tone": "", "why": f"core, but stretched: up to {tr['units']} "
+                                                              f"units, buy back near {tr['rebuy']:,.2f}"}
+                            if tr else {"verb": "Core", "tone": "ok",
+                                        "why": "held long-term; not sold on a stop"})
+            continue
         out[bare(t)] = ({"verb": "Review", "tone": "bad",
                          "why": f"below its stop {r['stop']:,.2f}"} if r["below_stop"] else
                         {"verb": "Hold", "tone": "", "why": f"stop {r['stop']:,.2f}"})

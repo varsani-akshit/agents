@@ -29,7 +29,17 @@ def universe() -> list[str]:
                          WHERE l.exchange IN ('NSE','BSE')"""):
         syms |= {r["symbol"] + ".NS", r["symbol"] + ".BO"}
     syms |= set(settings().get("watchlist") or [])
+    syms |= set(_crypto_pairs())
     return sorted(syms)
+
+
+def _crypto_pairs() -> list[str]:
+    import yaml
+
+    from config import CONFIG_DIR
+
+    conf = yaml.safe_load((CONFIG_DIR / "data.yaml").read_text()) or {}
+    return list((conf.get("crypto") or {}).get("pairs") or [])
 
 
 def holdings() -> dict[str, dict]:
@@ -101,10 +111,17 @@ def fetch(symbols: list[str], period: str = "1mo", batch: int = 80) -> int:
 def refresh(markets: list[str] | None = None, period: str = "1mo") -> int:
     from advisor import market_of
 
-    # Crypto bars come from Coinbase (data/crypto.py), not Yahoo: never here.
+    # Crypto bars come from Coinbase (data/crypto.py), never from Yahoo.
+    n = 0
+    if markets and "CRYPTO" in markets:
+        from data import crypto
+
+        n += crypto.bars()["rows"]
     syms = [s for s in universe()
-            if (market_of(s) in markets if markets else market_of(s) != "CRYPTO")]
-    return fetch(syms + FX_PAIRS, period=period)
+            if market_of(s) != "CRYPTO" and (not markets or market_of(s) in markets)]
+    if syms or not markets:
+        n += fetch(syms + FX_PAIRS, period=period)
+    return n
 
 
 def load(symbol: str, years: int | None = None, final_only: bool = True) -> pd.DataFrame:

@@ -152,6 +152,8 @@ def run() -> dict:
     icfg = cfg["intraday"]
     report: dict = {}
     for region, markets in REGIONS.items():
+        if region == "CRYPTO":      # no sessions, no opening range: not this test
+            continue
         syms = [s for s in bars.universe() if market_of(s) in markets]
         frames = {s: df for s in syms if len(df := hourly.load(s)) > 400}
         if not frames:

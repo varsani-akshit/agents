@@ -42,7 +42,8 @@ MIN_DOCS = 3                # fewer than this, and the read fetches fresh news f
 _STATUS = {"pending": "pending", "expired": "expired", "open": "filled", "closed": "closed"}
 _SUFFIX = re.compile(r"[,.]?\s+(limited|ltd|inc|incorporated|corporation|corp|plc|holdings?|"
                      r"group|company|co|n\.?v|s\.?a|ag|se|trust|fund|etf)\.?$", re.I)
-REGION_WORDS = {"IN": "NSE/BSE (India)", "ASX": "ASX (Australia)", "US": "NYSE/Nasdaq (US)"}
+REGION_WORDS = {"IN": "NSE/BSE (India)", "ASX": "ASX (Australia)", "US": "NYSE/Nasdaq (US)",
+                "CRYPTO": "Coinbase (crypto, priced in US$)"}
 
 
 # ───────────────────────────────── recording ────────────────────────────────
@@ -139,7 +140,9 @@ def short_name(name: str) -> str:
 def _company(symbol: str) -> str:
     from brain.news_match import _name
 
-    return _name(symbol) or bare(symbol)
+    name = _name(symbol) or bare(symbol)
+    # Yahoo calls Bitcoin "Bitcoin USD"; headlines call it Bitcoin.
+    return name.removesuffix(" USD") if market_of(symbol) == "CRYPTO" else name
 
 
 def _docs(symbol: str, name: str, hours: int = NEWS_HOURS) -> list[dict]:
@@ -208,7 +211,8 @@ def _events(symbol: str, region: str, start: date, days: int) -> list[str]:
                                 OR (kind = 'meeting' AND key = %s)
                                 OR (kind = 'release' AND importance = 'high'))
                          ORDER BY at""",
-                      (start, end, bare(symbol), {"IN": "IN", "ASX": "AU", "US": "US"}[region])):
+                      (start, end, bare(symbol),
+                       {"IN": "IN", "ASX": "AU", "US": "US", "CRYPTO": "US"}[region])):
         what = "earnings report" if r["kind"] == "earnings" else r["event"]
         if what in seen:            # a release listed every day is one event
             continue

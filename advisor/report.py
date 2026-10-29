@@ -13,8 +13,8 @@ import html
 
 from notify import email
 
-REGION_NAME = {"IN": "India", "ASX": "Australia", "US": "US"}
-BROKER_NAME = {"kite": "Kite", "webull": "Webull"}
+REGION_NAME = {"IN": "India", "ASX": "Australia", "US": "US", "CRYPTO": "Crypto"}
+BROKER_NAME = {"kite": "Kite", "webull": "Webull", "coinbase": "Coinbase"}
 HEADER = ("Advice only — Alfred never places orders. If you act on a ticket, "
           "place it yourself in the broker named.")
 
@@ -70,7 +70,7 @@ def ticket_text(t: dict) -> str:
     ccy = t["currency"]
     qty = "size it yourself" if t["quantity"] is None else f"{t['quantity']:g}"
     lines = [
-        f"{t['action']} {t['display']} ({t['market']}) · in {BROKER_NAME[t['broker']]}"
+        f"{t['action']} {t['display']} on {t.get('venue') or t['market']} · in {BROKER_NAME[t['broker']]}"
         + ("   [PREVIEW — did not pass the gate]" if t.get("preview") else ""),
         f"  Limit {_money(ccy, t['limit'])} · stop-loss {_money(ccy, t['stop'])} "
         f"({t['stop_pct']:+.1f}%)"
@@ -83,6 +83,7 @@ def ticket_text(t: dict) -> str:
         "  Why:",
         *[f"   - {r}" for r in t["reasons"]],
         *[f"   ! {n}" for n in t["notes"]],
+        *([f"  Funding: {t['funding']}"] if t.get("funding") else []),
         f"  Evidence: {_evidence_line(t['evidence'])}",
         *_story_lines(t.get("story")),
     ]
@@ -107,6 +108,13 @@ def holdings_text(risks: list[dict]) -> str:
         if h.get("note"):
             out.append(f"  {h['display']:<12} {h['note']}")
             continue
+        if h.get("core"):
+            tr = h.get("trim")
+            out.append(f"  {h['display']:<12} close {_money(h['currency'], h['close'])} · core, "
+                       "held long-term (no stop)"
+                       + (f" · stretched: optionally trim up to {tr['units']} units, buy back near "
+                          f"{_money(h['currency'], tr['rebuy'])}" if tr else ""))
+            continue
         flag = ("JUST CLOSED BELOW" if h["newly_below"] else
                 "below" if h["below_stop"] else "above")
         out.append(f"  {h['display']:<12} close {_money(h['currency'], h['close'])} · "
@@ -118,10 +126,11 @@ def holdings_text(risks: list[dict]) -> str:
 def compose(result: dict, regime: str | None = None) -> tuple[str, str, str] | None:
     """Subject, text and HTML — or None when there is nothing to act on."""
     tickets = result["tickets"]
+    held_back = result.get("held_back") or []
     fresh = [h for h in result["holdings"] if h["newly_below"]]
     exits = result.get("exits") or []
     closed = result.get("closed") or []
-    if not tickets and not fresh and not exits and not closed:
+    if not tickets and not fresh and not exits and not closed and not held_back:
         return None
     region = REGION_NAME.get(result["region"], result["region"])
     bits = []
@@ -129,6 +138,8 @@ def compose(result: dict, regime: str | None = None) -> tuple[str, str, str] | N
         bits.append(f"SELL {', '.join(e['symbol'].split('.')[0] for e in exits)}")
     if tickets:
         bits.append(f"{len(tickets)} idea{'s' if len(tickets) != 1 else ''}")
+    if held_back and not tickets:
+        bits.append(f"{len(held_back)} held back by the news")
     if fresh:
         bits.append(f"{len(fresh)} holding{'s' if len(fresh) != 1 else ''} broke a stop")
     subject = f"Alfred · {region} close {result['as_of']:%d %b} · " + " · ".join(bits)
@@ -150,6 +161,14 @@ def compose(result: dict, regime: str | None = None) -> tuple[str, str, str] | N
                   "was in place, this already happened in your account.", ""]
     for t in tickets:
         parts += [ticket_text(t), ""]
+    if held_back:
+        parts += ["Held back by the news — these passed the gate, but the news read contradicts them:"]
+        for t in held_back:
+            s = t.get("story") or {}
+            parts += [f"  {t['display']} on {t.get('venue') or t['market']} ({t['label']}): "
+                      f"{s.get('thesis', '')}",
+                      f"    Would change the read: {s.get('risk', '—')}"]
+        parts += ["  Still recorded and scored; if you take one anyway, the levels are on the Ideas page.", ""]
     if result.get("left_out"):
         parts += [f"{result['left_out']} more signals fired today; these are the "
                   f"{len(tickets)} strongest by 12-month momentum. The rest are on the "

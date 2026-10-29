@@ -30,7 +30,7 @@ CURRENCY = {"NSE": "INR", "BSE": "INR", "ASX": "AUD", "US": "USD", "CRYPTO": "US
 BROKER = {"NSE": "kite", "BSE": "kite", "ASX": "webull", "US": "webull", "CRYPTO": "coinbase"}
 # Evidence is pooled per region, not per exchange: a BSE listing is an Indian
 # company like any NSE one, and six BSE names alone cannot prove anything.
-REGIONS = {"IN": ("NSE", "BSE"), "ASX": ("ASX",), "US": ("US",)}
+REGIONS = {"IN": ("NSE", "BSE"), "ASX": ("ASX",), "US": ("US",), "CRYPTO": ("CRYPTO",)}
 
 
 def region_of(market: str) -> str:
@@ -87,3 +87,35 @@ def session_closed(market: str, d, now: datetime | None = None) -> bool:
         return True
     return d == local.date() and local.time() >= (
         datetime.combine(local.date(), close) + timedelta(minutes=30)).time()
+
+
+# Yahoo's exchange codes for US listings, as people say them.
+_US_VENUES = {"NYQ": "NYSE", "NYS": "NYSE", "NMS": "Nasdaq", "NGM": "Nasdaq", "NCM": "Nasdaq",
+              "NAS": "Nasdaq", "PCX": "NYSE Arca", "ARCA": "NYSE Arca", "ASE": "NYSE American",
+              "BTS": "Cboe", "BATS": "Cboe"}
+
+
+def venue(ticker: str) -> str:
+    """Where the order goes: NSE, BSE, ASX, Coinbase — or, for a US name, the
+    exchange it actually lists on (looked up once and cached)."""
+    market = market_of(ticker)
+    if market != "US":
+        return {"CRYPTO": "Coinbase"}.get(market, market)
+    import db
+
+    row = db.one("SELECT exchange FROM name_cache WHERE symbol = %s", (ticker,))
+    if row and row["exchange"]:
+        return row["exchange"]
+    try:
+        import yfinance as yf
+
+        info = yf.Ticker(ticker).info or {}
+        code, name = info.get("exchange"), info.get("longName") or info.get("shortName")
+    except Exception:  # noqa: BLE001 - an unknown venue is still a US listing
+        return "NYSE/Nasdaq"
+    where = _US_VENUES.get(code or "", "NYSE/Nasdaq")
+    # Cached even when Yahoo knows nothing, so an unknown name is looked up once.
+    db.execute("""INSERT INTO name_cache (symbol, name, exchange) VALUES (%s, %s, %s)
+                  ON CONFLICT (symbol) DO UPDATE SET exchange = EXCLUDED.exchange""",
+               (ticker, name or ticker, where))
+    return where

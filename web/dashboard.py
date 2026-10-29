@@ -14,7 +14,7 @@ import db
 from advisor import REGIONS, settings
 
 # Markets are named by where you would place the order, never by country.
-REGION_NAME = {"IN": "NSE/BSE", "ASX": "ASX", "US": "NYSE/Nasdaq"}
+REGION_NAME = {"IN": "NSE/BSE", "ASX": "ASX", "US": "NYSE/Nasdaq", "CRYPTO": "Coinbase"}
 
 
 # ─────────────────────────────── line charts ────────────────────────────────
@@ -93,7 +93,7 @@ def today() -> dict:
         if len(df) < 260:
             continue
         r = scan.holding_risk(sym, indicators(df), h)
-        if r["below_stop"]:
+        if r["below_stop"] or r["trim"]:
             attention.append(r)
     attention.sort(key=lambda r: (not r["newly_below"], r["stop_gap_pct"]))
 
@@ -189,12 +189,21 @@ def today() -> dict:
                         "by": i["valid_until"], "currency": i["currency"]})
     for f in funding:
         if f["add"] > 0:
-            actions.append({"verb": "Fund", "tone": "warn", "symbol": "Kite" if f["broker"] == "kite" else "Webull",
+            actions.append({"verb": "Fund", "tone": "warn", "symbol": {"kite": "Kite", "coinbase": "Coinbase"}.get(f["broker"], "Webull"),
                             "where": f["broker"], "currency": f["currency"], "amount": f["add"],
                             "what": "before placing the tickets above",
                             "why": f"open tickets need {f['tickets_cost']:,.0f} {f['currency']}; "
                                    f"you set aside {f['reserve']:,.0f}"})
     for h in attention:
+        if h["trim"]:
+            tr = h["trim"]
+            actions.append({"verb": "Trim", "tone": "muted", "symbol": h["display"], "where": h["broker"],
+                            "what": f"up to {tr['units']} units at {h['close']:,.2f}, "
+                                    f"buy back near {tr['rebuy']:,.2f}",
+                            "why": f"core holding, {tr['stretch_atr']} ATRs above its 50-day "
+                                   "average — optional, the money goes back in",
+                            "urgent": False})
+            continue
         actions.append({"verb": "Review", "tone": "bad" if h["newly_below"] else "muted",
                         "symbol": h["display"], "where": h["broker"],
                         "what": f"closed {h['close']:,.2f}, under its stop {h['stop']:,.2f}",
@@ -322,7 +331,7 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
                                                    kv[1]["label"]))
 
     accounts = db.query("SELECT region, stats, curve FROM sim_accounts WHERE run_id=%s "
-                        "ORDER BY array_position(ARRAY['IN','ASX','US'], region)", (run_id,))
+                        "ORDER BY array_position(ARRAY['IN','ASX','US','CRYPTO'], region)", (run_id,))
     for a in accounts:
         a["svg"] = account_svg(a["curve"])
         base, _, kind = a["region"].partition(":")
@@ -334,7 +343,7 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
         where.append("region = %s")
         params.append(region)
     groups = {
-        "passed": ("Passed the gate — these become tickets", "kind='signal' AND passed_gate"),
+        "passed": ("Passed the gate — tickets, unless the news contradicts them", "kind='signal' AND passed_gate"),
         "missed": ("Fired, but did not pass the gate", "kind='signal' AND NOT passed_gate"),
         "near_passed": ("Close to firing — strategies that pass", "kind='near' AND passed_gate"),
         "near_other": ("Close to firing — strategies that do not pass", "kind='near' AND NOT passed_gate"),

@@ -23,6 +23,7 @@ benchmark:
   IN: NIFTYBEES.NS
   ASX: IOZ.AX
   US: SPY
+  CRYPTO: BTC-USD     # crypto must beat simply holding Bitcoin
 
 # Money you have set aside to add when a good ticket needs it, in each
 # account's own currency. Sizing counts it as part of the account, and a
@@ -30,6 +31,12 @@ benchmark:
 new_funds:
   kite: 100000      # INR, into Zerodha
   webull: 3500      # AUD, into Webull AU
+  coinbase: 500     # AUD, into Coinbase
+
+# The currency each account is funded in, where the broker does not say.
+# Coinbase prices coins in US dollars; you pay in AUD.
+funding_currency:
+  coinbase: AUD
 
 # ── Costs ────────────────────────────────────────────────────────────────────
 # Round-trip cost as a percentage of the trade value: brokerage, taxes, fees
@@ -43,6 +50,9 @@ round_trip_cost_pct:
   BSE: 0.80
   ASX: 0.40
   US: 0.60
+  # Coinbase Advanced at under US$10k a month: about 0.5% maker / 0.9% taker
+  # a side (September 2026 schedule), plus the spread.
+  CRYPTO: 1.20
 
 # ── Intraday ─────────────────────────────────────────────────────────────────
 # Same-day trades on hourly bars, out by the close. Same gate as above, with
@@ -86,6 +96,25 @@ history_years: 12
 # ── Universe ─────────────────────────────────────────────────────────────────
 # Index members (S&P 500, ASX 200, NIFTY 50) and everything you hold are
 # always scanned. Add anything else here, as yfinance tickers.
+# A ticket whose Story read contradicts it at least this strongly (0 to 1)
+# is held back: listed in the email with the reason, not sent as a ticket.
+# The call is still recorded and scored, so the scorecard shows whether
+# holding these back was right.
+news_veto_strength: 0.5
+
+# Long-term holdings: never sold on a trailing stop and never flagged for
+# review when they dip. The only suggestion Alfred makes on one is a trim
+# when it is stretched far above its average — with a level to buy it back,
+# so the money goes back into the same holding. Yahoo tickers.
+core_holdings:
+  - PMGOLD.AX
+# How far above its 50-day average (in 22-day ATRs) a core holding must be
+# before a trim is suggested, and what share of it. For PMGOLD, 7 ATRs is the
+# top 5% of the last six years' days (3 ATRs would be 29%: noise).
+core_trim:
+  stretch_atr: 7.0
+  share: 0.2
+
 watchlist:
   # India — gold, silver and broad index ETFs (in Kite)
   - GOLDBEES.NS

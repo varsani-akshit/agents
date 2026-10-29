@@ -239,3 +239,18 @@ Each step ships on its own and is visible on the site when it lands.
   for the scorecard to show supported calls beating contradicted ones.
   First reads flagged CoStar (fell 14% on earnings), Zoetis and AJG
   (earnings inside the hold) — three of the tickets v1 sent blind.
+
+- **Step 4, verdicts and crypto** — 2026-10-29. Every ticket names its
+  exchange (NYSE, Nasdaq, NYSE Arca, NSE, BSE, ASX, Coinbase) and where the
+  money must be ("US$1,300 in Webull's USD balance — about A$2,000,
+  converted in Webull"). A ticket whose Story read contradicts it with
+  strength ≥ 0.5 is held back and listed in the email with the reason; the
+  next one takes its place; the call is still scored. PMGOLD is a core
+  holding: no stop, no review — only a trim-and-buy-back note when it is
+  7 ATRs above its 50-day average (the top 5% of days). Crypto is a fourth
+  market on Coinbase (14 pairs, 1.2% round trip, A$500 set aside, funded in
+  AUD, daily cycle at 00:45 UTC). First run: the 55-day breakout passes
+  (+0.90R over 121 recent trades), but the account replay (+12%/yr, worst
+  −23%, Sharpe 0.62) does not beat holding Bitcoin (+41%/yr, worst −84%,
+  Sharpe 0.71) on Sharpe, so crypto sends no tickets yet; it is simulated
+  and scored every two hours.

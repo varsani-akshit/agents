@@ -18,13 +18,13 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
 
 import db
-from advisor import BROKER, CURRENCY, REGIONS, bare, bars, market_of, settings
+from advisor import BROKER, CURRENCY, REGIONS, bare, bars, market_of, settings, venue
 from advisor.simulate import WARMUP, evidence
 from advisor.strategies import STRATEGIES, add_momentum_rank, chandelier_stop, indicators
 
@@ -32,6 +32,9 @@ log = logging.getLogger("alfred.scan")
 
 
 # ───────────────────────────────── accounts ─────────────────────────────────
+BROKER_LABEL = {"kite": "Kite", "webull": "Webull", "coinbase": "Coinbase"}
+
+
 def accounts() -> dict[str, dict]:
     """Each broker's value and free cash from its newest good snapshot."""
     out = {}
@@ -47,7 +50,28 @@ def accounts() -> dict[str, dict]:
         value = funds.get("total") or (float(held["v"]) + float(funds.get("cash") or 0))
         out[broker] = {"value": float(value), "cash": float(funds.get("available") or 0),
                        "currency": funds.get("currency")}
+    cb = _coinbase_account()
+    if cb:
+        out["coinbase"] = cb
     return out
+
+
+def _coinbase_account() -> dict | None:
+    """Coinbase in the currency you fund it with (AUD): coins are priced in
+    US dollars, so their value is converted; the free cash is the AUD balance."""
+    snap = db.one("""SELECT id, funds FROM portfolio_snapshots WHERE broker='coinbase' AND ok
+                     ORDER BY taken_at DESC LIMIT 1""")
+    if not snap:
+        return None
+    home = (settings().get("funding_currency") or {}).get("coinbase", "AUD")
+    funds = snap["funds"] or {}
+    usd = db.one("""SELECT coalesce(sum(quantity * coalesce(last_price, avg_price)), 0) v
+                    FROM portfolio_lines WHERE snapshot_id=%s AND kind='holding'""", (snap["id"],))
+    rate = _in_currency(1.0, home, "USD") if home != "USD" else 1.0
+    if not rate:
+        return None
+    cash = float((funds.get("by_currency") or {}).get(home) or 0)
+    return {"value": float(usd["v"]) / rate + cash, "cash": cash, "currency": home}
 
 
 def _in_currency(amount: float, have: str, want: str) -> float | None:
@@ -77,12 +101,14 @@ def ticket(sym: str, strat, x, accts: dict, held: dict) -> dict:
     risk_per_share = limit - stop
 
     t = {
-        "symbol": sym, "display": bare(sym), "market": market, "broker": broker,
+        "symbol": sym, "display": bare(sym), "market": market, "broker": broker, "venue": venue(sym),
         "strategy": strat.name, "label": strat.label, "action": "BUY", "currency": ccy,
         "signal_date": x.index[-1].date(), "limit": round(limit, 2), "stop": round(stop, 2),
         "target": target and round(target, 2),
-        "valid_until": np.busday_offset(x.index[-1].date(), cfg["validity_sessions"],
-                                        roll="forward").astype(date),
+        "valid_until": (x.index[-1].date() + timedelta(days=cfg["validity_sessions"])
+                        if market == "CRYPTO" else      # crypto trades every day
+                        np.busday_offset(x.index[-1].date(), cfg["validity_sessions"],
+                                         roll="forward").astype(date)),
         "reasons": strat.reasons(last), "notes": [],
         "stop_pct": (stop / limit - 1) * 100,
     }
@@ -101,8 +127,10 @@ def ticket(sym: str, strat, x, accts: dict, held: dict) -> dict:
         risk_amount = equity * cfg["risk_per_trade_pct"] / 100
         qty = risk_amount / risk_per_share
         qty = min(qty, equity * cfg["max_position_pct"] / 100 / limit)
-        # Webull AU buys fractional US shares; Indian and ASX shares are whole.
-        qty = math.floor(qty * 100) / 100 if market == "US" else math.floor(qty)
+        # Webull AU buys fractional US shares; Indian and ASX shares are whole;
+        # Coinbase sells crypto to eight decimals (six is plenty).
+        qty = (math.floor(qty * 100) / 100 if market == "US" else
+               math.floor(qty * 1e6) / 1e6 if market == "CRYPTO" else math.floor(qty))
         t["quantity"] = qty
         t["risk_amount"] = round(qty * risk_per_share, 2)
         cost = qty * limit
@@ -121,12 +149,27 @@ def ticket(sym: str, strat, x, accts: dict, held: dict) -> dict:
                       if add <= reserve else
                       f"more than the {_cur(acct['currency'], reserve)} you set aside — size it down or skip")
             t["notes"].append(f"Add about {_cur(acct['currency'], add)} to "
-                              f"{'Kite' if broker == 'kite' else 'Webull'} first ({within}).")
+                              f"{BROKER_LABEL[broker]} first ({within}).")
+        if qty > 0:
+            t["funding"] = funding_line(broker, ccy, cost, acct["currency"])
     if sym in held:
         h = held[sym]
         t["notes"].append(f"You already hold {float(h['quantity']):g} at "
                           f"{float(h['avg_price'] or 0):,.2f}; this would add to it.")
     return t
+
+
+def funding_line(broker: str, ccy: str, cost: float, home: str) -> str:
+    """Where the money for a ticket has to be, in which currency."""
+    name = BROKER_LABEL[broker]
+    rate = _in_currency(1.0, home, ccy) or 1.0
+    if broker == "coinbase":
+        return (f"Needs about {_cur(home, cost / rate)} in Coinbase (coins are priced in US$; "
+                f"your {home} buys at Coinbase's rate).")
+    if ccy == home:
+        return f"Needs {_cur(ccy, cost)} in {name}."
+    return (f"Needs {_cur(ccy, cost)} in {name}'s {ccy} balance — about "
+            f"{_cur(home, cost / rate)}, converted in {name}.")
 
 
 def _cur(ccy: str, v: float) -> str:
@@ -167,7 +210,7 @@ def holding_risk(sym: str, x, h: dict) -> dict:
     last, prev = x.iloc[-1], x.iloc[-2]
     level, prev_level = float(stop.iloc[-1]), float(stop.iloc[-2])
     close = float(last["close"])
-    return {
+    out = {
         "symbol": sym, "display": bare(sym), "currency": CURRENCY[market_of(sym)],
         "broker": BROKER[market_of(sym)], "quantity": float(h["quantity"]),
         "avg_price": float(h["avg_price"] or 0), "close": close,
@@ -175,7 +218,31 @@ def holding_risk(sym: str, x, h: dict) -> dict:
         "below_stop": close < level,
         "newly_below": close < level and float(prev["close"]) >= prev_level,
         "below_200d": bool(close < last["sma200"]) if not math.isnan(last["sma200"]) else None,
+        "core": False, "trim": None,
     }
+    if is_core(sym):
+        out.update(core_view(x, float(h["quantity"])))
+    return out
+
+
+def is_core(sym: str) -> bool:
+    return sym in set(settings().get("core_holdings") or [])
+
+
+def core_view(x, quantity: float) -> dict:
+    """A long-term holding: no stop, no review — and a trim suggestion only
+    when it is stretched far above its 50-day average, with the 20-day
+    average as the level to buy the same units back."""
+    cfg = settings().get("core_trim") or {}
+    last = x.iloc[-1]
+    view = {"core": True, "below_stop": False, "newly_below": False, "trim": None}
+    stretch = (last["close"] - last["sma50"]) / last["atr22"] if last["atr22"] else 0.0
+    if not math.isnan(stretch) and stretch >= float(cfg.get("stretch_atr", 7.0)):
+        units = math.floor(quantity * float(cfg.get("share", 0.2)))
+        if units > 0:
+            view["trim"] = {"units": units, "rebuy": round(float(last["sma20"]), 2),
+                            "stretch_atr": round(float(stretch), 1)}
+    return view
 
 
 def _too_new(sym: str, h: dict, n: int) -> dict:
@@ -262,16 +329,51 @@ def scan(region: str, *, preview: bool = False, store: bool = False) -> dict:
             tickets.append(t)
 
     tickets, also = select(tickets, settings().get("max_new_ideas_per_scan"), keep_rest=True)
+    held_back = []
+    if store and not preview:
+        tickets, also, held_back = news_check(tickets, also, region,
+                                              settings().get("max_new_ideas_per_scan"))
     left_out = len(also)
     near = merge_near(near)
 
     stored = _store(tickets) if store and not preview else 0
     risks.sort(key=lambda r: (not r["newly_below"], not r["below_stop"], r["stop_gap_pct"]))
     return {"region": region, "as_of": as_of and as_of.date(), "tickets": tickets,
+            "held_back": held_back,
             "left_out": left_out, "also": also[:15], "near": near[:20],
             "holdings": risks, "stored": stored,
             "gate": {**{n: live[n][0] for n in pooled},
                      "account": account_ok}}
+
+
+def news_check(tickets: list[dict], also: list[dict], region: str,
+               cap: int | None) -> tuple[list[dict], list[dict], list[dict]]:
+    """The Story read for each ticket, strongest first; a ticket the news
+    clearly contradicts is held back and the next one takes its place.
+
+    Returns (tickets, the rest, held back). Reads at most `cap` + 5 names, so
+    a day of bad news cannot run up the model bill."""
+    from advisor import story
+
+    veto = float(settings().get("news_veto_strength", 0.5))
+    cap = cap or len(tickets) + len(also)
+    queue = tickets + also
+    kept, held_back, rest = [], [], []
+    for i, t in enumerate(queue):
+        if len(kept) >= cap or i >= cap + 5:
+            rest.append(t)
+            continue
+        try:
+            t["story"] = story.for_ticket(t, region)
+        except Exception as exc:  # noqa: BLE001 - no read is not a veto
+            log.warning("story read for %s failed: %s", t["symbol"], exc)
+            t["story"] = None
+        s = t["story"] or {}
+        if s.get("direction") == "contradicts" and float(s.get("strength") or 0) >= veto:
+            held_back.append(t)
+        else:
+            kept.append(t)
+    return kept, rest, held_back
 
 
 def select(tickets: list[dict], cap: int | None, keep_rest: bool = False):

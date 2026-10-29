@@ -16,7 +16,7 @@
 
 <div class="stat-row">
   <div class="kpi"><div class="kpi-label">Passing</div><div class="kpi-value">{{ run.passing }} of {{ run.tested }}</div><div class="kpi-hint">strategy × market</div></div>
-  <div class="kpi"><div class="kpi-label">Changed since last run</div><div class="kpi-value">{{ changes|length }}</div><div class="kpi-hint">{% for c in changes %}{{ c.stats.label or c.strategy }} on {{ {'IN': 'NSE/BSE', 'ASX': 'ASX', 'US': 'NYSE/Nasdaq'}[c.region] }} {{ 'now passes' if c.passed else 'now fails' }}{% if not loop.last %} · {% endif %}{% else %}no verdict changed{% endfor %}</div></div>
+  <div class="kpi"><div class="kpi-label">Changed since last run</div><div class="kpi-value">{{ changes|length }}</div><div class="kpi-hint">{% for c in changes %}{{ c.stats.label or c.strategy }} on {{ {'IN': 'NSE/BSE', 'ASX': 'ASX', 'US': 'NYSE/Nasdaq', 'CRYPTO': 'Coinbase'}.get(c.region, c.region) }} {{ 'now passes' if c.passed else 'now fails' }}{% if not loop.last %} · {% endif %}{% else %}no verdict changed{% endfor %}</div></div>
   <div class="kpi"><div class="kpi-label">Candidates</div><div class="kpi-value">{{ '{:,}'.format(run.candidates or 0) }}</div><div class="kpi-hint">{{ candidates.passed.total if candidates.passed is defined else '' }} pass the gate</div></div>
 </div>
 
@@ -53,9 +53,9 @@
       <table class="data">
         <thead><tr><th>Market</th><th class="num">Recent trades</th><th class="num">Win</th><th class="num">Per trade</th><th class="num">Older</th><th class="num">Random</th><th class="num">Profit factor</th><th class="num">Loss chance</th><th class="num">Typical hold</th><th>Verdict</th></tr></thead>
         <tbody>
-        {% for reg in ['IN', 'ASX', 'US'] %}{% set c = row.cells.get(reg) %}{% if c %}{% set st = c.stats %}
+        {% for reg in ['IN', 'ASX', 'US', 'CRYPTO'] %}{% set c = row.cells.get(reg) %}{% if c %}{% set st = c.stats %}
         <tr>
-          <td><strong>{{ {'IN': 'NSE/BSE', 'ASX': 'ASX', 'US': 'NYSE/Nasdaq'}[reg] }}</strong></td>
+          <td><strong>{{ {'IN': 'NSE/BSE', 'ASX': 'ASX', 'US': 'NYSE/Nasdaq', 'CRYPTO': 'Coinbase'}[reg] }}</strong></td>
           <td class="num">{{ '{:,}'.format(st.recent.trades or 0) }}</td>
           <td class="num">{{ pct(st.recent.win_rate) }}</td>
           <td class="num {{ 'up' if (st.recent.expectancy_r or 0) > 0 else 'down' }}">{{ r(st.recent.expectancy_r) }}</td>
