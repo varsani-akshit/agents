@@ -264,3 +264,10 @@ Each step ships on its own and is visible on the site when it lands.
   how their conditions moved, and the week ahead for your names. Hourly
   *trading* scans were not added: the hourly strategies still lose after
   costs, and the daily ones decide on finished bars.
+- **Step 6, Today** — 2026-10-29. Today shows each case that passed the gate
+  with its three reads (price setup and record, conditions, news), the ones
+  the news held back, every Buy with its exchange, funding line and news
+  read, the heartbeat's alerts since yesterday, each market's conditions in
+  one line, and the scorecard. Coinbase joins the account tiles. The plan's
+  six steps are built; what remains is the scorecard filling up, which
+  decides how much weight the news read earns.

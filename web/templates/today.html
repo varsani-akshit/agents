@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Today — Alfred{% endblock %}
 {% macro money(ccy, v, dp=0) %}{% if v is none %}—{% else %}{{ {'INR': '₹', 'AUD': 'A$', 'USD': 'US$'}.get(ccy, (ccy or '') ~ ' ') }}{{ ('{:,.' ~ dp ~ 'f}').format(v) }}{% endif %}{% endmacro %}
-{% macro broker(b) %}{{ 'Kite' if b == 'kite' else ('Webull' if b == 'webull' else '') }}{% endmacro %}
+{% macro broker(b) %}{{ {'kite': 'Kite', 'webull': 'Webull', 'coinbase': 'Coinbase'}.get(b, '') }}{% endmacro %}
+{% macro news_read(s) %}{% if s and s.direction %}<div class="s" style="margin-top:3px" title="Watch for: {{ s.risk }}"><span class="badge {{ 'badge-ok' if s.direction == 'supports' else ('badge-bad' if s.direction == 'contradicts' else '') }}">news {{ s.direction }}</span> {{ s.thesis }}{% if s.event_risk and s.events %} <span class="muted">· inside the hold: {{ s.events[:2]|join('; ') }}</span>{% endif %}</div>{% endif %}{% endmacro %}
 {% block content %}
 <header class="ph">
   <div class="eyebrow">{{ first_name and ('Good to see you, ' ~ first_name) or 'Today' }}</div>
@@ -41,9 +42,11 @@
       <li>
         <span class="ticket-act" style="min-width:58px;text-align:center;{% if a.tone == 'bad' %}background:var(--down-soft);color:var(--down){% elif a.tone == 'warn' %}background:var(--warn-soft);color:var(--warn){% endif %}">{{ a.verb|upper }}</span>
         <div class="grow">
-          <div class="t"><strong>{{ a.symbol }}</strong> <span class="muted">· {{ broker(a.where) }}</span></div>
+          <div class="t"><strong>{{ a.symbol }}</strong> <span class="muted">· {% if a.venue %}{{ a.venue }} · {% endif %}{{ broker(a.where) }}</span></div>
           <div class="s">{% if a.amount %}{{ money(a.currency, a.amount) }} {{ a.what }}{% else %}{{ a.what }}{% endif %}{% if a.by %} · by {{ a.by.strftime('%a %d %b') }}{% endif %}</div>
           {% if a.why %}<div class="s" style="margin-top:2px">{{ a.why }}</div>{% endif %}
+          {% if a.funding %}<div class="s" style="margin-top:2px">{{ a.funding }}</div>{% endif %}
+          {{ news_read(a.story) }}
         </div>
       </li>
       {% else %}
@@ -65,6 +68,46 @@
   </details>
   {% endif %}
 </section>
+
+{# ── Alerts from the heartbeat ────────────────────────────────────────── #}
+{% if alerts %}
+<section class="section">
+  <h2>Since yesterday</h2>
+  <div class="card">
+    <ul class="list">
+      {% for al in alerts %}
+      <li>
+        <span class="ticket-act" style="min-width:58px;text-align:center;{% if al.kind in ('stop', 'shock', 'news') %}background:var(--down-soft);color:var(--down){% endif %}">{{ al.kind|upper }}</span>
+        <div class="grow"><div class="s">{{ al.text }}</div><div class="s muted">{{ al.created_at|ago }}</div></div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
+
+{# ── Today's cases ────────────────────────────────────────────────────── #}
+{% if cases %}
+<section class="section">
+  <h2>Today's cases</h2>
+  <p class="lead-in">Every setup that passed the gate on the last close, with its three reads. The ones the news contradicts are held back from the email; the rest become tickets at the next scan.</p>
+  <div class="card">
+    <ul class="list">
+      {% for c in cases %}
+      <li{% if c.held_back %} style="opacity:.72"{% endif %}>
+        <span class="ticket-act" style="min-width:58px;text-align:center;{% if c.held_back %}background:var(--warn-soft);color:var(--warn){% endif %}">{{ 'HELD' if c.held_back else 'BUY' }}</span>
+        <div class="grow">
+          <div class="t"><strong>{{ c.symbol }}</strong> <span class="muted">· {{ c.venue }} · {{ broker(c.where) }}</span></div>
+          <div class="s"><span class="muted">Price</span> · {{ c.label }}: limit {{ money(c.currency, c.limit, 2) }}, stop {{ money(c.currency, c.stop, 2) }}{% if c.stop_pct is not none %} ({{ '{:+.1f}%'.format(c.stop_pct) }}){% endif %}{% if c.quantity %}, qty {{ '{:g}'.format(c.quantity) }}{% endif %}{% if c.record is not none %} · record {{ '{:+.2f}R'.format(c.record) }} a trade{% endif %}{% if c.hold %}, about {{ c.hold }} sessions{% endif %}</div>
+          {% if c.conditions %}<div class="s" style="margin-top:2px"><span class="muted">Conditions</span> · {{ c.conditions }}</div>{% endif %}
+          {% if c.story and c.story.direction %}{{ news_read(c.story) }}{% else %}<div class="s muted" style="margin-top:2px">News · not read yet</div>{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
 
 {# ── Watch ────────────────────────────────────────────────────────────── #}
 <section class="section">
@@ -107,4 +150,35 @@
   </div>
 </section>
 {% endif %}
+
+{# ── Markets and the record ───────────────────────────────────────────── #}
+<section class="section">
+  <h2>Markets and the record</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="card-head"><h3>Conditions now</h3><a class="hint" href="/simulations" style="color:var(--atext)">details →</a></div>
+      <ul class="list">
+        {% for m in conditions %}{% set st = {} %}{% for s in m.states %}{% set _ = st.update({s.key: s.state}) %}{% endfor %}
+        <li><div class="grow"><div class="t"><strong>{{ m.name }}</strong></div>
+          <div class="s">trend {{ st.trend or '—' }} · fear {{ st.fear or '—' }} · dollar {{ st.dollar or '—' }} · war/geopolitics {{ st.world_news or '—' }}{% if st.local_news %} · policy uncertainty {{ st.local_news }}{% endif %}</div>
+          {% for c in m.changed %}<div class="s"><span class="badge {{ 'badge-ok' if c.on else 'badge-warn' }}">{{ 'on' if c.on else 'paused' }}</span> {{ c.label }}</div>{% endfor %}
+        </div></li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Every call, scored</h3><a class="hint" href="/ideas" style="color:var(--atext)">details →</a></div>
+      {% set a = calls.all %}
+      <ul class="list">
+        <li><div class="grow"><div class="t">{{ a.trades or 0 }} closed{% if a.trades %} · {{ '{:+.2f}R'.format(a.expectancy_r) }} a call · {{ '%.0f%%'|format(a.win_rate * 100) }} won{% endif %}</div>
+          <div class="s">{{ calls.counts.values()|sum }} calls in all, taken or not</div></div></li>
+        {% for k in ['passes', 'fails'] %}{% set g = calls.by_gate.get(k) %}{% if g and g.trades %}
+        <li><div class="grow"><div class="s">gate {{ k }}: {{ '{:+.2f}R'.format(g.expectancy_r) }} over {{ g.trades }}</div></div></li>{% endif %}{% endfor %}
+        {% for k in ['supports', 'neutral', 'contradicts'] %}{% set g = calls.by_story.get(k) %}{% if g and g.trades %}
+        <li><div class="grow"><div class="s">news {{ k }}: {{ '{:+.2f}R'.format(g.expectancy_r) }} over {{ g.trades }}</div></div></li>{% endif %}{% endfor %}
+        {% if not a.trades %}<li class="muted">No call has closed yet — the first close within a few sessions.</li>{% endif %}
+      </ul>
+    </div>
+  </div>
+</section>
 {% endblock %}

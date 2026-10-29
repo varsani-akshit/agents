@@ -67,13 +67,16 @@ def account_svg(curve: dict) -> Markup:
 
 # ─────────────────────────────────── Today ──────────────────────────────────
 def today() -> dict:
-    from advisor import bars, scan
+    from advisor import bars, scan, venue
+    from advisor import story as story_mod
     from advisor.strategies import indicators
-    from brokers import kite, portfolio as pf, webull
+    from brokers import coinbase, kite, portfolio as pf, webull
 
     accts = scan.accounts()
     books = []
-    for name, mod in (("kite", kite), ("webull", webull)):
+    for name, mod in (("kite", kite), ("webull", webull), ("coinbase", coinbase)):
+        if name == "coinbase" and not mod.configured():
+            continue
         data = pf.latest(name)
         tot = pf.totals(data["lines"]) if data else {}
         a = accts.get(name) or {}
@@ -138,6 +141,31 @@ def today() -> dict:
         funding.append({"broker": b["broker"], "currency": b["currency"], "reserve": reserve,
                         "tickets_cost": need, "add": add})
 
+    # Today's cases: every setup that passed the gate on the last close, with
+    # its three reads — the price setup, the conditions, the news.
+    veto = float(cfg.get("news_veto_strength", 0.5))
+    cases = []
+    run_ = db.one("""SELECT id FROM sim_runs WHERE finished_at IS NOT NULL AND error IS NULL
+                     ORDER BY started_at DESC LIMIT 1""")
+    if run_:
+        rows = story_mod.attach(db.query(
+            """SELECT region, symbol, strategy, score, detail FROM sim_candidates
+               WHERE run_id = %s AND kind = 'signal' AND passed_gate ORDER BY score DESC LIMIT 12""",
+            (run_["id"],)))
+        for c in rows:
+            d, s = c["detail"], c.get("story") or {}
+            cases.append({
+                "symbol": d.get("display") or name_of(c["symbol"]), "venue": venue(c["symbol"]),
+                "where": d.get("broker"), "currency": d.get("currency"), "label": d.get("label"),
+                "limit": d.get("limit"), "stop": d.get("stop"), "stop_pct": d.get("stop_pct"),
+                "quantity": d.get("quantity"), "record": (d.get("evidence") or {}).get("expectancy_r"),
+                "hold": (d.get("evidence") or {}).get("median_days"),
+                "conditions": d.get("regime_why"), "story": s,
+                "held_back": s.get("direction") == "contradicts" and float(s.get("strength") or 0) >= veto})
+        cases.sort(key=lambda c: (c["held_back"], -(c["record"] or 0)))
+    alerts = db.query("""SELECT kind, symbol, text, created_at FROM alerts
+                         WHERE created_at > now() - interval '24 hours' ORDER BY created_at DESC LIMIT 10""")
+
     # Portfolio at a glance: the largest holdings per broker.
     top = {}
     for name in ("kite", "webull"):
@@ -179,13 +207,23 @@ def today() -> dict:
         actions.append({"verb": "Sell", "tone": "bad", "symbol": name_of(e["symbol"]),
                         "where": d.get("broker"), "what": "at the next open",
                         "why": f"{d.get('reason')} ({e['strategy'].replace('_', ' ')})"})
+    reads = {(r["symbol"], r["strategy"], str(r["signal_date"])): r["story"] for r in db.query(
+        """SELECT symbol, strategy, signal_date, story FROM calls WHERE story IS NOT NULL
+           AND (symbol, strategy, signal_date) IN (SELECT symbol, strategy, signal_date FROM ideas
+                                                   WHERE status IN ('open', 'filled'))""")}
     for i in ideas:
         if i["status"] != "open":
             continue
+        home = (accts.get(i["broker"]) or {}).get("currency") or i["currency"]
         actions.append({"verb": "Buy", "tone": "ok", "symbol": name_of(i["symbol"]), "where": i["broker"],
+                        "venue": venue(i["symbol"]),
                         "what": f"limit {i['limit_price']:,.2f} · stop {i['stop_price']:,.2f}"
                                 + (f" · qty {i['quantity']:g}" if i["quantity"] else ""),
                         "why": (i["reasons"] or [""])[0],
+                        "funding": (scan.funding_line(i["broker"], i["currency"],
+                                                      i["quantity"] * i["limit_price"], home)
+                                    if i["quantity"] else None),
+                        "story": reads.get((i["symbol"], i["strategy"], str(i["signal_date"]))),
                         "by": i["valid_until"], "currency": i["currency"]})
     for f in funding:
         if f["add"] > 0:
@@ -237,7 +275,8 @@ def today() -> dict:
             if len(watch) >= 10:
                 break
 
-    return {"news": news[:8], "actions": actions, "watch": watch,
+    return {"news": news[:8], "actions": actions, "watch": watch, "cases": cases,
+            "alerts": alerts, "calls": story_mod.scorecard(), "conditions": conditions_now(),
             "books": books, "attention": attention, "ideas": ideas, "closed": closed,
             "regions": regions, "brief": brief, "exits": exits, "near": near[:14],
             "funding": funding, "top": top, "evidence": evidence,
