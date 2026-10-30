@@ -154,6 +154,58 @@ def shock_alerts(held: dict[str, dict], q: dict[str, dict], ranges: dict[str, tu
     return out
 
 
+def watched() -> list[dict]:
+    from advisor import settings
+
+    return list(settings().get("watch_alerts") or [])
+
+
+def level_alerts(watch: list[dict], q: dict[str, dict]) -> list[dict]:
+    """A watched name trading at or below its level — once a week at most,
+    so a name that stays down does not email every five minutes."""
+    out = []
+    for w in watch:
+        sym, level = w["symbol"], w.get("below")
+        r = q.get(sym)
+        if level is None or not r or r["low"] > level:
+            continue
+        recent = db.one("""SELECT 1 FROM alerts WHERE kind = 'level' AND symbol = %s
+                           AND created_at > now() - interval '7 days'""", (sym,))
+        if recent:
+            continue
+        ccy = CURRENCY[market_of(sym)]
+        out.append({"symbol": sym, "ref": f"{level:g}", "kind": "level",
+                    "text": f"{bare(sym)} on {venue(sym)} traded at {_m(ccy, r['low'])}, at or below your "
+                            f"{_m(ccy, level)} level (now {_m(ccy, r['last'])})."
+                            + (f" Your plan: {w['note']}." if w.get("note") else "")})
+    return out
+
+
+def signal_alerts(watch: list[dict]) -> list[dict]:
+    """A strategy that passes the gate signalled a buy on a watched name in
+    the latest simulation run — with the ticket's levels."""
+    syms = [w["symbol"] for w in watch if w.get("signal")]
+    if not syms:
+        return []
+    run = db.one("""SELECT id FROM sim_runs WHERE finished_at IS NOT NULL AND error IS NULL
+                    ORDER BY started_at DESC LIMIT 1""")
+    if not run:
+        return []
+    notes = {w["symbol"]: w.get("note") for w in watch}
+    out = []
+    for c in db.query("""SELECT symbol, strategy, detail FROM sim_candidates
+                         WHERE run_id = %s AND kind = 'signal' AND passed_gate AND symbol = ANY(%s)""",
+                      (run["id"], syms)):
+        d = c["detail"] or {}
+        ccy = d.get("currency") or CURRENCY[market_of(c["symbol"])]
+        out.append({"symbol": c["symbol"], "ref": f"{c['strategy']}:{d.get('as_of')}", "kind": "signal",
+                    "text": f"{bare(c['symbol'])} on {venue(c['symbol'])}: {d.get('label') or c['strategy']} "
+                            f"signalled a buy at the {d.get('as_of')} close — limit {_m(ccy, d['limit'])}, "
+                            f"stop {_m(ccy, d['stop'])}. This strategy passes Alfred's gate."
+                            + (f" Your plan: {notes[c['symbol']]}." if notes.get(c["symbol"]) else "")})
+    return out
+
+
 def news_alerts(symbols: set[str], since_minutes: int = 30) -> list[dict]:
     """Bad news the matcher found on a name you hold or have a ticket on."""
     if not symbols:
@@ -204,8 +256,9 @@ def store(found: list[dict]) -> list[dict]:
     return new
 
 
-SUBJECT = {"stop": "STOP", "target": "TARGET", "fill": "filled", "shock": "big move", "news": "news"}
-ORDER = ["stop", "target", "fill", "shock", "news"]
+SUBJECT = {"stop": "STOP", "target": "TARGET", "fill": "filled", "shock": "big move", "news": "news",
+           "level": "at your level", "signal": "buy signal"}
+ORDER = ["stop", "target", "fill", "signal", "level", "shock", "news"]
 
 
 def compose(new: list[dict]) -> tuple[str, str]:
@@ -229,9 +282,11 @@ def beat() -> dict:
 
     ideas = db.query("SELECT * FROM ideas WHERE status IN ('open', 'filled')")
     held = bars.holdings()
-    symbols = sorted({i["symbol"] for i in ideas} | set(held))
+    watch = watched()
+    symbols = sorted({i["symbol"] for i in ideas} | set(held) | {w["symbol"] for w in watch})
     q = quotes(symbols)
     found = ticket_alerts(ideas, q)
+    found += level_alerts(watch, q) + signal_alerts(watch)
     found += shock_alerts(held, q, _ranges([s for s in held if s in q]))
     found += news_alerts(set(held) | {i["symbol"] for i in ideas})
     new = store(found)

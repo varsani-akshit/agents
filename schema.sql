@@ -702,7 +702,7 @@ ALTER TABLE name_cache ADD COLUMN IF NOT EXISTS exchange TEXT;
 CREATE TABLE IF NOT EXISTS alerts (
   id         BIGSERIAL PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  kind       TEXT NOT NULL,            -- fill | stop | target | shock | news
+  kind       TEXT NOT NULL,            -- fill | stop | target | shock | news | level | signal
   symbol     TEXT NOT NULL,
   ref        TEXT NOT NULL DEFAULT '', -- idea id, document id …
   day        DATE NOT NULL,

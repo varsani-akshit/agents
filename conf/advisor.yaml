@@ -115,6 +115,16 @@ core_trim:
   stretch_atr: 7.0
   share: 0.2
 
+# Names you are waiting to buy. The heartbeat emails once when one trades at
+# or below its level (and not again for a week), and once when a strategy
+# that passes the gate signals a buy on it. Yahoo tickers; `note` is your plan,
+# repeated in the alert.
+watch_alerts:
+  - symbol: GOOGL
+    below: 255.0
+    signal: true
+    note: "second tranche of the Alphabet plan — about A$450"
+
 watchlist:
   # India — gold, silver and broad index ETFs (in Kite)
   - GOLDBEES.NS

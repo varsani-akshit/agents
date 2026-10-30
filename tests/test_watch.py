@@ -76,3 +76,41 @@ def test_the_weekly_review_composes_without_history():
     assert subject.startswith("Alfred · week to")
     for part in ("Every call, scored", "Tickets:", "Markets", "The week ahead:"):
         assert part in text
+
+
+def test_a_watched_name_alerts_at_its_level_once_a_week():
+    import db
+
+    db.execute("DELETE FROM alerts WHERE symbol = 'PYTEST-G'")
+    try:
+        plan = [{"symbol": "PYTEST-G", "below": 255.0, "note": "second tranche"}]
+        assert watch.level_alerts(plan, {"PYTEST-G": {"low": 256.0, "last": 260.0}}) == []
+        hit = watch.level_alerts(plan, {"PYTEST-G": {"low": 254.5, "last": 257.0}})
+        assert len(hit) == 1 and hit[0]["kind"] == "level"
+        assert "at or below your US$255.00 level" in hit[0]["text"] and "second tranche" in hit[0]["text"]
+        watch.store(hit)
+        # Still down tomorrow: no second email within the week.
+        assert watch.level_alerts(plan, {"PYTEST-G": {"low": 250.0, "last": 251.0}}) == []
+    finally:
+        db.execute("DELETE FROM alerts WHERE symbol = 'PYTEST-G'")
+
+
+def test_a_gated_signal_on_a_watched_name_alerts(monkeypatch):
+    import db
+
+    run = db.one("INSERT INTO sim_runs (trigger, finished_at) VALUES ('pytest', now()) RETURNING id")["id"]
+    try:
+        db.execute("""INSERT INTO sim_candidates (run_id, region, symbol, strategy, kind, passed_gate, score, detail)
+                      VALUES (%s, 'US', 'PYTEST-G', 'quiet_trend', 'signal', true, 1, %s)""",
+                   (run, '{"as_of": "2026-11-03", "limit": 300.0, "stop": 285.0, "label": "Calm trend start", "currency": "USD"}'))
+        out = watch.signal_alerts([{"symbol": "PYTEST-G", "signal": True, "note": "third tranche"}])
+        assert len(out) == 1 and out[0]["kind"] == "signal"
+        assert "Calm trend start signalled a buy" in out[0]["text"] and "limit US$300.00" in out[0]["text"]
+        assert watch.signal_alerts([{"symbol": "PYTEST-G", "signal": False}]) == []
+    finally:
+        db.execute("DELETE FROM sim_runs WHERE id = %s", (run,))
+
+
+def test_alphabet_is_on_the_watch_list():
+    w = {x["symbol"]: x for x in watch.watched()}
+    assert w["GOOGL"]["below"] == 255.0 and w["GOOGL"]["signal"]
