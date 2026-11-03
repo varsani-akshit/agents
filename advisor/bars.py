@@ -21,16 +21,51 @@ STABLECOINS = {"USDC", "USDT", "DAI", "PYUSD"}
 
 
 def universe() -> list[str]:
-    """Index members, your holdings, and the watchlist — de-duplicated."""
+    """Index members, your holdings, and the watchlist — de-duplicated.
+
+    Listings known to return nothing are left out until their retry date.
+    Without that the daily fetch asks Yahoo for the same handful of dead
+    tickers every cycle, and the real download errors are lost among them.
+    """
     syms = {r["symbol"] for r in db.query("SELECT symbol FROM securities")}
     syms |= set(holdings())
     # Both listings of every Indian holding, so _best_listing has a choice.
+    # Many names list on only one exchange, so one of the two is expected to
+    # be empty — that is why a dead listing is skipped rather than deleted:
+    # the holding behind it is real.
     for r in db.query("""SELECT DISTINCT l.symbol FROM portfolio_lines l
                          WHERE l.exchange IN ('NSE','BSE')"""):
         syms |= {r["symbol"] + ".NS", r["symbol"] + ".BO"}
     syms |= set(settings().get("watchlist") or [])
     syms |= set(_crypto_pairs())
-    return sorted(syms)
+    return sorted(syms - dead_listings())
+
+
+def dead_listings() -> set[str]:
+    """Symbols currently rested, because asking for them returns nothing."""
+    return {r["symbol"] for r in
+            db.query("SELECT symbol FROM dead_listings WHERE retry_after > now()")}
+
+
+def mark_dead(symbol: str, reason: str = "no data returned") -> None:
+    """Record a listing that came back empty.
+
+    Each miss pushes the retry further out, so a ticker that is merely quiet
+    is tried again soon while one that is genuinely gone is asked about twice
+    a year rather than twice a day.
+    """
+    db.execute(
+        """INSERT INTO dead_listings (symbol, reason) VALUES (%s, %s)
+           ON CONFLICT (symbol) DO UPDATE
+             SET misses = dead_listings.misses + 1, reason = EXCLUDED.reason,
+                 retry_after = now() + (least(dead_listings.misses + 1, 6)
+                                        * interval '30 days')""",
+        (symbol, reason[:200]))
+
+
+def revive(symbol: str) -> None:
+    """A listing that returned data after all is no longer dead."""
+    db.execute("DELETE FROM dead_listings WHERE symbol = %s", (symbol,))
 
 
 def _crypto_pairs() -> list[str]:
@@ -92,8 +127,13 @@ def fetch(symbols: list[str], period: str = "1mo", batch: int = 80) -> int:
             try:
                 frame = data[sym] if isinstance(data.columns, pd.MultiIndex) else data
             except KeyError:
+                mark_dead(sym, "not in the download")
                 continue
             frame = frame.dropna(subset=["Open", "High", "Low", "Close"])
+            if frame.empty:
+                mark_dead(sym, "download returned no rows")
+                continue
+            revive(sym)
             for ts, r in frame.iterrows():
                 rows.append((sym, ts.date(), float(r["Open"]), float(r["High"]),
                              float(r["Low"]), float(r["Close"]),

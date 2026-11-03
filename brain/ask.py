@@ -61,7 +61,7 @@ does not need macro concepts explained from scratch."""
 def ask(
     question: str,
     *,
-    max_turns: int = 8,
+    max_turns: int = 12,
     save: bool = True,
     model: str | None = None,
     use_web_search: bool = True,
@@ -70,19 +70,28 @@ def ask(
     """Answer one question with full tool access. Returns text plus provenance."""
     from brain import observe
 
+    from brain import advisor_tools
+
     with observe.run("ask", trigger="dashboard", meta={"depth": "quick"}) as rec:
         rec.set_input({"question": question, "model": model})
+        # Charts the agent draws during this answer land here, and travel back
+        # with the result so the renderer can mount them. Started per answer so
+        # one question's figures never leak into another's.
+        drawn = advisor_tools.collecting()
         result = _ask(question, max_turns=max_turns, save=save, model=model,
                       use_web_search=use_web_search, owner=owner)
-        rec.set_output({k: v for k, v in result.items() if k != "text"}
-                       | {"answer": (result.get("text") or "")[:4000]})
+        result["charts"] = dict(drawn)
+        rec.set_output({k: v for k, v in result.items()
+                        if k not in ("text", "charts")}
+                       | {"answer": (result.get("text") or "")[:4000],
+                          "charts_drawn": list(result["charts"])})
         return result
 
 
 def _ask(
     question: str,
     *,
-    max_turns: int = 8,
+    max_turns: int = 12,
     save: bool = True,
     model: str | None = None,
     use_web_search: bool = True,
@@ -109,8 +118,14 @@ def _ask(
 
     user = f"""Current time: {datetime.now(timezone.utc).isoformat()}
 
-# Charts available — embed with ![title](charts/KEY.png)
+# Charts
+Standing macro figures you may embed as ![title](charts/KEY.png):
 {chart_lines or '(none)'}
+
+You can also draw your own with the make_chart tool — a name's candles, several
+names rebased and compared, or a ratio. Prefer drawing one whenever the point
+is about a shape over time; a sentence describing a trend is weaker than the
+trend.
 
 Your standing world model (written by the most recent analysis cycle):
 {wm[:4000]}

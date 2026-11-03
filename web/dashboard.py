@@ -307,7 +307,44 @@ def today() -> dict:
             if len(watch) >= 10:
                 break
 
-    return {"news": news[:8], "actions": actions, "watch": watch, "cases": cases,
+    # ── The band at the top: the few numbers worth seeing before anything ──
+    # Everything below this is analysis, and analysis read before the summary
+    # is just text. What matters first: what the whole thing is worth, how
+    # much of it sits in one name, what needs doing, and whether the data
+    # behind all of it is current.
+    total_aud, by_broker = 0.0, []
+    for b in books:
+        v = b.get("value")
+        if v is None:
+            continue
+        conv = scan._in_currency(float(v), b["currency"], "AUD") if b["currency"] != "AUD" else float(v)
+        if conv is None:
+            continue
+        total_aud += conv
+        by_broker.append({"broker": b["broker"], "aud": conv, "currency": b["currency"],
+                          "native": float(v)})
+    biggest = None
+    for name, lines in top.items():
+        for ln in lines:
+            conv = (scan._in_currency(float(ln["value"]), ln["currency"], "AUD")
+                    if ln["currency"] != "AUD" else float(ln["value"]))
+            if conv and (biggest is None or conv > biggest["aud"]):
+                biggest = {"symbol": name_of(ln["symbol"]), "aud": conv, "broker": name}
+    if biggest and total_aud:
+        biggest["share"] = biggest["aud"] / total_aud * 100
+    todo = sum(1 for a in actions if a["verb"] != "Review" or a.get("urgent"))
+    stale = [b for b in books if b["status"].get("configured")
+             and not b["status"].get("connected")]
+    headline = {
+        "total_aud": total_aud or None, "by_broker": by_broker,
+        "biggest": biggest, "todo": todo,
+        "to_sell": sum(1 for a in actions if a["verb"] == "Sell"),
+        "to_buy": sum(1 for a in actions if a["verb"] == "Buy"),
+        "needs_login": [b["status"]["label"] for b in stale],
+    }
+
+    return {"headline": headline,
+            "news": news[:8], "actions": actions, "watch": watch, "cases": cases,
             "alerts": alerts, "calls": story_mod.scorecard(), "conditions": conditions_now(),
             "books": books, "attention": attention, "ideas": ideas, "closed": closed,
             "regions": regions, "brief": brief, "exits": exits, "near": near[:14],
@@ -430,11 +467,18 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
     if region in REGIONS:
         where.append("region = %s")
         params.append(region)
+    # What matters, and what merely happened. The first two are the run's
+    # conclusions — setups you could act on, and ones nearly there. The last
+    # two are the thousand names it looked at and rejected: real evidence,
+    # and nothing to read unless you are checking the machine's working. They
+    # are reachable by link, not rendered into the page by default.
     groups = {
-        "passed": ("Passed the gate — tickets, unless the news contradicts them", "kind='signal' AND passed_gate"),
-        "missed": ("Fired, but did not pass the gate", "kind='signal' AND NOT passed_gate"),
-        "near_passed": ("Close to firing — strategies that pass", "kind='near' AND passed_gate"),
-        "near_other": ("Close to firing — strategies that do not pass", "kind='near' AND NOT passed_gate"),
+        "passed": ("Passed the gate — tickets, unless the news contradicts them",
+                   "kind='signal' AND passed_gate", True),
+        "near_passed": ("Close to firing", "kind='near' AND passed_gate", True),
+        "missed": ("Fired, but did not pass the gate", "kind='signal' AND NOT passed_gate", False),
+        "near_other": ("Close to firing on a strategy that does not pass",
+                       "kind='near' AND NOT passed_gate", False),
     }
     # A run holds over a thousand candidates. Expanding a group used to fetch
     # 500 at once and render a quarter-megabyte of HTML; it now fetches one
@@ -442,8 +486,16 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
     from web import paging
 
     cand = {}
-    for key, (title, cond) in groups.items():
+    for key, (title, cond, matters) in groups.items():
         if show and show != key:
+            continue
+        if not show and not matters:
+            # Counted, not rendered: the page says how many were rejected
+            # without spending a hundred rows saying which.
+            n = db.one(f"SELECT count(*) AS n FROM sim_candidates "
+                       f"WHERE {' AND '.join(where)} AND {cond}", params)["n"]
+            cand[key] = {"title": title, "rows": [], "total": n, "page": None,
+                         "collapsed": True}
             continue
         base = (f"SELECT region, symbol, strategy, kind, passed_gate, score, detail "
                 f"FROM sim_candidates WHERE {' AND '.join(where)} AND {cond} "
@@ -459,7 +511,8 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
                              total=db.one(count, params)["n"], page=1, per_page=n)
         pg = paging.Page(rows=story.attach(pg.rows), total=pg.total,
                          page=pg.page, per_page=pg.per_page)
-        cand[key] = {"title": title, "rows": pg.rows, "total": pg.total, "page": pg}
+        cand[key] = {"title": title, "rows": pg.rows, "total": pg.total, "page": pg,
+                     "collapsed": False}
     return {"run": run, "prev": prev, "matrix": order, "changes": changes, "accounts": accounts,
             "candidates": cand, "region": region, "show": show,
             "regions": [(k, REGION_NAME[k]) for k in REGIONS]}

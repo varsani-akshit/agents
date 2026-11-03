@@ -28,8 +28,39 @@
 <header class="ph">
   <div class="eyebrow">{{ first_name and ('Good to see you, ' ~ first_name) or 'Today' }}</div>
   <h1>Today</h1>
-  <p class="sub">What to do, and what to watch. Alfred advises; you place every order.</p>
+  <p class="sub">Alfred advises; you place every order.</p>
 </header>
+
+{# ── The band ─────────────────────────────────────────────────────────────
+   Four numbers before any prose. Everything further down is analysis, and
+   analysis read before the summary is just text. #}
+{% set h = headline %}
+<div class="band">
+  <div class="band-item">
+    <div class="band-k">Portfolio</div>
+    <div class="band-v">{{ h.total_aud and money('AUD', h.total_aud) or '—' }}</div>
+    <div class="band-s">{% if h.needs_login %}excluding {{ h.needs_login|join(', ') }}
+      {% else %}across {{ h.by_broker|length }} account{{ '' if h.by_broker|length == 1 else 's' }}{% endif %}</div>
+  </div>
+  {% if h.biggest %}
+  <div class="band-item">
+    <div class="band-k">Largest position</div>
+    <div class="band-v{{ ' hot' if h.biggest.share and h.biggest.share > 40 }}">{{ h.biggest.symbol }}
+      <span class="band-pct">{{ '%.0f%%'|format(h.biggest.share or 0) }}</span></div>
+    <div class="band-s">{{ money('AUD', h.biggest.aud) }}{% if h.biggest.share and h.biggest.share > 40 %} · concentrated{% endif %}</div>
+  </div>
+  {% endif %}
+  <div class="band-item">
+    <div class="band-k">To do</div>
+    <div class="band-v">{{ h.todo }}</div>
+    <div class="band-s">{% if h.to_buy or h.to_sell %}{{ h.to_buy }} to buy{% if h.to_sell %}, {{ h.to_sell }} to sell{% endif %}{% else %}nothing waiting{% endif %}</div>
+  </div>
+  <div class="band-item">
+    <div class="band-k">Last run</div>
+    <div class="band-v">{{ scanned_at and (scanned_at|ago) or '—' }}</div>
+    <div class="band-s"><a href="/simulations">what it found →</a></div>
+  </div>
+</div>
 
 {% for b in books if b.status.configured and not b.status.connected %}
 <div class="notice notice-warn">
@@ -47,11 +78,6 @@
     <div class="kpi-hint">{% if b.pnl is not none %}<span class="{{ 'up' if b.pnl >= 0 else 'down' }}">{{ '{:+,.0f}'.format(b.pnl) }}</span> unrealised · {% endif %}{{ money(b.currency, b.cash) }} free</div>
   </a>
   {% endfor %}
-  <div class="kpi">
-    <div class="kpi-label">To do</div>
-    <div class="kpi-value">{{ actions|rejectattr('verb', 'equalto', 'Review')|list|length }}</div>
-    <div class="kpi-hint">{{ actions|selectattr('verb', 'equalto', 'Review')|list|length }} holdings to review</div>
-  </div>
 </div>
 
 {# ── Do now ───────────────────────────────────────────────────────────── #}
@@ -77,10 +103,13 @@
       {% endfor %}
     </ul>
     {% if withdrawn %}
-    {# A ticket that quietly disappears reads as a bug. Say what went and why. #}
-    <p class="s muted" style="margin:10px 0 0">Withdrawn since the last run —
-      {% for w in withdrawn %}<strong>{{ w.symbol.split('.')[0] }}</strong>
-        ({{ w.withdrawn_reason|lower|trim('.') }}){% if not loop.last %}; {% endif %}{% endfor %}.</p>
+    {# A ticket that quietly disappears reads as a bug, so say what went. The
+       reason is usually the same for all of them, so it is said once. #}
+    {% set reasons = withdrawn|map(attribute='withdrawn_reason')|unique|list %}
+    <p class="s muted" style="margin:10px 0 0">Withdrawn since the last run:
+      {% for w in withdrawn %}<strong>{{ w.symbol.split('.')[0] }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
+      — {% if reasons|length == 1 %}{{ reasons[0]|lower|trim('.') }}{% else %}the
+      newest run no longer supports them{% endif %}.</p>
     {% endif %}
   </div>
   {% set reviews = actions|selectattr('verb', 'equalto', 'Review')|rejectattr('urgent')|list %}
@@ -163,8 +192,10 @@
 </section>
 
 {# ── News about what you hold ─────────────────────────────────────────── #}
+<details class="section more">
+  <summary><h2 style="display:inline">Background — news, conditions and the record</h2></summary>
 {% if news %}
-<section class="section">
+<section class="section" style="border:0;padding:0;margin-top:8px">
   <h2>News on what you hold</h2>
   <div class="card">
     <ul class="list">
@@ -182,7 +213,7 @@
 {% endif %}
 
 {# ── Markets and the record ───────────────────────────────────────────── #}
-<section class="section">
+<section class="section" style="border:0;padding:0">
   <h2>Markets and the record</h2>
   <div class="grid">
     <div class="card">
@@ -211,4 +242,5 @@
     </div>
   </div>
 </section>
+</details>
 {% endblock %}

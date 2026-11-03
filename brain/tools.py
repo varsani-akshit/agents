@@ -723,6 +723,16 @@ def resolve_grounding_links(text: str, citations: list[dict] | None = None) -> s
     return text
 
 
+# The advisor's own knowledge — the portfolio, the tickets, the strategy
+# records, the last run — plus charting. Kept in their own module because
+# they read the advisor rather than the market, and the two have different
+# reasons to change.
+from brain.advisor_tools import DEFINITIONS as ADVISOR_DEFINITIONS  # noqa: E402
+from brain.advisor_tools import HANDLERS as _ADVISOR_HANDLERS  # noqa: E402
+from brain.advisor_tools import SPAN_KIND as _ADVISOR_SPANS  # noqa: E402
+
+DEFINITIONS = DEFINITIONS + ADVISOR_DEFINITIONS
+
 HANDLERS = {
     "query_prices": _query_prices,
     "get_stats_pack": _get_stats_pack,
@@ -736,6 +746,7 @@ HANDLERS = {
     "stock_profile": _stock_profile,
     "stock_news": _stock_news,
     "market_snapshot": _market_snapshot,
+    **_ADVISOR_HANDLERS,
 }
 
 # Span kinds for the trace tree: lookups that feed the model context are
@@ -749,6 +760,7 @@ _SPAN_KIND = {
     "stock_profile": "retrieval",
     "stock_news": "retrieval",
     "market_snapshot": "retrieval",
+    **_ADVISOR_SPANS,
 }
 
 

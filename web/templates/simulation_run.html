@@ -32,6 +32,11 @@
   </div>
   <p class="lead-in">Every instrument this run surfaced, best first. Anything not marked <span class="badge badge-ok">passes</span> did not clear the gate — shown for your own judgement, not as advice.</p>
   {% for key, g in candidates.items() %}
+  {% if g.collapsed %}
+  <p class="hint" style="margin:14px 0 0">{{ g.title }} ·
+    <a href="/simulations/{{ run.id }}?show={{ key }}{{ '&region=' ~ region if region else '' }}"
+       style="color:var(--atext)">{{ '{:,}'.format(g.total) }} — look at them →</a></p>
+  {% else %}
   <h3 style="margin:22px 0 8px;font:600 13.5px/1.3 var(--sans)">{{ g.title }} <span class="muted" style="font-weight:400">· {{ g.total }}</span></h3>
   {{ cand_table(g.rows, run_id=run.id) }}
   {% if show == key %}
@@ -39,7 +44,8 @@
   {% elif g.total > g.rows|length %}
     <p class="hint"><a href="/simulations/{{ run.id }}?show={{ key }}{{ '&region=' ~ region if region else '' }}" style="color:var(--atext)">Show all {{ '{:,}'.format(g.total) }} →</a></p>
   {% endif %}
-  {% if show %}<p class="hint"><a href="/simulations/{{ run.id }}{{ '?region=' ~ region if region else '' }}" style="color:var(--atext)">← All groups</a></p>{% endif %}
+  {% if show %}<p class="hint"><a href="/simulations/{{ run.id }}{{ '?region=' ~ region if region else '' }}" style="color:var(--atext)">← Back to what matters</a></p>{% endif %}
+  {% endif %}
   {% endfor %}
 </section>
 

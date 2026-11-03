@@ -680,9 +680,13 @@ async def api_ask(request: Request):
             answer = result.get("answer") or result.get("text") or ""
             if not answer.strip():
                 return JSONResponse({"error": "the agent returned no answer"}, 500)
+            # The standing macro pack plus anything the agent drew for this
+            # answer, so a figure it built mounts through the same machinery.
+            pack = chartdata.latest_pack() | (result.get("charts") or {})
             return {"id": result["analysis_id"], "depth": "quick",
                     "url": f"/answer/{result['analysis_id']}",
-                    "html": render_markdown(answer, chartdata.latest_pack())}
+                    "charts": result.get("charts") or {},
+                    "html": render_markdown(answer, pack)}
     except Exception as exc:  # noqa: BLE001
         log.exception("ask failed")
         return JSONResponse({"error": f"{type(exc).__name__}: {exc}"[:300]}, 500)

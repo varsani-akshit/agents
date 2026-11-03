@@ -150,6 +150,16 @@
         // the chart renderer's IntersectionObserver only watches nodes that
         // existed when it was built, so an answer's figure mounted and never
         // drew, and its timestamps stayed in UTC. Both are told explicitly.
+        // Figures the agent drew for this answer are not in the page's pack
+        // — it was serialised before the question was asked — so they are
+        // merged in before mounting, or ensure() finds no spec and writes
+        // "No data for this figure" over a chart that exists.
+        if (res.d.charts) {
+          window.MIA_CHARTS = window.MIA_CHARTS || {};
+          Object.keys(res.d.charts).forEach(function (k) {
+            window.MIA_CHARTS[k] = res.d.charts[k];
+          });
+        }
         if (window.AlfredCharts && window.AlfredCharts.ensure) {
           a.querySelectorAll("[data-chart]").forEach(window.AlfredCharts.ensure);
         }

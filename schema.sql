@@ -733,3 +733,19 @@ ALTER TABLE ideas ADD COLUMN IF NOT EXISTS withdrawn_reason TEXT;
 -- the case still weak.
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS reasoning JSONB;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS reasoned_at TIMESTAMPTZ;
+
+-- Listings that return nothing. Two kinds end up here: an index member that
+-- has left the exchange, and a second listing the universe asks for on
+-- principle (both .NS and .BO for every Indian holding) where only one
+-- exists. Asking Yahoo for them every cycle costs a failed download each
+-- time and buries real fetch errors in the log.
+--
+-- `retry_after` rather than a permanent ban: a ticker can be relisted, and a
+-- single bad week should not retire a name for good.
+CREATE TABLE IF NOT EXISTS dead_listings (
+  symbol      TEXT PRIMARY KEY,
+  misses      INT NOT NULL DEFAULT 1,
+  reason      TEXT,
+  first_miss  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  retry_after TIMESTAMPTZ NOT NULL DEFAULT now() + interval '30 days'
+);
