@@ -231,11 +231,14 @@ def today() -> dict:
                                                      FROM ideas WHERE status IN ('open', 'filled'))""")
     reads = {(r["symbol"], r["strategy"], str(r["signal_date"])): r["story"]
              for r in live_calls if r["story"]}
-    # The case: the argument joining the price, the record, the conditions and
-    # the news read. Kept separate from the read because they are judged
-    # separately — the read can be right about the news and the case still weak.
-    argued = {(r["symbol"], r["strategy"], str(r["signal_date"])): r["reasoning"]
-              for r in live_calls if r["reasoning"]}
+    # Keyed by name and strategy, not by signal date: rebasing moves a
+    # ticket's signal_date onto the latest close, and a date-keyed join then
+    # silently lost the case for every ticket that had been brought forward.
+    argued = {(r["symbol"], r["strategy"]): r["reasoning"] for r in db.query(
+        """SELECT DISTINCT ON (symbol, strategy) symbol, strategy, reasoning
+           FROM calls WHERE reasoning IS NOT NULL
+           ORDER BY symbol, strategy, created_at DESC""")}
+
     for i in ideas:
         if i["status"] != "open":
             continue
@@ -249,7 +252,7 @@ def today() -> dict:
                                                       i["quantity"] * i["limit_price"], home)
                                     if i["quantity"] else None),
                         "story": reads.get((i["symbol"], i["strategy"], str(i["signal_date"]))),
-                        "case": argued.get((i["symbol"], i["strategy"], str(i["signal_date"]))),
+                        "case": argued.get((i["symbol"], i["strategy"])),
                         "by": i["valid_until"], "currency": i["currency"],
                         # What this level used to be, when the latest close
                         # moved it. Shown rather than silently applied: a
@@ -312,13 +315,15 @@ def today() -> dict:
     # is just text. What matters first: what the whole thing is worth, how
     # much of it sits in one name, what needs doing, and whether the data
     # behind all of it is current.
-    total_aud, by_broker = 0.0, []
+    total_aud, by_broker, missing = 0.0, [], []
     for b in books:
         v = b.get("value")
-        if v is None:
-            continue
-        conv = scan._in_currency(float(v), b["currency"], "AUD") if b["currency"] != "AUD" else float(v)
+        conv = (None if v is None else
+                float(v) if b["currency"] == "AUD" else
+                scan._in_currency(float(v), b["currency"], "AUD"))
         if conv is None:
+            # A total that quietly omits an account is worse than no total.
+            missing.append(b["status"].get("label") or b["broker"])
             continue
         total_aud += conv
         by_broker.append({"broker": b["broker"], "aud": conv, "currency": b["currency"],
@@ -341,6 +346,7 @@ def today() -> dict:
         "to_sell": sum(1 for a in actions if a["verb"] == "Sell"),
         "to_buy": sum(1 for a in actions if a["verb"] == "Buy"),
         "needs_login": [b["status"]["label"] for b in stale],
+        "excluded": missing,
     }
 
     return {"headline": headline,

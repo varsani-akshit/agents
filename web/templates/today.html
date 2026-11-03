@@ -39,7 +39,7 @@
   <div class="band-item">
     <div class="band-k">Portfolio</div>
     <div class="band-v">{{ h.total_aud and money('AUD', h.total_aud) or '—' }}</div>
-    <div class="band-s">{% if h.needs_login %}excluding {{ h.needs_login|join(', ') }}
+    <div class="band-s">{% if h.excluded %}excluding {{ h.excluded|join(', ') }}
       {% else %}across {{ h.by_broker|length }} account{{ '' if h.by_broker|length == 1 else 's' }}{% endif %}</div>
   </div>
   {% if h.biggest %}

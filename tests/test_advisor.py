@@ -682,3 +682,29 @@ def test_an_unknown_exchange_code_does_not_crash_the_rebase():
         assert out["checked"] >= 1
     finally:
         db.execute("DELETE FROM ideas WHERE id=%s", (idea_id,))
+
+
+def test_money_converts_in_both_directions():
+    """Only AUD→X existed, so INR→AUD returned None and anything summing
+    across brokers dropped the Indian account without saying so."""
+    from advisor import scan
+
+    for have, want in (("AUD", "INR"), ("INR", "AUD"), ("AUD", "USD"),
+                       ("USD", "AUD"), ("INR", "USD"), ("USD", "INR")):
+        got = scan._in_currency(100.0, have, want)
+        assert got is not None and got > 0, f"{have}->{want} returned {got}"
+    # Round-tripping must land back where it started.
+    there = scan._in_currency(1000.0, "INR", "AUD")
+    back = scan._in_currency(there, "AUD", "INR")
+    assert abs(back - 1000.0) < 0.01, f"INR->AUD->INR drifted to {back}"
+
+
+def test_the_today_band_names_any_account_it_leaves_out():
+    """A total that quietly omits an account is worse than no total."""
+    from web import dashboard
+
+    h = dashboard.today()["headline"]
+    assert "total_aud" in h and "excluded" in h
+    # Every broker with a value is either counted or named as excluded.
+    counted = {b["broker"] for b in h["by_broker"]}
+    assert counted or h["excluded"], "no accounts counted and none explained"

@@ -84,6 +84,24 @@ def _in_currency(amount: float, have: str, want: str) -> float | None:
     if (have, want) == ("AUD", "INR"):
         rate = bars.fx("AUDINR=X")
         return amount * rate if rate else None
+    # The other way round. Without these, converting an Indian or US account
+    # into AUD returned None, and a caller summing across brokers dropped it
+    # without noticing — the Today band read A$15,053 for a portfolio with a
+    # ₹368,556 account in it.
+    if (have, want) == ("USD", "AUD"):
+        rate = bars.fx("AUDUSD=X")
+        return amount / rate if rate else None
+    if (have, want) == ("INR", "AUD"):
+        rate = bars.fx("AUDINR=X")
+        return amount / rate if rate else None
+    if (have, want) == ("INR", "USD"):
+        inr = bars.fx("AUDINR=X")
+        usd = bars.fx("AUDUSD=X")
+        return amount / inr * usd if inr and usd else None
+    if (have, want) == ("USD", "INR"):
+        inr = bars.fx("AUDINR=X")
+        usd = bars.fx("AUDUSD=X")
+        return amount / usd * inr if inr and usd else None
     return None
 
 
