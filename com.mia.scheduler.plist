@@ -8,12 +8,12 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/akshit/Documents/agents/mia/.venv/bin/python</string>
-        <string>/Users/akshit/Documents/agents/mia/scheduler.py</string>
+        <string>/Users/akshit/Documents/Personal/alfred-macro-agent/.venv/bin/python</string>
+        <string>/Users/akshit/Documents/Personal/alfred-macro-agent/scheduler.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/akshit/Documents/agents/mia</string>
+    <string>/Users/akshit/Documents/Personal/alfred-macro-agent</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -28,9 +28,9 @@
     <integer>60</integer>
 
     <key>StandardOutPath</key>
-    <string>/Users/akshit/Documents/agents/mia/logs/launchd.out.log</string>
+    <string>/Users/akshit/Documents/Personal/alfred-macro-agent/logs/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/akshit/Documents/agents/mia/logs/launchd.err.log</string>
+    <string>/Users/akshit/Documents/Personal/alfred-macro-agent/logs/launchd.err.log</string>
 
     <key>ProcessType</key>
     <string>Background</string>

@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import db
-from advisor import REGIONS, bars, ledger, market_of, report, scan, simulate
+from advisor import REGIONS, bars, ledger, market_of, rebase, report, scan, simulate
 
 
 def cycle(region: str, *, send: bool = True) -> dict:
     """After a close: top up prices, settle open ideas, scan, email if needed."""
     fetched = bars.refresh(list(REGIONS[region]), period="1mo")
     settled = ledger.update()
+    # Standing tickets belong to the latest close, not the one they were first
+    # computed on — the scan below skips any symbol that already has an open
+    # idea, so without this they keep yesterday's numbers for ever.
+    moved = rebase.rebase(region=None)
     # The scan reads the news for each ticket and holds back the ones it
     # contradicts (scan.news_check), before anything is stored or emailed.
     result = scan.scan(region, store=send)
@@ -24,6 +28,7 @@ def cycle(region: str, *, send: bool = True) -> dict:
     if sent and ids:
         db.execute("UPDATE ideas SET emailed_at = now() WHERE id = ANY(%s)", (ids,))
     return {"region": region, "bars": fetched, "updated": settled["updated"],
+            "rebased": len(moved["moved"]), "withdrawn": len(moved["withdrawn"]),
             "exits": len(result["exits"]), "closed": len(result["closed"]),
             "tickets": len(result["tickets"]), "held_back": len(result.get("held_back") or []),
             "stored": result["stored"],
@@ -39,4 +44,8 @@ def retest() -> dict:
     """
     from advisor import runs
 
-    return runs.run()
+    out = runs.run()
+    # Every two hours the gate is re-decided; a ticket the new verdict no
+    # longer supports must not outlive it on the dashboard.
+    moved = rebase.rebase()
+    return {**out, "rebased": len(moved["moved"]), "withdrawn": len(moved["withdrawn"])}

@@ -22,7 +22,7 @@ from pathlib import Path
 
 import markdown as md
 from markupsafe import Markup
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -424,11 +424,11 @@ async def brief(request: Request):
 
 
 @app.get("/simulations", response_class=HTMLResponse)
-async def simulations(request: Request):
+async def simulations(request: Request, page_no: str = Query("1", alias="page")):
     """Every simulation run, newest first, and the latest one at a glance."""
     from web import dashboard
 
-    ctx = await asyncio.to_thread(dashboard.sim_index)
+    ctx = await asyncio.to_thread(dashboard.sim_index, page_no)
     return page(request, "simulations.html", {**ctx, "active": "simulations"})
 
 
@@ -442,11 +442,15 @@ async def simulations_method(request: Request):
 
 
 @app.get("/simulations/{run_id}", response_class=HTMLResponse)
-async def simulation_run(request: Request, run_id: int, region: str = "", show: str = ""):
+async def simulation_run(request: Request, run_id: int, region: str = "", show: str = "",
+                         page_no: str = Query("1", alias="page"),
+                         per_page: str = Query("50")):
     """One run in full: the gate, the replays, every candidate."""
     from web import dashboard
 
-    ctx = await asyncio.to_thread(dashboard.sim_run, run_id, region=region, show=show)
+    ctx = await asyncio.to_thread(
+        lambda: dashboard.sim_run(run_id, region=region, show=show,
+                                  page=page_no, per_page=per_page))
     if not ctx.get("run"):
         return RedirectResponse("/simulations", status_code=303)
     return page(request, "simulation_run.html", {**ctx, "active": "simulations"})
@@ -832,6 +836,46 @@ async def api_stock_chart(symbol: str, days: int = 365):
     }
 
 
+@app.get("/api/chart/setup/{symbol}/{strategy}")
+async def api_setup_chart(symbol: str, strategy: str, run_id: int = 0):
+    """Candles for one setup, with its levels drawn on.
+
+    Fetched when a row is opened rather than with the page: a run holds over a
+    thousand candidates and nobody reads a thousand charts, so building them
+    all would cost a thousand frame loads to show maybe three.
+    """
+    from advisor import charts as sim_charts
+
+    levels = None
+    if run_id:
+        row = await asyncio.to_thread(
+            db.one,
+            """SELECT detail FROM sim_candidates
+               WHERE run_id=%s AND symbol=%s AND strategy=%s LIMIT 1""",
+            (run_id, symbol, strategy))
+        d = (row or {}).get("detail") or {}
+        if d.get("limit") is not None:
+            levels = {"limit": d.get("limit"), "stop": d.get("stop"),
+                      "target": d.get("target")}
+
+    spec = await asyncio.to_thread(sim_charts.setup, symbol, strategy, levels=levels)
+    if not spec:
+        return JSONResponse({"error": "no bars for this name"}, 404)
+    return spec
+
+
+@app.get("/api/chart/record/{strategy}/{region}")
+async def api_record_chart(strategy: str, region: str, run_id: int = 0, kind: str = "record"):
+    """The strategy's own record, as the gate reads it."""
+    from advisor import charts as sim_charts
+
+    fn = sim_charts.exits if kind == "exits" else sim_charts.record
+    spec = await asyncio.to_thread(fn, strategy, region, run_id or None)
+    if not spec:
+        return JSONResponse({"error": "no stored record"}, 404)
+    return spec
+
+
 @app.get("/charts", response_class=HTMLResponse)
 async def charts_page(request: Request):
     """Every standing figure, tabbed, searchable, and live to the controls."""
@@ -862,11 +906,14 @@ async def charts_page(request: Request):
 
 
 @app.get("/alerts", response_class=HTMLResponse)
-async def alerts(request: Request):
-    events = db.query(
+async def alerts(request: Request, page_no: str = Query("1", alias="page")):
+    from web import paging
+
+    events_page = paging.slice_query(
         """SELECT id, rule, severity, symbol, detail, created_at, notified_at
-           FROM trigger_events ORDER BY created_at DESC LIMIT 100"""
-    )
+           FROM trigger_events ORDER BY created_at DESC, id DESC""",
+        "SELECT count(*) AS n FROM trigger_events", page=page_no)
+    events = events_page.rows
     written = {
         (a["meta"] or {}).get("event_id"): a
         for a in db.query(
@@ -876,7 +923,8 @@ async def alerts(request: Request):
     }
     for e in events:
         e["text"] = (written.get(e["id"]) or {}).get("body")
-    return page(request, "alerts.html", {"events": events, "active": "alerts"})
+    return page(request, "alerts.html",
+                {"events": events, "events_page": events_page, "active": "alerts"})
 
 
 @app.get("/world", response_class=HTMLResponse)
@@ -1105,13 +1153,17 @@ async def portfolio(request: Request, notice: str = ""):
 
 
 @app.get("/ideas", response_class=HTMLResponse)
-async def ideas(request: Request):
+async def ideas(request: Request, page_no: str = Query("1", alias="page")):
     """Every idea sent and what became of it. The evidence that decides which
     strategies may send any is on /simulations."""
     from advisor import ledger
+    from web import paging
 
     def gather():
-        rows = db.query("SELECT * FROM ideas ORDER BY created_at DESC LIMIT 200")
+        ideas_page = paging.slice_query(
+            "SELECT * FROM ideas ORDER BY created_at DESC, id DESC",
+            "SELECT count(*) AS n FROM ideas", page=page_no)
+        rows = ideas_page.rows
         regions = db.query("SELECT region, stats->>'passed' AS passed FROM portfolio_backtests")
         run = db.one("""SELECT id, started_at FROM sim_runs WHERE finished_at IS NOT NULL
                         AND error IS NULL ORDER BY started_at DESC LIMIT 1""")
@@ -1121,12 +1173,14 @@ async def ideas(request: Request):
                          (run["id"],)) if run else []
         from advisor import story
 
-        return (rows, ledger.scoreboard(), {r["region"]: r["passed"] == "true" for r in regions},
+        return (ideas_page, ledger.scoreboard(),
+                {r["region"]: r["passed"] == "true" for r in regions},
                 run, story.attach(cands), story.scorecard())
 
-    rows, board, sending, run, cands, calls = await asyncio.to_thread(gather)
+    ideas_page, board, sending, run, cands, calls = await asyncio.to_thread(gather)
     return page(request, "ideas.html", {
-        "ideas": rows, "board": board, "sending": sending, "run": run, "cands": cands,
+        "ideas": ideas_page.rows, "ideas_page": ideas_page, "board": board,
+        "sending": sending, "run": run, "cands": cands,
         "calls": calls, "active": "ideas"})
 
 

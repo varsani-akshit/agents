@@ -712,3 +712,24 @@ CREATE TABLE IF NOT EXISTS alerts (
   UNIQUE (kind, symbol, ref, day)
 );
 CREATE INDEX IF NOT EXISTS alerts_recent_idx ON alerts (created_at DESC);
+
+-- Rebasing: a ticket that has not filled is a standing order, and its level
+-- belongs to the latest close, not to the close it was first computed on.
+-- `rebased_at` is when it was last brought forward; `first_limit`/`first_stop`
+-- keep the original so the drift is visible rather than silently applied; a
+-- setup the newest run no longer supports becomes status 'withdrawn' with the
+-- reason, instead of sitting on the dashboard at a price nothing justifies.
+ALTER TABLE ideas ADD COLUMN IF NOT EXISTS rebased_at TIMESTAMPTZ;
+ALTER TABLE ideas ADD COLUMN IF NOT EXISTS first_limit DOUBLE PRECISION;
+ALTER TABLE ideas ADD COLUMN IF NOT EXISTS first_stop  DOUBLE PRECISION;
+ALTER TABLE ideas ADD COLUMN IF NOT EXISTS rebase_note TEXT;
+ALTER TABLE ideas ADD COLUMN IF NOT EXISTS withdrawn_reason TEXT;
+
+-- The case for a call: not the news read (calls.story), but the argument that
+-- joins the price setup, the strategy's record, the market's conditions and
+-- that news read into a reason to act at a particular price — and the one
+-- thing that would make it wrong. Kept beside the read rather than inside it
+-- because they are judged separately: the read can be right about the news and
+-- the case still weak.
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS reasoning JSONB;
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS reasoned_at TIMESTAMPTZ;

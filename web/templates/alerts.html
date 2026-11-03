@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pager %}
 {% block title %}Alerts — Alfred{% endblock %}
 {% block content %}
 <div class="cols">
@@ -33,4 +34,5 @@
   </div>
   {% set recent = none %}{% include "_sidebar.html" %}
 </div>
+{{ pager(events_page, '/alerts?', 'alerts') }}
 {% endblock %}

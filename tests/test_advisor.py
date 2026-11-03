@@ -516,3 +516,169 @@ def test_hourly_bars_keep_their_index_kind_when_empty():
     df = hourly.load("ZZZ_DEFINITELY_NOT_A_SYMBOL")
     assert isinstance(df.index, pd.DatetimeIndex)
     assert list(df.columns)[:5] == ["open", "high", "low", "close", "volume"]
+
+
+# ── Standing tickets are rebased onto the latest close ───────────────────────
+def _a_live_setup(strategy: str = "abs_momentum"):
+    """A name whose setup actually fires on the latest close.
+
+    Picking a symbol by bar count instead would usually land on one whose
+    entry does not fire, and the test would then pass through the *withdraw*
+    branch while appearing to prove the rebase — the quietest kind of useless
+    test.
+    """
+    import db
+    from advisor import bars, region_of
+    from advisor.strategies import STRATEGIES, indicators
+
+    strat = STRATEGIES[strategy]
+    for row in db.query("""SELECT symbol, market FROM strategy_evidence
+                           WHERE strategy=%s AND passed AND symbol <> ''
+                           ORDER BY symbol LIMIT 120""", (strategy,)):
+        sym = row["symbol"]
+        if sym.startswith("^"):
+            continue
+        pooled = db.one("""SELECT passed FROM strategy_evidence
+                           WHERE strategy=%s AND market=%s AND symbol=''""",
+                        (strategy, row["market"]))
+        if not (pooled and pooled["passed"]):
+            continue
+        x = bars.load(sym, years=2)
+        if x.empty or len(x) < 300:
+            continue
+        x = indicators(x)
+        if bool(strat.rules(x)["entry"].iloc[-1]):
+            return sym, x
+    return None, None
+
+
+def _an_open_idea(symbol: str, strategy: str, **over):
+    """Insert one open ticket with deliberately out-of-date levels."""
+    import db
+    from advisor import bars, market_of
+    from advisor.strategies import STRATEGIES, indicators
+
+    x = indicators(bars.load(symbol, years=2))
+    assert not x.empty, f"no bars for {symbol}"
+    strat = STRATEGIES[strategy]
+    sig = strat.rules(x).iloc[-1]
+    row = dict(signal_date=x.index[-1].date(), strategy=strategy, symbol=symbol,
+               market=market_of(symbol), broker="webull", action="BUY", currency="USD",
+               # Half of what the rules actually say today: the stale shape.
+               limit_price=float(sig["limit"]) * 0.5, stop_price=float(sig["stop"]) * 0.5,
+               quantity=10, valid_until=x.index[-1].date())
+    row.update(over)
+    got = db.one(
+        """INSERT INTO ideas (signal_date, strategy, symbol, market, broker, action,
+             currency, limit_price, stop_price, quantity, valid_until)
+           VALUES (%(signal_date)s,%(strategy)s,%(symbol)s,%(market)s,%(broker)s,
+             %(action)s,%(currency)s,%(limit_price)s,%(stop_price)s,%(quantity)s,
+             %(valid_until)s)
+           ON CONFLICT (strategy, symbol, signal_date) DO UPDATE
+             SET limit_price=EXCLUDED.limit_price, stop_price=EXCLUDED.stop_price,
+                 status='open', rebased_at=NULL, first_limit=NULL
+           RETURNING id""", row)
+    return got["id"], float(sig["limit"]), float(sig["stop"])
+
+
+def test_an_unfilled_ticket_is_rebased_onto_the_latest_close():
+    """A ticket that has not filled is a standing order, and its level belongs
+    to the newest close. The scan skips any symbol that already has an open
+    idea, so before this the dashboard showed a limit computed days earlier —
+    stale in the dangerous way: not missing, just quietly wrong."""
+    import db
+    from advisor import rebase
+
+    sym, _ = _a_live_setup()
+    if not sym:
+        pytest.skip("no abs_momentum setup is firing on the latest close today")
+    idea_id, want_limit, want_stop = _an_open_idea(sym, "abs_momentum")
+    try:
+        out = rebase.rebase()
+        assert out["checked"] >= 1
+        row = db.one("SELECT * FROM ideas WHERE id=%s", (idea_id,))
+        assert row["status"] == "open", \
+            f"a live setup was withdrawn: {row['withdrawn_reason']}"
+        assert row["limit_price"] == pytest.approx(round(want_limit, 2), rel=1e-3), \
+            "limit was not brought onto the latest close"
+        assert row["stop_price"] == pytest.approx(round(want_stop, 2), rel=1e-3)
+        assert row["rebased_at"] is not None
+        # The original is kept so the drift is visible, not silently applied.
+        assert row["first_limit"] == pytest.approx(round(want_limit * 0.5, 2), rel=1e-3)
+        assert row["rebase_note"] and "→" in row["rebase_note"]
+    finally:
+        db.execute("DELETE FROM ideas WHERE id=%s", (idea_id,))
+
+
+def test_a_filled_position_is_never_rebased():
+    """Its entry is history — the price was paid. Moving it here would rewrite
+    the record of a real position; stops on filled positions move through the
+    ledger's replay, which is the accounting the backtest shares."""
+    import db
+    from advisor import rebase
+
+    sym, _ = _a_live_setup()
+    if not sym:
+        pytest.skip("no abs_momentum setup is firing on the latest close today")
+    idea_id, _, _ = _an_open_idea(sym, "abs_momentum")
+    db.execute("UPDATE ideas SET status='filled' WHERE id=%s", (idea_id,))
+    before = db.one("SELECT limit_price, stop_price FROM ideas WHERE id=%s", (idea_id,))
+    try:
+        rebase.rebase()
+        after = db.one("SELECT limit_price, stop_price, rebased_at FROM ideas WHERE id=%s",
+                       (idea_id,))
+        assert after["limit_price"] == before["limit_price"], "rewrote a real entry"
+        assert after["stop_price"] == before["stop_price"]
+        assert after["rebased_at"] is None
+    finally:
+        db.execute("DELETE FROM ideas WHERE id=%s", (idea_id,))
+
+
+def test_a_ticket_whose_strategy_stopped_passing_is_withdrawn_with_a_reason():
+    """Not deleted and not left standing: withdrawn, saying what changed. A
+    notice that says only "no longer valid" leaves you unable to tell a
+    strategy being switched off from a setup simply passing by."""
+    import db
+    from advisor import rebase
+
+    sym, _ = _a_live_setup()
+    if not sym:
+        pytest.skip("no abs_momentum setup is firing on the latest close today")
+    idea_id, _, _ = _an_open_idea(sym, "abs_momentum")
+    from advisor import region_of
+    reg = region_of(db.one("SELECT market FROM ideas WHERE id=%s", (idea_id,))["market"])
+    was = db.one("""SELECT passed FROM strategy_evidence
+                    WHERE strategy='abs_momentum' AND market=%s AND symbol=''""", (reg,))
+    try:
+        db.execute("""UPDATE strategy_evidence SET passed=false
+                      WHERE strategy='abs_momentum' AND market=%s AND symbol=''""", (reg,))
+        out = rebase.rebase()
+        row = db.one("SELECT status, withdrawn_reason FROM ideas WHERE id=%s", (idea_id,))
+        assert row["status"] == "withdrawn", out
+        assert "no longer passes" in (row["withdrawn_reason"] or "")
+    finally:
+        if was is not None:
+            db.execute("""UPDATE strategy_evidence SET passed=%s
+                          WHERE strategy='abs_momentum' AND market=%s AND symbol=''""",
+                       (was["passed"], reg))
+        db.execute("DELETE FROM ideas WHERE id=%s", (idea_id,))
+
+
+def test_an_unknown_exchange_code_does_not_crash_the_rebase():
+    """`region_of` raises on a market it does not know, which would have taken
+    down the whole pass — every other ticket included — over one bad row."""
+    import db
+    from advisor import rebase
+
+    sym, _ = _a_live_setup()
+    if not sym:
+        pytest.skip("no abs_momentum setup is firing on the latest close today")
+    idea_id, _, _ = _an_open_idea(sym, "abs_momentum")
+    db.execute("UPDATE ideas SET market='ZZ' WHERE id=%s", (idea_id,))
+    try:
+        out = rebase.rebase()          # used to raise StopIteration
+        row = db.one("SELECT status FROM ideas WHERE id=%s", (idea_id,))
+        assert row["status"] == "open", "withdrew a ticket we could not judge"
+        assert out["checked"] >= 1
+    finally:
+        db.execute("DELETE FROM ideas WHERE id=%s", (idea_id,))

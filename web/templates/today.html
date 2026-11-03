@@ -3,6 +3,27 @@
 {% macro money(ccy, v, dp=0) %}{% if v is none %}—{% else %}{{ {'INR': '₹', 'AUD': 'A$', 'USD': 'US$'}.get(ccy, (ccy or '') ~ ' ') }}{{ ('{:,.' ~ dp ~ 'f}').format(v) }}{% endif %}{% endmacro %}
 {% macro broker(b) %}{{ {'kite': 'Kite', 'webull': 'Webull', 'coinbase': 'Coinbase'}.get(b, '') }}{% endmacro %}
 {% macro news_read(s) %}{% if s and s.direction %}<div class="s" style="margin-top:3px" title="Watch for: {{ s.risk }}"><span class="badge {{ 'badge-ok' if s.direction == 'supports' else ('badge-bad' if s.direction == 'contradicts' else '') }}">news {{ s.direction }}</span> {{ s.thesis }}{% if s.event_risk and s.events %} <span class="muted">· inside the hold: {{ s.events[:2]|join('; ') }}</span>{% endif %}</div>{% endif %}{% endmacro %}
+{% macro the_case(c) %}{% if c %}
+{# The argument, not the facts: the figures are already on the row above. #}
+<details class="case"{% if c.verdict in ('skip', 'wait') %} open{% endif %}>
+  <summary><span class="verdict v-{{ c.verdict }}">{{
+    {'take': 'Take it', 'take_smaller': 'Take it smaller',
+     'wait': 'Wait', 'skip': 'Skip'}.get(c.verdict, c.verdict) }}</span>
+    <span class="case-head">{{ c.headline }}</span>
+    <span class="muted">· {{ c.confidence }} confidence</span></summary>
+  <div class="case-body">
+    <p><b>Why now.</b> {{ c.why_now }}</p>
+    <p><b>Why this price.</b> {{ c.why_this_price }}</p>
+    {% if c.what_must_hold %}<p><b>Has to stay true.</b>
+      {# The model ends each item with a full stop, so joining on "; " gave
+         ".;" between them. Trim before joining rather than asking the model
+         not to punctuate. #}
+      {% for h in c.what_must_hold %}{{ h|trim|trim('.') }}{% if not loop.last %}; {% endif %}{% endfor %}.</p>{% endif %}
+    <p class="breaks"><b>What would break it.</b> {{ c.what_would_break_it }}</p>
+    <p class="against"><b>The case against.</b> {{ c.against }}</p>
+  </div>
+</details>
+{% endif %}{% endmacro %}
 {% block content %}
 <header class="ph">
   <div class="eyebrow">{{ first_name and ('Good to see you, ' ~ first_name) or 'Today' }}</div>
@@ -46,13 +67,21 @@
           <div class="s">{% if a.amount %}{{ money(a.currency, a.amount) }} {{ a.what }}{% else %}{{ a.what }}{% endif %}{% if a.by %} · by {{ a.by.strftime('%a %d %b') }}{% endif %}</div>
           {% if a.why %}<div class="s" style="margin-top:2px">{{ a.why }}</div>{% endif %}
           {% if a.funding %}<div class="s" style="margin-top:2px">{{ a.funding }}</div>{% endif %}
+          {% if a.moved %}<div class="s moved">Moved onto the latest close: {{ a.moved }}</div>{% endif %}
           {{ news_read(a.story) }}
+          {{ the_case(a.case) }}
         </div>
       </li>
       {% else %}
       <li class="muted">Nothing to do right now. New tickets arrive by email after each market closes.</li>
       {% endfor %}
     </ul>
+    {% if withdrawn %}
+    {# A ticket that quietly disappears reads as a bug. Say what went and why. #}
+    <p class="s muted" style="margin:10px 0 0">Withdrawn since the last run —
+      {% for w in withdrawn %}<strong>{{ w.symbol.split('.')[0] }}</strong>
+        ({{ w.withdrawn_reason|lower|trim('.') }}){% if not loop.last %}; {% endif %}{% endfor %}.</p>
+    {% endif %}
   </div>
   {% set reviews = actions|selectattr('verb', 'equalto', 'Review')|rejectattr('urgent')|list %}
   {% if reviews %}
@@ -100,6 +129,7 @@
           <div class="s"><span class="muted">Price</span> · {{ c.label }}: limit {{ money(c.currency, c.limit, 2) }}, stop {{ money(c.currency, c.stop, 2) }}{% if c.stop_pct is not none %} ({{ '{:+.1f}%'.format(c.stop_pct) }}){% endif %}{% if c.quantity %}, qty {{ '{:g}'.format(c.quantity) }}{% endif %}{% if c.record is not none %} · record {{ '{:+.2f}R'.format(c.record) }} a trade{% endif %}{% if c.hold %}, about {{ c.hold }} sessions{% endif %}</div>
           {% if c.conditions %}<div class="s" style="margin-top:2px"><span class="muted">Conditions</span> · {{ c.conditions }}</div>{% endif %}
           {% if c.story and c.story.direction %}{{ news_read(c.story) }}{% else %}<div class="s muted" style="margin-top:2px">News · not read yet</div>{% endif %}
+          {{ the_case(c.case) }}
         </div>
       </li>
       {% else %}

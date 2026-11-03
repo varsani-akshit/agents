@@ -1,0 +1,23 @@
+{# One pager for every list that can grow. `base` is the path plus any query
+   string that must survive paging, already ending in ? or &. #}
+{% macro pager(p, base, label='rows') %}
+{% if p.total > p.per_page %}
+<nav class="pager" aria-label="pages">
+  <span class="pager-count">{{ '{:,}'.format(p.first) }}–{{ '{:,}'.format(p.last) }}
+    of {{ '{:,}'.format(p.total) }} {{ label }}</span>
+  <span class="pager-links">
+    {% if p.has_prev %}<a href="{{ base }}page={{ p.page - 1 }}" rel="prev">←</a>
+    {% else %}<span class="off">←</span>{% endif %}
+    {% for n in p.window %}
+      {% if n == 0 %}<span class="gap">…</span>
+      {% elif n == p.page %}<span class="on">{{ n }}</span>
+      {% else %}<a href="{{ base }}page={{ n }}">{{ n }}</a>{% endif %}
+    {% endfor %}
+    {% if p.has_next %}<a href="{{ base }}page={{ p.page + 1 }}" rel="next">→</a>
+    {% else %}<span class="off">→</span>{% endif %}
+  </span>
+</nav>
+{% elif p.total %}
+<p class="pager-count">{{ '{:,}'.format(p.total) }} {{ label }}.</p>
+{% endif %}
+{% endmacro %}

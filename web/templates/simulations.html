@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pager %}
 {% from "_cands.html" import cand_table %}
 {% block title %}Simulations — Alfred{% endblock %}
 {% block scripts %}{% if running %}<script src="{{ asset('portfolio.js') }}" defer></script>{% endif %}{% endblock %}
@@ -95,5 +96,6 @@
       </tbody>
     </table>
   </div>
+    {{ pager(runs_page, '/simulations?', 'runs') }}
 </section>
 {% endblock %}

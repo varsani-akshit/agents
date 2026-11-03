@@ -102,6 +102,12 @@ def today() -> dict:
 
     ideas = db.query("""SELECT * FROM ideas WHERE status IN ('open', 'filled')
                         ORDER BY created_at DESC LIMIT 12""")
+    # Tickets the newest run stopped supporting, so the page can say what went
+    # away and why rather than just showing one fewer row than yesterday.
+    withdrawn = db.query("""SELECT symbol, strategy, withdrawn_reason, rebased_at FROM ideas
+                            WHERE status = 'withdrawn'
+                              AND rebased_at > now() - interval '48 hours'
+                            ORDER BY rebased_at DESC LIMIT 6""")
     closed = db.query("""SELECT symbol, strategy, r_multiple, exit_date FROM ideas
                          WHERE status = 'closed' ORDER BY exit_date DESC LIMIT 5""")
     regions = []
@@ -152,9 +158,20 @@ def today() -> dict:
             """SELECT region, symbol, strategy, score, detail FROM sim_candidates
                WHERE run_id = %s AND kind = 'signal' AND passed_gate ORDER BY score DESC LIMIT 12""",
             (run_["id"],)))
+        # The written case for each, keyed the way calls are stored. This is
+        # the section the reader actually decides from, so the argument
+        # belongs here and not only on the ticket list below.
+        # Joined on the name and strategy, not on run_id: a call recorded by
+        # the advise cycle carries no run_id, so keying on the run silently
+        # matched nothing and every case came back blank.
+        argued_run = {(r["symbol"], r["strategy"]): r["reasoning"] for r in db.query(
+            """SELECT DISTINCT ON (symbol, strategy) symbol, strategy, reasoning
+               FROM calls WHERE reasoning IS NOT NULL
+               ORDER BY symbol, strategy, created_at DESC""")}
         for c in rows:
             d, s = c["detail"], c.get("story") or {}
             cases.append({
+                "case": argued_run.get((c["symbol"], c["strategy"])),
                 "symbol": d.get("display") or name_of(c["symbol"]), "venue": venue(c["symbol"]),
                 "where": d.get("broker"), "currency": d.get("currency"), "label": d.get("label"),
                 "limit": d.get("limit"), "stop": d.get("stop"), "stop_pct": d.get("stop_pct"),
@@ -207,10 +224,18 @@ def today() -> dict:
         actions.append({"verb": "Sell", "tone": "bad", "symbol": name_of(e["symbol"]),
                         "where": d.get("broker"), "what": "at the next open",
                         "why": f"{d.get('reason')} ({e['strategy'].replace('_', ' ')})"})
-    reads = {(r["symbol"], r["strategy"], str(r["signal_date"])): r["story"] for r in db.query(
-        """SELECT symbol, strategy, signal_date, story FROM calls WHERE story IS NOT NULL
-           AND (symbol, strategy, signal_date) IN (SELECT symbol, strategy, signal_date FROM ideas
-                                                   WHERE status IN ('open', 'filled'))""")}
+    live_calls = db.query(
+        """SELECT symbol, strategy, signal_date, story, reasoning FROM calls
+           WHERE (story IS NOT NULL OR reasoning IS NOT NULL)
+             AND (symbol, strategy, signal_date) IN (SELECT symbol, strategy, signal_date
+                                                     FROM ideas WHERE status IN ('open', 'filled'))""")
+    reads = {(r["symbol"], r["strategy"], str(r["signal_date"])): r["story"]
+             for r in live_calls if r["story"]}
+    # The case: the argument joining the price, the record, the conditions and
+    # the news read. Kept separate from the read because they are judged
+    # separately — the read can be right about the news and the case still weak.
+    argued = {(r["symbol"], r["strategy"], str(r["signal_date"])): r["reasoning"]
+              for r in live_calls if r["reasoning"]}
     for i in ideas:
         if i["status"] != "open":
             continue
@@ -224,7 +249,14 @@ def today() -> dict:
                                                       i["quantity"] * i["limit_price"], home)
                                     if i["quantity"] else None),
                         "story": reads.get((i["symbol"], i["strategy"], str(i["signal_date"]))),
-                        "by": i["valid_until"], "currency": i["currency"]})
+                        "case": argued.get((i["symbol"], i["strategy"], str(i["signal_date"]))),
+                        "by": i["valid_until"], "currency": i["currency"],
+                        # What this level used to be, when the latest close
+                        # moved it. Shown rather than silently applied: a
+                        # number that changes under you without saying so is
+                        # how you end up placing an order you did not mean to.
+                        "moved": i.get("rebase_note"),
+                        "rebased_at": i.get("rebased_at")})
     for f in funding:
         if f["add"] > 0:
             actions.append({"verb": "Fund", "tone": "warn", "symbol": {"kite": "Kite", "coinbase": "Coinbase"}.get(f["broker"], "Webull"),
@@ -280,17 +312,30 @@ def today() -> dict:
             "books": books, "attention": attention, "ideas": ideas, "closed": closed,
             "regions": regions, "brief": brief, "exits": exits, "near": near[:14],
             "funding": funding, "top": top, "evidence": evidence,
-            "board": ledger.scoreboard(),
+            "board": ledger.scoreboard(), "withdrawn": withdrawn,
             "scanned_at": max((c["created_at"] for c in cands), default=None)}
 
 
 # ──────────────────────────────── Simulations ───────────────────────────────
-def sim_index() -> dict:
-    """Every stored run, newest first, and the latest one at a glance."""
-    runs = db.query("""SELECT id, started_at, finished_at, trigger, bars_through, passing, tested,
-                              candidates, seconds, error FROM sim_runs
-                       ORDER BY started_at DESC LIMIT 84""")
-    latest = next((r for r in runs if r["finished_at"] and not r["error"]), None)
+def sim_index(page=1) -> dict:
+    """Every stored run, newest first, and the latest one at a glance.
+
+    Paged: at twelve runs a day the old flat LIMIT 84 began dropping runs
+    after a week, and a truncated list that does not say it is truncated
+    cannot be told from a complete one.
+    """
+    from web import paging
+
+    runs_page = paging.slice_query(
+        """SELECT id, started_at, finished_at, trigger, bars_through, passing, tested,
+                  candidates, seconds, error FROM sim_runs ORDER BY started_at DESC""",
+        "SELECT count(*) AS n FROM sim_runs", page=page)
+    runs = runs_page.rows
+    # The "latest good run" summary must not depend on which page you are on.
+    latest = db.one("""SELECT id, started_at, finished_at, trigger, bars_through, passing,
+                              tested, candidates, seconds, error FROM sim_runs
+                       WHERE finished_at IS NOT NULL AND error IS NULL
+                       ORDER BY started_at DESC LIMIT 1""")
     from datetime import datetime, timedelta, timezone
 
     from advisor.runs import STALE_MINUTES
@@ -300,8 +345,11 @@ def sim_index() -> dict:
     fresh = datetime.now(timezone.utc) - timedelta(minutes=STALE_MINUTES)
     for r in runs:
         r["interrupted"] = not r["finished_at"] and r["started_at"] < fresh
-    out = {"runs": runs, "latest": latest,
-           "running": any(not r["finished_at"] and not r["interrupted"] for r in runs),
+    # "Is a run in flight?" is also a question about the system, not the page.
+    inflight = db.one("""SELECT started_at FROM sim_runs WHERE finished_at IS NULL
+                         ORDER BY started_at DESC LIMIT 1""")
+    out = {"runs": runs, "runs_page": runs_page, "latest": latest,
+           "running": bool(inflight and inflight["started_at"] >= fresh),
            "conditions": conditions_now()}
     if latest:
         out.update(sim_run(latest["id"], top_only=True))
@@ -336,7 +384,8 @@ def conditions_now() -> list[dict]:
     return out
 
 
-def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = False) -> dict:
+def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = False,
+            page=1, per_page=50) -> dict:
     from advisor import story
     from advisor.strategies import STRATEGIES
 
@@ -387,17 +436,30 @@ def sim_run(run_id: int, *, region: str = "", show: str = "", top_only: bool = F
         "near_passed": ("Close to firing — strategies that pass", "kind='near' AND passed_gate"),
         "near_other": ("Close to firing — strategies that do not pass", "kind='near' AND NOT passed_gate"),
     }
-    limit = 8 if top_only else (500 if show else 25)
+    # A run holds over a thousand candidates. Expanding a group used to fetch
+    # 500 at once and render a quarter-megabyte of HTML; it now fetches one
+    # page, and the preview stays small enough to scan.
+    from web import paging
+
     cand = {}
     for key, (title, cond) in groups.items():
         if show and show != key:
             continue
-        rows = db.query(f"""SELECT region, symbol, strategy, kind, passed_gate, score, detail
-                            FROM sim_candidates WHERE {' AND '.join(where)} AND {cond}
-                            ORDER BY score DESC LIMIT %s""", params + [limit])
-        total = db.one(f"SELECT count(*) AS n FROM sim_candidates WHERE {' AND '.join(where)} AND {cond}",
-                       params)["n"]
-        cand[key] = {"title": title, "rows": story.attach(rows), "total": total}
+        base = (f"SELECT region, symbol, strategy, kind, passed_gate, score, detail "
+                f"FROM sim_candidates WHERE {' AND '.join(where)} AND {cond} "
+                f"ORDER BY score DESC, symbol")
+        count = f"SELECT count(*) AS n FROM sim_candidates WHERE {' AND '.join(where)} AND {cond}"
+        if show == key:
+            pg = paging.slice_query(base, count, params, page=page, per_page=per_page)
+        else:
+            # The collapsed preview: a fixed handful, with the true total
+            # beside it so the "show all" link says what it will open.
+            n = 8 if top_only else 25
+            pg = paging.Page(rows=db.query(f"{base} LIMIT %s", params + [n]),
+                             total=db.one(count, params)["n"], page=1, per_page=n)
+        pg = paging.Page(rows=story.attach(pg.rows), total=pg.total,
+                         page=pg.page, per_page=pg.per_page)
+        cand[key] = {"title": title, "rows": pg.rows, "total": pg.total, "page": pg}
     return {"run": run, "prev": prev, "matrix": order, "changes": changes, "accounts": accounts,
             "candidates": cand, "region": region, "show": show,
             "regions": [(k, REGION_NAME[k]) for k in REGIONS]}

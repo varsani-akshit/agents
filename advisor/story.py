@@ -374,8 +374,21 @@ def read_new(limit: int = READS_PER_RUN) -> dict:
 
 
 def cycle() -> dict:
-    """Record the latest run's signals, settle every open call, read the new ones."""
-    return {"recorded": record(), "settled": settle(), "story": read_new()}
+    """Record the latest run's signals, settle every open call, read the new
+    ones, then write the case for the ones that passed.
+
+    The case comes last because it reasons over the read: it needs the news
+    judgement to argue with, not just the articles.
+    """
+    from advisor import reason
+
+    out = {"recorded": record(), "settled": settle(), "story": read_new()}
+    try:
+        out["cases"] = reason.write_new()
+    except Exception as exc:  # noqa: BLE001 - a missing case must not lose the reads
+        log.warning("writing cases failed: %s", exc)
+        out["cases"] = {"error": str(exc)[:160]}
+    return out
 
 
 # ───────────────────────────────── scorecard ────────────────────────────────

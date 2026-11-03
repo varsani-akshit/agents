@@ -1264,3 +1264,64 @@ textarea:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px
    on a phone instead of pushing the page sideways; a single figure has no
    spaces to break at, so it stays on one line regardless. */
 .kpi-value { white-space: normal; }
+
+/* A level that moved under you. Marked, not hidden: an order placed at a
+   number you last read two days ago is the mistake this is here to prevent. */
+.moved {
+  margin-top: 2px; color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pager. Shown only when a list is longer than one page — a pager under a
+   six-row table is furniture. */
+.pager {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin: 10px 0 2px;
+  font: 400 12px/1.4 var(--mono);
+}
+.pager-count { color: var(--t3); font: 400 12px/1.4 var(--mono); }
+.pager-links { display: flex; align-items: baseline; gap: 2px; }
+.pager-links a, .pager-links .on, .pager-links .off, .pager-links .gap {
+  padding: 3px 8px; border-radius: 5px; text-decoration: none;
+}
+.pager-links a { color: var(--t2); }
+.pager-links a:hover { background: var(--hover); color: var(--t1); }
+.pager-links .on { background: var(--t1); color: var(--surface); }
+.pager-links .off, .pager-links .gap { color: var(--t3); opacity: .45; }
+
+/* A candidate row opened to show its charts. */
+.linkish {
+  background: none; border: 0; padding: 2px 0; cursor: pointer;
+  font: 400 11.5px/1.4 var(--mono); color: var(--t3);
+}
+.linkish:hover { color: var(--accent); }
+.setup-row > td { background: var(--subtle); padding: 12px 16px 16px; }
+.setup-charts { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 900px) {
+  /* The price is the thing being decided; the record is the check on it. */
+  .setup-charts { grid-template-columns: 1.6fr 1fr; align-items: start; }
+}
+
+/* The case for a call. Collapsed by default when the advice is to act — the
+   numbers are on the row and the argument is there if you want it — and open
+   when the advice is to wait or skip, because those need their reason stated. */
+.case { margin-top: 6px; }
+.case > summary {
+  cursor: pointer; list-style: none; display: flex; flex-wrap: wrap;
+  align-items: baseline; gap: 6px; font-size: 12.5px;
+}
+.case > summary::-webkit-details-marker { display: none; }
+.case-head { color: var(--t2); }
+.verdict {
+  font: 500 10.5px/16px var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  padding: 1px 7px; border-radius: 5px; background: var(--subtle); color: var(--t2);
+}
+.v-take { background: var(--up-soft, var(--subtle)); color: var(--up); }
+.v-take_smaller { background: var(--warn-soft); color: var(--warn); }
+.v-wait { background: var(--warn-soft); color: var(--warn); }
+.v-skip { background: var(--down-soft); color: var(--down); }
+.case-body { margin: 6px 0 2px; padding-left: 10px; border-left: 2px solid var(--line); }
+.case-body p { margin: 0 0 5px; font-size: 12.5px; line-height: 1.55; color: var(--t2); }
+.case-body b { color: var(--t1); font-weight: 600; }
+.case-body .breaks b { color: var(--down); }
+.case-body .against b { color: var(--t3); }

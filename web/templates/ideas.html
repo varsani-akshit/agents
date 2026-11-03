@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_pager.html" import pager %}
 {% from "_cands.html" import cand_table %}
 {% block title %}Ideas — Alfred{% endblock %}
 {% block content %}
@@ -97,4 +98,5 @@
     </table>
   </div>
 </div>
+{{ pager(ideas_page, '/ideas?', 'ideas') }}
 {% endblock %}

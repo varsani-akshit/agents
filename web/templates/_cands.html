@@ -1,6 +1,6 @@
 {# Simulation candidates as instruments to act on: what it is, where to
    place it, what to do, why, and whether it cleared the gate. #}
-{% macro cand_table(rows, empty='Nothing here in this run.') %}
+{% macro cand_table(rows, empty='Nothing here in this run.', run_id=None) %}
 <div class="tablewrap">
   <table class="data">
     <thead><tr>
@@ -28,8 +28,25 @@
         {% elif not d.strategy_passed %}<span class="badge badge-warn" title="{{ (d.fails + [d.regime_why] if d.regime_why else d.fails)|join('; ') }}">strategy fails</span>
         {% elif not d.market_sending %}<span class="badge badge-warn">market quiet</span>
         {% else %}<span class="badge badge-warn">weak record here</span>{% endif %}
+        <div><button type="button" class="linkish setup-open"
+          data-symbol="{{ c.symbol }}" data-strategy="{{ c.strategy }}"
+          data-region="{{ c.region }}" data-run="{{ run_id or '' }}"
+          aria-expanded="false">chart ▾</button></div>
       </td>
     </tr>
+    {# The chart is fetched when this row is opened, not with the page: a run
+       holds over a thousand candidates and building every chart up front would
+       cost a thousand loads to show perhaps three. #}
+    <tr class="setup-row" hidden><td colspan="5">
+      <div class="setup-charts">
+        <figure class="chart" data-lazy-chart><figcaption class="chart-head">
+          <div class="t"></div><div class="s"></div></figcaption>
+          <div class="chart-canvas"></div></figure>
+        <figure class="chart" data-lazy-chart><figcaption class="chart-head">
+          <div class="t"></div><div class="s"></div></figcaption>
+          <div class="chart-canvas"></div></figure>
+      </div>
+    </td></tr>
     {% else %}
     <tr><td colspan="5" class="muted" style="padding:20px 16px">{{ empty }}</td></tr>
     {% endfor %}

@@ -342,10 +342,126 @@
     });
   }
 
+  /* Candlesticks, for the one question a close-only line cannot answer:
+     where did the day actually trade? A setup says "buy at this limit, stop
+     there", and whether that limit sat inside recent bars or above all of
+     them is the decision — invisible on a line of closes. Volume rides
+     underneath on its own axis, and the setup's levels are drawn across so
+     the price and the instruction are read together. */
+  function candleOption(spec) {
+    var b = base();
+    var marks = (spec.marks || []).map(function (m) {
+      var c = m.key === "stop" ? DOWN : (m.key === "target" ? UP : ACCENT);
+      return {
+        yAxis: m.value, symbol: "none",
+        lineStyle: { color: c, type: m.key === "target" ? "dotted" : "dashed", width: 1.2 },
+        label: {
+          formatter: m.label + "  " + fmt(m.value), position: "insideEndTop",
+          color: c, fontFamily: MONO, fontSize: 10.5, backgroundColor: SURFACE,
+          padding: [2, 4], borderRadius: 3
+        }
+      };
+    });
+
+    var series = [{
+      type: "candlestick", name: "Price", data: spec.candles,
+      xAxisIndex: 0, yAxisIndex: 0,
+      itemStyle: {
+        color: SURFACE, color0: DOWN,          /* up body hollow, down filled */
+        borderColor: UP, borderColor0: DOWN, borderWidth: 1
+      },
+      markLine: marks.length ? { silent: true, symbol: "none", data: marks } : undefined
+    }];
+    (spec.overlays || []).forEach(function (o, i) {
+      series.push({
+        type: "line", name: o.name, data: o.data, xAxisIndex: 0, yAxisIndex: 0,
+        showSymbol: false, smooth: false, connectNulls: false,
+        lineStyle: { width: 1, color: i === 0 ? T2 : T3, type: i === 0 ? "solid" : "dashed" },
+        z: 1
+      });
+    });
+    if (spec.volume && spec.volume.some(function (v) { return v != null; })) {
+      series.push({
+        type: "bar", name: "Volume", data: spec.volume,
+        xAxisIndex: 1, yAxisIndex: 1, large: true,
+        itemStyle: {
+          color: function (p) {
+            var c = spec.candles[p.dataIndex];
+            return c && c[1] >= c[0] ? UP : DOWN;
+          },
+          opacity: 0.28
+        }
+      });
+    }
+
+    var hasVol = series.length > 1 && series[series.length - 1].name === "Volume";
+    var axisBase = {
+      type: "category", data: spec.x, boundaryGap: true,
+      axisLine: { lineStyle: { color: BORDER } },
+      axisTick: { show: false },
+      splitLine: { show: false }
+    };
+    return Object.assign(b, {
+      animation: false,
+      tooltip: Object.assign({}, b.tooltip, {
+        trigger: "axis",
+        axisPointer: { type: "cross", label: { backgroundColor: INK } },
+        formatter: function (ps) {
+          var k = ps.find(function (p) { return p.seriesType === "candlestick"; });
+          var out = "<b>" + (k ? k.axisValueLabel : ps[0].axisValueLabel) + "</b>";
+          if (k) {
+            /* ECharts hands back [index, open, close, low, high]. */
+            var v = k.value;
+            out += "<br>open " + fmt(v[1]) + "  high " + fmt(v[4]) +
+                   "<br>low&nbsp; " + fmt(v[3]) + "  close " + fmt(v[2]);
+            var chg = v[1] ? (v[2] / v[1] - 1) * 100 : 0;
+            out += "<br>" + (chg >= 0 ? "+" : "") + chg.toFixed(2) + "% on the day";
+          }
+          ps.forEach(function (p) {
+            if (p.seriesType === "line" && p.value != null) {
+              out += "<br>" + p.seriesName + " " + fmt(p.value);
+            }
+          });
+          return out;
+        }
+      }),
+      axisPointer: { link: [{ xAxisIndex: "all" }] },
+      /* The zoom slider sits in the bottom 22px, so the grids stop above it —
+         otherwise the date labels render underneath the slider and are
+         unreadable. */
+      grid: hasVol
+        ? [{ left: 4, right: 8, top: 14, height: "58%", containLabel: true },
+           { left: 4, right: 8, top: "74%", bottom: 46, containLabel: true }]
+        : [{ left: 4, right: 8, top: 14, bottom: 46, containLabel: true }],
+      xAxis: hasVol
+        ? [Object.assign({}, axisBase, { gridIndex: 0, axisLabel: { show: false } }),
+           Object.assign({}, axisBase, { gridIndex: 1,
+             axisLabel: { color: T3, fontFamily: MONO, fontSize: 10.5, hideOverlap: true } })]
+        : [Object.assign({}, axisBase, { gridIndex: 0,
+             axisLabel: { color: T3, fontFamily: MONO, fontSize: 10.5, hideOverlap: true } })],
+      yAxis: hasVol
+        ? [{ scale: true, gridIndex: 0, splitLine: { lineStyle: { color: BORDER, type: "dashed" } },
+             axisLabel: { color: T3, fontFamily: MONO, fontSize: 10.5,
+                          formatter: function (v) { return fmt(v); } } },
+           { scale: true, gridIndex: 1, splitNumber: 2, splitLine: { show: false },
+             axisLabel: { show: false } }]
+        : [{ scale: true, gridIndex: 0, splitLine: { lineStyle: { color: BORDER, type: "dashed" } },
+             axisLabel: { color: T3, fontFamily: MONO, fontSize: 10.5,
+                          formatter: function (v) { return fmt(v); } } }],
+      /* A chart of 180 sessions is readable whole; the slider lets you close
+         in on the weeks around the setup without a second request. */
+      dataZoom: [{ type: "inside", xAxisIndex: hasVol ? [0, 1] : [0], start: 55, end: 100 },
+                 { type: "slider", xAxisIndex: hasVol ? [0, 1] : [0], height: 18,
+                   bottom: 2, start: 55, end: 100, borderColor: BORDER,
+                   handleStyle: { color: T3 }, textStyle: { color: T3, fontSize: 10 } }],
+      series: series
+    });
+  }
+
   var BUILDERS = {
     line: lineOption, dual_line: lineOption, bar_h: barOption,
     diverging: barOption, heatmap: heatmapOption, curve: curveOption,
-    small_multiple: smallMultipleOption
+    small_multiple: smallMultipleOption, candle: candleOption
   };
 
   /* Height is driven by content: a 44-row bar chart needs more room than a
@@ -360,6 +476,10 @@
         return Math.max(220, (spec.yLabels.length * (phone ? 14 : 17)) + 70);
       case "small_multiple":
         return phone ? 130 * spec.panels.length : 165 * Math.ceil(spec.panels.length / 2);
+      case "candle":
+        /* Taller than a line: the body of a candle has to be tall enough to
+           read, and the volume panel takes a fifth of the height. */
+        return phone ? 300 : 400;
       default:
         return phone ? 240 : 320;
     }
