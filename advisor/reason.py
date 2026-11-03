@@ -189,16 +189,28 @@ def _round(v, n):
 
 
 def write_new(limit: int = 6) -> dict:
-    """Cases for the newest calls that have a news read but no case yet.
+    """Cases for the calls that have a news read but no case yet.
 
-    Capped per run, and only for calls that passed the gate: a case for a setup
-    nobody may act on costs the same as one for a setup they might.
+    Live tickets first. The queue runs to a hundred and fifty, and a cap of
+    six a run ordered by recency meant the setups actually sitting on the
+    dashboard — which are a few days old by the time they are standing there
+    — never reached the front, while cases were written for calls nobody
+    could act on. Whether a ticket exists for the call is the honest measure
+    of whether the reader needs the argument.
+
+    Only calls that passed the gate: a case for a setup nobody may act on
+    costs the same as one for a setup they might.
     """
     rows = db.query(
-        """SELECT * FROM calls
-           WHERE story IS NOT NULL AND reasoning IS NULL AND passed_gate
-             AND status = 'pending'
-           ORDER BY created_at DESC, score DESC NULLS LAST LIMIT %s""", (limit,))
+        """SELECT c.* FROM calls c
+           LEFT JOIN ideas i
+             ON i.symbol = c.symbol AND i.strategy = c.strategy
+            AND i.status IN ('open', 'filled')
+           WHERE c.story IS NOT NULL AND c.reasoning IS NULL AND c.passed_gate
+             AND c.status = 'pending'
+           ORDER BY (i.id IS NOT NULL) DESC, c.created_at DESC,
+                    c.score DESC NULLS LAST
+           LIMIT %s""", (limit,))
     done, skipped = 0, 0
     for row in rows:
         out = case(row)
