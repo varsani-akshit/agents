@@ -29,13 +29,46 @@ def conn() -> Iterator[psycopg.Connection]:
         yield c
 
 
+def _scrub(v: Any) -> Any:
+    """Strip NUL from strings on their way into Postgres.
+
+    Postgres text cannot hold U+0000 in any form — it rejects the whole
+    statement with "unsupported Unicode escape sequence", and inside a JSON
+    value it takes the surrounding row with it. A single NUL in one scraped
+    article killed an entire brief this way on 1 November.
+
+    Nothing legitimately carries a NUL: it arrives from a truncated download,
+    a mis-decoded byte, or a model emitting \u0000 inside JSON. Dropping it at
+    the boundary is right because every writer is equally exposed, and the
+    alternative is remembering to sanitise at each of a few hundred call
+    sites. Scrubbing here cannot corrupt real data — there is no valid value
+    this changes.
+    """
+    if not isinstance(v, str):
+        return v
+    if "\x00" in v:
+        v = v.replace("\x00", "")
+    # json.dumps does not emit a raw NUL — it emits the six-character escape
+    # \u0000, which jsonb rejects on its own terms. Only scrub that inside a
+    # value that is actually JSON: in a plain text column the same six
+    # characters are storable and might be someone's code sample, and this is
+    # the one case where scrubbing could alter real data. A JSON document
+    # carrying the escape cannot be stored at all, so removing it there loses
+    # nothing that was ever going to survive.
+    if "\\u0000" in v and v[:1] in "{[":
+        v = v.replace("\\u0000", "")
+    return v
+
+
 def _bind(params: Any) -> Any:
     """Pass mappings through; make everything else a tuple.
 
     psycopg picks its placeholder style from the parameter type, so wrapping a
     dict in tuple() turns %(name)s into "named placeholders require a mapping".
     """
-    return params if isinstance(params, Mapping) else tuple(params)
+    if isinstance(params, Mapping):
+        return {k: _scrub(v) for k, v in params.items()}
+    return tuple(_scrub(v) for v in params)
 
 
 def query(sql: str, params: Iterable[Any] | Mapping[str, Any] = ()) -> list[dict]:
@@ -59,7 +92,9 @@ def executemany(sql: str, rows: list[tuple]) -> int:
     if not rows:
         return 0
     with conn() as c, c.cursor() as cur:
-        cur.executemany(sql, rows)
+        # Bulk inserts carry scraped text too, and one bad byte in one row
+        # would reject the whole batch.
+        cur.executemany(sql, [_bind(r) for r in rows])
         return cur.rowcount
 
 

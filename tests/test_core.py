@@ -972,3 +972,36 @@ def test_webull_connect_runs_one_attempt_at_a_time(monkeypatch):
     assert webull.attempt()["state"] == "failed" and len(calls) == 1
     assert webull.start_connect() is True, "could not retry after a failure"
     release.set()
+
+
+# ── A NUL byte must not take a statement down ────────────────────────────────
+def test_a_nul_byte_in_scraped_text_cannot_kill_a_write():
+    """Postgres text cannot hold U+0000 in any form. One NUL inside one
+    article's text rejected a whole brief on 1 November with
+    "unsupported Unicode escape sequence". Scrubbed at the boundary, because
+    every writer is equally exposed and nothing legitimately carries a NUL."""
+    import json
+
+    import db
+
+    db.execute("DROP TABLE IF EXISTS _nul_test")
+    db.execute("CREATE TABLE _nul_test (a text, b jsonb)")
+    try:
+        payload = json.dumps({"beats": ["us_equities\x00"], "n": 1})
+        db.execute("INSERT INTO _nul_test (a,b) VALUES (%s,%s)",
+                   ("hello\x00world", payload))
+        db.executemany("INSERT INTO _nul_test (a,b) VALUES (%s,%s)",
+                       [("bulk\x00row", payload)])
+        rows = db.query("SELECT a, b FROM _nul_test ORDER BY a")
+        assert len(rows) == 2, "a NUL still rejected the statement"
+        assert rows[0]["a"] == "bulkrow" and rows[1]["a"] == "helloworld"
+        assert rows[0]["b"]["beats"] == ["us_equities"]
+
+        # The escape is only stripped inside JSON: a text column keeping a
+        # code sample must come back byte for byte.
+        sample = "docs say \\u0000 is invalid"
+        db.execute("INSERT INTO _nul_test (a) VALUES (%s)", (sample,))
+        kept = db.one("SELECT a FROM _nul_test WHERE a LIKE %s", ("docs%",))
+        assert kept["a"] == sample, "scrubbing altered legitimate text"
+    finally:
+        db.execute("DROP TABLE IF EXISTS _nul_test")

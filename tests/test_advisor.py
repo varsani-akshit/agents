@@ -487,3 +487,32 @@ def test_an_interrupted_run_is_closed_not_left_running():
         assert got["finished_at"] is not None and "interrupted" in got["error"]
     finally:
         db.execute("DELETE FROM sim_runs WHERE id=%s", (row["id"],))
+
+
+# ── Empty frames are still bar frames ────────────────────────────────────────
+def test_a_symbol_with_no_bars_does_not_take_down_its_region():
+    """`pd.DataFrame(columns=[...])` carries a RangeIndex while every other
+    path out of `load` returns dates, so `indicators()` died on
+    `index.to_period("M")`. One symbol with no bars yet killed the whole
+    daily advice run — IN, US and CRYPTO all failed this way on 2–3 November
+    while ASX happened to survive."""
+    import pandas as pd
+
+    from advisor import bars, strategies
+
+    df = bars.load("ZZZ_DEFINITELY_NOT_A_SYMBOL")
+    assert isinstance(df.index, pd.DatetimeIndex), "empty frame lost its date index"
+    assert len(df) == 0
+    out = strategies.indicators(df)          # used to raise AttributeError
+    assert len(out) == 0
+    assert "month_start" in out.columns, "indicators returned an unusable frame"
+
+
+def test_hourly_bars_keep_their_index_kind_when_empty():
+    import pandas as pd
+
+    from advisor import hourly
+
+    df = hourly.load("ZZZ_DEFINITELY_NOT_A_SYMBOL")
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert list(df.columns)[:5] == ["open", "high", "low", "close", "volume"]

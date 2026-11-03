@@ -124,6 +124,24 @@ def refresh(markets: list[str] | None = None, period: str = "1mo") -> int:
     return n
 
 
+def _empty() -> pd.DataFrame:
+    """A no-bars frame that is still a bar frame.
+
+    `pd.DataFrame(columns=[...])` carries a RangeIndex, and every other path
+    out of `load` returns a DatetimeIndex. Downstream code reasonably assumes
+    the index is dates: `indicators()` calls `out.index.to_period("M")` and
+    died with "RangeIndex object has no attribute to_period" — which took out
+    the daily advice run for a whole region whenever one symbol in it had no
+    usable bars yet. An empty frame must have an empty index of the right
+    kind, not a different kind of index.
+    """
+    return pd.DataFrame(
+        {c: pd.Series(dtype="float64") for c in
+         ("open", "high", "low", "close", "volume")},
+        index=pd.DatetimeIndex([], name="d"),
+    )
+
+
 def load(symbol: str, years: int | None = None, final_only: bool = True) -> pd.DataFrame:
     """One symbol's bars as a date-indexed frame: open, high, low, close, volume.
 
@@ -135,13 +153,13 @@ def load(symbol: str, years: int | None = None, final_only: bool = True) -> pd.D
         params.append(years)
     rows = db.query(sql + " ORDER BY d", params)
     if not rows:
-        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+        return _empty()
     from advisor import market_of, session_closed
 
     if final_only and not session_closed(market_of(symbol), rows[-1]["d"]):
         rows = rows[:-1]
     if not rows:
-        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+        return _empty()
     df = pd.DataFrame(rows).set_index("d")
     df.index = pd.to_datetime(df.index)
     return drop_bad_prints(df.astype(float))

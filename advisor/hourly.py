@@ -60,7 +60,13 @@ def load(symbol: str) -> pd.DataFrame:
     rows = db.query("SELECT ts, open, high, low, close, volume FROM bars_1h "
                     "WHERE symbol = %s ORDER BY ts", (symbol,))
     if not rows:
-        return pd.DataFrame(columns=["open", "high", "low", "close", "volume", "session"])
+        # Same reason as advisor.bars._empty: a RangeIndex here would be a
+        # different kind of index from every other path out of this function.
+        return pd.DataFrame(
+            {c: pd.Series(dtype="float64") for c in
+             ("open", "high", "low", "close", "volume")},
+            index=pd.DatetimeIndex([], tz=ZONE[market_of(symbol)], name="ts"),
+        ).assign(session=pd.Series(dtype="object"))
     df = pd.DataFrame(rows).set_index("ts")
     df.index = pd.to_datetime(df.index, utc=True).tz_convert(ZONE[market_of(symbol)])
     df = df.astype({"open": float, "high": float, "low": float, "close": float})
