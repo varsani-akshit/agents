@@ -190,15 +190,18 @@ def my_tickets(status: str = "open", symbol: str = "", limit: int = 20) -> dict:
     if not rows:
         return {"tickets": [], "note": f"no {want} tickets"}
 
-    # The written case lives on `calls`, keyed by the signal rather than the
-    # ticket, so an answer can quote the reasoning the dashboard shows.
-    cases = {(r["symbol"], r["strategy"], str(r["signal_date"])): r["reasoning"]
-             for r in db.query(
-                 """SELECT symbol, strategy, signal_date, reasoning FROM calls
-                    WHERE reasoning IS NOT NULL""")}
+    # The written case lives on `calls`, so an answer quotes the same
+    # reasoning the dashboard shows. Keyed by name and strategy rather than
+    # by signal date, because rebasing moves a ticket's signal_date onto the
+    # latest close and a date-keyed join loses the case for every ticket that
+    # has been brought forward.
+    cases = {(r["symbol"], r["strategy"]): r["reasoning"] for r in db.query(
+        """SELECT DISTINCT ON (symbol, strategy) symbol, strategy, reasoning
+           FROM calls WHERE reasoning IS NOT NULL
+           ORDER BY symbol, strategy, created_at DESC""")}
     out = []
     for r in rows:
-        case = cases.get((r["symbol"], r["strategy"], str(r["signal_date"]))) or {}
+        case = cases.get((r["symbol"], r["strategy"])) or {}
         out.append({
             "symbol": r["symbol"], "strategy": r["strategy"], "status": r["status"],
             "signal_date": r["signal_date"], "valid_until": r["valid_until"],

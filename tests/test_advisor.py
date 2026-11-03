@@ -708,3 +708,35 @@ def test_the_today_band_names_any_account_it_leaves_out():
     # Every broker with a value is either counted or named as excluded.
     counted = {b["broker"] for b in h["by_broker"]}
     assert counted or h["excluded"], "no accounts counted and none explained"
+
+
+def test_a_rebased_ticket_keeps_its_written_case():
+    """The case was joined on (symbol, strategy, signal_date), and rebasing
+    moves signal_date onto the latest close — so every ticket brought forward
+    silently lost its reasoning on both the dashboard and in the chat."""
+    import json
+
+    import db
+    from brain import advisor_tools
+
+    sym, _ = _a_live_setup()
+    if not sym:
+        pytest.skip("no abs_momentum setup is firing on the latest close today")
+    idea_id, _, _ = _an_open_idea(sym, "abs_momentum")
+    row = db.one("SELECT symbol, strategy, signal_date FROM ideas WHERE id=%s", (idea_id,))
+    call_id = db.one(
+        """INSERT INTO calls (region, symbol, strategy, signal_date, limit_price,
+             stop_price, passed_gate, reasoning, reasoned_at)
+           VALUES ('US', %s, %s, %s, 1, 1, true, %s, now()) RETURNING id""",
+        (row["symbol"], row["strategy"], row["signal_date"],
+         json.dumps({"verdict": "take", "headline": "x"})))["id"]
+    try:
+        # The rebase moves the ticket's signal date forward.
+        db.execute("UPDATE ideas SET signal_date = signal_date + 3 WHERE id=%s", (idea_id,))
+        got = advisor_tools.my_tickets(status="open", symbol=sym)
+        mine = [t for t in got["tickets"] if t["symbol"] == row["symbol"]]
+        assert mine and mine[0]["case"], "the case was lost when the date moved"
+        assert mine[0]["case"]["verdict"] == "take"
+    finally:
+        db.execute("DELETE FROM calls WHERE id=%s", (call_id,))
+        db.execute("DELETE FROM ideas WHERE id=%s", (idea_id,))
